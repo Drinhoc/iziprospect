@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 
 class NormalizedEvent(BaseModel):
+    msg_id: Optional[str] = None
     msg_type: Literal["text", "audio", "unknown"] = "unknown"
     raw_text: str = ""
     media_url: Optional[str] = None

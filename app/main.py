@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from typing import Dict
 
@@ -10,6 +11,9 @@ from app.services.evolution_service import EvolutionService
 from app.services.normalizer import normalize_evolution_payload
 from app.services.openai_service import OpenAIService
 from app.services.sheets_service import SheetsService
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="IziClinic Invisible CRM")
 
@@ -30,15 +34,63 @@ def health():
 
 @app.post("/webhook/evolution")
 async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header(default=None)):
+    logger.info("Mensagem recebida no webhook")
+
     if settings.evolution_webhook_secret and x_webhook_secret != settings.evolution_webhook_secret:
         raise HTTPException(status_code=401, detail="Invalid webhook secret")
 
     event = normalize_evolution_payload(payload)
+    logger.info("msg_id extraído: %s", event.msg_id)
+    logger.info("tipo da mensagem: %s", event.msg_type)
+
+    if event.msg_id and sheets_service.activity_exists_by_msg_id(event.msg_id):
+        logger.info("Duplicata ignorada para msg_id=%s", event.msg_id)
+        return {"ok": True, "duplicate": True}
+    if not event.msg_id:
+        logger.warning("Mensagem recebida sem msg_id")
 
     if event.msg_type == "audio" and event.media_url:
-        event.raw_text = await openai_service.transcribe_audio_from_url(event.media_url)
+        logger.info("Transcrição iniciada para msg_id=%s", event.msg_id)
+        try:
+            event.raw_text = await openai_service.transcribe_audio_from_url(event.media_url)
+            logger.info("Transcrição finalizada para msg_id=%s", event.msg_id)
+        except Exception:
+            logger.exception("Erro de transcrição para msg_id=%s", event.msg_id)
+            sheets_service.add_review(
+                when=event.timestamp,
+                mensagem_bruta="",
+                cidade_detectada=None,
+                nome_detectado=None,
+                candidatos=[],
+                acao="falha_transcricao",
+            )
+            return {"ok": True, "partial": True, "reason": "falha_transcricao"}
+
+        if not event.raw_text.strip():
+            logger.warning("Transcrição vazia para msg_id=%s", event.msg_id)
+            sheets_service.add_review(
+                when=event.timestamp,
+                mensagem_bruta="",
+                cidade_detectada=None,
+                nome_detectado=None,
+                candidatos=[],
+                acao="falha_transcricao",
+            )
+            return {"ok": True, "partial": True, "reason": "transcricao_vazia"}
 
     raw_text = event.raw_text.strip()
+    if event.msg_type == "unknown" or (not raw_text and event.msg_type != "audio"):
+        logger.warning("Mensagem não processável (tipo/texto inválido). msg_id=%s", event.msg_id)
+        sheets_service.add_review(
+            when=event.timestamp,
+            mensagem_bruta=raw_text,
+            cidade_detectada=None,
+            nome_detectado=None,
+            candidatos=[],
+            acao="mensagem_nao_processavel",
+        )
+        return {"ok": True, "ignored": True}
+
     upper = raw_text.upper()
 
     if upper.startswith("VINCULAR L"):
@@ -64,8 +116,11 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
         when=event.timestamp,
     )
 
+    logger.info("Lead resolvido: %s", lead_id or "REVISAR")
+
     sheets_service.add_activity(
         when=event.timestamp,
+        msg_id=event.msg_id or "",
         lead_id=lead_id,
         tipo=extracted.activity.tipo,
         canal="whatsapp_group" if event.is_group else "whatsapp",
@@ -75,6 +130,7 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
     )
 
     if not lead_id:
+        logger.info("Lead em revisão para msg_id=%s", event.msg_id)
         sheets_service.add_review(
             when=event.timestamp,
             mensagem_bruta=raw_text,
@@ -84,7 +140,10 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
             acao="lead_id_nao_resolvido",
         )
 
-    await evolution_service.send_confirmation(event.chat_id, f"CRM atualizado para {lead_id or 'REVISAR'}")
+    try:
+        await evolution_service.send_confirmation(event.chat_id, f"CRM atualizado para {lead_id or 'REVISAR'}")
+    except Exception:
+        logger.warning("Erro de confirmação no WhatsApp para msg_id=%s", event.msg_id, exc_info=True)
 
     return {
         "ok": True,

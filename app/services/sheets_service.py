@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
 from difflib import SequenceMatcher
@@ -28,6 +30,7 @@ LEADS_HEADERS = [
 
 ATIV_HEADERS = [
     "data_hora",
+    "msg_id",
     "lead_id",
     "tipo",
     "canal",
@@ -46,9 +49,36 @@ REV_HEADERS = [
     "resolvido_em",
 ]
 
+GENERIC_NAME_TOKENS = {
+    "clinica",
+    "clínica",
+    "consultorio",
+    "consultório",
+    "odontologia",
+    "odonto",
+    "estetica",
+    "estética",
+}
+
+
+def _strip_accents(value: str) -> str:
+    return "".join(ch for ch in unicodedata.normalize("NFD", value) if unicodedata.category(ch) != "Mn")
+
 
 def normalize_text(value: str) -> str:
-    return "".join(c.lower() for c in value.strip() if c.isalnum() or c.isspace()).strip()
+    base = _strip_accents(value or "").lower().strip()
+    base = re.sub(r"[^\w\s]", " ", base)
+    return re.sub(r"\s+", " ", base).strip()
+
+
+def canonicalize_name(value: str) -> str:
+    normalized = normalize_text(value)
+    tokens = normalized.split()
+    while tokens and tokens[0] in GENERIC_NAME_TOKENS:
+        tokens = tokens[1:]
+    while tokens and tokens[-1] in GENERIC_NAME_TOKENS:
+        tokens = tokens[:-1]
+    return " ".join(tokens) if tokens else normalized
 
 
 def norm_phone(value: Optional[str]) -> str:
@@ -100,11 +130,22 @@ class SheetsService:
         numeric = [int(i[1:]) for i in ids if isinstance(i, str) and i.startswith("L") and i[1:].isdigit()]
         return f"L{(max(numeric) + 1) if numeric else 1:04d}"
 
+    def activity_exists_by_msg_id(self, msg_id: str) -> bool:
+        if not msg_id:
+            return False
+        try:
+            records = self.ws_ativ.get_all_records()
+        except Exception:
+            return False
+        return any(str(row.get("msg_id", "")).strip() == msg_id for row in records)
+
     def match_lead(self, lead: Dict[str, str]) -> MatchResult:
         all_leads = self.leads()
         whatsapp = norm_phone(lead.get("whatsapp"))
         insta = normalize_text(lead.get("instagram") or "")
-        lead_key = f"{normalize_text(lead.get('cidade') or '')}:{normalize_text(lead.get('nome') or '')}"
+
+        canonical_name = canonicalize_name(lead.get("nome") or "")
+        lead_key = f"{normalize_text(lead.get('cidade') or '')}:{canonical_name}"
 
         for row in all_leads:
             if whatsapp and norm_phone(row.get("whatsapp")) == whatsapp:
@@ -117,16 +158,17 @@ class SheetsService:
                 return MatchResult(matched=row, score=0.98)
 
         cidade_norm = normalize_text(lead.get("cidade") or "")
-        nome_norm = normalize_text(lead.get("nome") or "")
+        nome_norm = canonical_name
         for row in all_leads:
-            if cidade_norm and row.get("cidade_normalizada") == cidade_norm and nome_norm in row.get("nome_normalizado", ""):
+            row_name = canonicalize_name(row.get("nome", ""))
+            if cidade_norm and row.get("cidade_normalizada") == cidade_norm and nome_norm and nome_norm in row_name:
                 return MatchResult(matched=row, score=0.9)
 
         scored: List[Tuple[float, Dict[str, str]]] = []
         for row in all_leads:
             if cidade_norm and row.get("cidade_normalizada") and row.get("cidade_normalizada") != cidade_norm:
                 continue
-            target = row.get("nome_normalizado", "")
+            target = canonicalize_name(row.get("nome", ""))
             if not nome_norm or not target:
                 continue
             sim = max(fuzz.ratio(nome_norm, target) / 100.0, SequenceMatcher(None, nome_norm, target).ratio())
@@ -149,7 +191,8 @@ class SheetsService:
         lead["whatsapp"] = norm_phone(lead.get("whatsapp"))
         lead["nome_normalizado"] = normalize_text(lead.get("nome", ""))
         lead["cidade_normalizada"] = normalize_text(lead.get("cidade", ""))
-        lead["lead_key"] = f"{lead['cidade_normalizada']}:{lead['nome_normalizado']}"
+        canonical_name = canonicalize_name(lead.get("nome", ""))
+        lead["lead_key"] = f"{lead['cidade_normalizada']}:{canonical_name}"
 
         match = self.match_lead(lead)
         if match.needs_review:
@@ -184,9 +227,10 @@ class SheetsService:
         self.ws_leads.append_row([row.get(h, "") for h in LEADS_HEADERS])
         return lead_id
 
-    def add_activity(self, when: datetime, lead_id: str, tipo: str, canal: str, mensagem_bruta: str, resumo: str, followup_em: Optional[str]):
+    def add_activity(self, when: datetime, msg_id: str, lead_id: str, tipo: str, canal: str, mensagem_bruta: str, resumo: str, followup_em: Optional[str]):
         self.ws_ativ.append_row([
             when.isoformat(),
+            msg_id,
             lead_id,
             tipo,
             canal,
@@ -209,17 +253,21 @@ class SheetsService:
                     current["nome_normalizado"] = normalize_text(current["nome"])
                 if "cidade" in fields:
                     current["cidade_normalizada"] = normalize_text(current["cidade"])
-                current["lead_key"] = f"{current['cidade_normalizada']}:{current['nome_normalizado']}"
+                current["lead_key"] = f"{current['cidade_normalizada']}:{canonicalize_name(current['nome'])}"
                 self.ws_leads.update(f"A{idx}:N{idx}", [[current[h] for h in LEADS_HEADERS]])
                 return True
         return False
 
-    def latest_activity_row(self) -> int:
-        return len(self.ws_ativ.get_all_values())
-
     def bind_latest_activity_to_lead(self, lead_id: str) -> bool:
-        row = self.latest_activity_row()
-        if row < 2:
+        # MVP: vincula na atividade mais recente que ainda não possui lead_id.
+        records = self.ws_ativ.get_all_values()
+        if len(records) < 2:
             return False
-        self.ws_ativ.update(f"B{row}", [[lead_id]])
-        return True
+
+        for row_idx in range(len(records), 1, -1):
+            row = records[row_idx - 1]
+            current_lead = row[2] if len(row) > 2 else ""
+            if not str(current_lead).strip():
+                self.ws_ativ.update(f"C{row_idx}", [[lead_id]])
+                return True
+        return False

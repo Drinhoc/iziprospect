@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import tempfile
 from typing import Any
 
@@ -8,6 +9,8 @@ import httpx
 from openai import OpenAI
 
 from app.schemas.models import LLMExtraction
+
+logger = logging.getLogger(__name__)
 
 PROMPT = """Você extrai CRM de mensagens WhatsApp em português. Retorne SOMENTE JSON válido com schema:
 {
@@ -17,7 +20,14 @@ PROMPT = """Você extrai CRM de mensagens WhatsApp em português. Retorne SOMENT
   "followup_em": null,
   "activity": {"tipo":"", "resumo":""}
 }
-Sem markdown. Normalize telefones para dígitos+ +55 se óbvio."""
+Regras obrigatórias:
+- Nunca invente nome de clínica, cidade, instagram, whatsapp ou site.
+- Se não souber um campo, retorne null.
+- Se não houver nome claro do lead, mantenha lead.nome = null.
+- Se a mensagem for vaga, ainda assim preencha activity.tipo e activity.resumo com o que for observável.
+- Preserve datas relativas quando não for possível resolver com segurança (ex.: "amanhã", "semana que vem").
+- Não inferir telefone inexistente.
+- Retorne somente JSON válido e sem markdown."""
 
 
 class OpenAIService:
@@ -28,19 +38,29 @@ class OpenAIService:
         if not self.client:
             return ""
 
-        async with httpx.AsyncClient(timeout=60) as client:
-            audio_data = (await client.get(media_url)).content
+        async with httpx.AsyncClient(timeout=120) as client:
+            response = await client.get(media_url)
+            response.raise_for_status()
+            audio_data = response.content
+
+        if not audio_data:
+            logger.warning("Audio download returned empty content")
+            return ""
 
         with tempfile.NamedTemporaryFile(suffix=".ogg") as tmp:
             tmp.write(audio_data)
             tmp.flush()
             with open(tmp.name, "rb") as audio_file:
                 transcript = self.client.audio.transcriptions.create(model="whisper-1", file=audio_file)
-        return transcript.text
+
+        text = (transcript.text or "").strip()
+        if not text:
+            logger.warning("Whisper returned empty transcript")
+        return text
 
     def extract_structured_data(self, raw_text: str) -> LLMExtraction:
         if not self.client:
-            return LLMExtraction()
+            return LLMExtraction(activity={"tipo": "nota", "resumo": raw_text[:200]})
 
         resp = self.client.chat.completions.create(
             model="gpt-4o-mini",

@@ -6,29 +6,45 @@ CRM invisível para operação comercial da IziClinic: recebe webhook do Evoluti
 
 1. `POST /webhook/evolution` recebe payload do Evolution.
 2. Payload é normalizado para:
-   - `msg_type`, `raw_text`, `media_url`, `timestamp`, `chat_id`, `is_group`
-3. Se for áudio, baixa `media_url` e transcreve com `whisper-1`.
-4. Envia texto para LLM (`gpt-4o-mini`) para extrair JSON estruturado.
-5. Faz matching anti-duplicação no Sheets e upsert em `LEADS`.
-6. Sempre grava entrada em `ATIVIDADES`.
-7. Em ambiguidades, envia para aba `REVISAR`.
+   - `msg_id`, `msg_type`, `raw_text`, `media_url`, `timestamp`, `chat_id`, `is_group`
+3. Idempotência: se `msg_id` já existir em `ATIVIDADES`, o webhook ignora duplicata (`{ "ok": true, "duplicate": true }`).
+4. Se for áudio, baixa `media_url` e transcreve com `whisper-1`.
+5. Envia texto para LLM (`gpt-4o-mini`) para extrair JSON estruturado.
+6. Faz matching anti-duplicação no Sheets e upsert em `LEADS`.
+7. Sempre grava entrada em `ATIVIDADES` (incluindo `msg_id`).
+8. Em ambiguidades/falhas, envia para aba `REVISAR`.
 
-## Estrutura do projeto
+## Estrutura das abas
 
-```bash
-app/
-  main.py
-  config.py
-  schemas/models.py
-  services/
-    normalizer.py
-    openai_service.py
-    sheets_service.py
-    evolution_service.py
-Dockerfile
-.env.example
-requirements.txt
-```
+### LEADS
+`lead_id, nome, cidade, segmento, whatsapp, instagram, site, status, ultima_interacao_em, proximo_followup_em, observacoes, nome_normalizado, cidade_normalizada, lead_key`
+
+### ATIVIDADES
+`data_hora, msg_id, lead_id, tipo, canal, mensagem_bruta, resumo, followup_em`
+
+### REVISAR
+`data_hora, mensagem_bruta, cidade_detectada, nome_detectado, candidatos, acao, resolvido_em`
+
+## Logs e observabilidade
+
+A aplicação usa `logging` padrão do Python com logs para:
+- mensagem recebida
+- `msg_id` extraído
+- tipo de mensagem
+- transcrição iniciada/finalizada
+- duplicata ignorada
+- lead resolvido / lead em revisão
+- erro de transcrição
+- erro de confirmação no WhatsApp (sem quebrar webhook)
+
+## Comandos manuais no grupo
+
+- `VINCULAR L0001`
+  - MVP: vincula **a atividade mais recente não vinculada** (`lead_id` vazio).
+- `CORRIGIR L0001 cidade=Campinas segmento=Odonto`
+  - Atualiza campos no lead.
+- `SET L0001 whatsapp=+5511999999999 instagram=@clinicax`
+  - Atualiza contatos do lead.
 
 ## Pré-requisitos
 
@@ -78,6 +94,13 @@ Health check:
 curl http://localhost:8000/health
 ```
 
+## Testes recomendados (ordem segura)
+
+1. Teste primeiro mensagens de **texto**.
+2. Depois teste mensagens de **áudio**.
+
+Isso reduz risco de troubleshooting misto (webhook + mídia + transcrição) no primeiro deploy.
+
 ## Testando webhook com curl
 
 Exemplo texto:
@@ -88,6 +111,7 @@ curl -X POST http://localhost:8000/webhook/evolution \
   -H 'x-webhook-secret: SEU_SECRET' \
   -d '{
     "data": {
+      "key": {"id": "ABCD1234", "remoteJid": "5511999999999@g.us"},
       "messageTimestamp": 1730803200,
       "chatId": "5511999999999@g.us",
       "message": {"conversation": "Novo lead: Clínica Sorriso em Campinas, insta @sorriso"}
@@ -102,6 +126,7 @@ curl -X POST http://localhost:8000/webhook/evolution \
   -H 'Content-Type: application/json' \
   -d '{
     "data": {
+      "key": {"id": "EFGH5678", "remoteJid": "5511999999999@g.us"},
       "messageTimestamp": 1730803200,
       "chatId": "5511999999999@g.us",
       "message": {"audioMessage": {"url": "https://seu-cdn/audio.ogg"}}
@@ -109,26 +134,19 @@ curl -X POST http://localhost:8000/webhook/evolution \
   }'
 ```
 
-## Comandos manuais no grupo
-
-- `VINCULAR L0001`
-  - Vincula a última atividade ao `lead_id`.
-- `CORRIGIR L0001 cidade=Campinas segmento=Odonto`
-  - Atualiza campos no lead.
-- `SET L0001 whatsapp=+5511999999999 instagram=@clinicax`
-  - Atualiza contatos do lead.
-
 ## Regras de matching implementadas
 
 Prioridade:
 1. `whatsapp`
 2. `instagram`
-3. `lead_key` (`cidade_normalizada:nome_normalizado`)
-4. `contains` em `nome_normalizado` na mesma cidade
+3. `lead_key` (`cidade_normalizada:nome_canonico`)
+4. `contains` em nome (mesma cidade)
 5. fuzzy fallback
    - `>=0.88`: match automático
    - `0.78-0.88`: não cria lead, envia para `REVISAR` com top 3
    - `<0.78`: cria lead novo
+
+A normalização remove acentos/pontuação e aplica limpeza leve de termos genéricos (ex.: clínica/consultório/odonto/estética) para melhorar proximidade de nomes.
 
 ## Docker
 
@@ -156,5 +174,5 @@ docker run --rm -p 8000:8000 --env-file .env iziclinic-crm
 
 ## Observações
 
-- Resposta de confirmação via Evolution API está implementada como best-effort (stub funcional opcional).
-- Em caso de erro de entendimento/matching, dados podem cair em `REVISAR` para ajuste humano.
+- Falha de confirmação via Evolution API não quebra processamento do webhook.
+- Em falha de transcrição ou mensagem não processável, o evento é roteado para `REVISAR`.
