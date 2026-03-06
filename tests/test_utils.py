@@ -30,3 +30,16 @@ def test_vague_message_and_name_fallback_helpers():
     assert is_message_too_vague("teste") is True
     assert is_message_too_vague("Clinca sorrisa, 19 998998988 odonto") is False
     assert extract_name_before_phone("Clinca sorrisa, 19 998998988 odonto") == "Clinca sorrisa"
+
+
+def test_normalize_evolution_payload_audio_mimetype():
+    payload = {
+        "data": {
+            "key": {"id": "AUDIO1", "remoteJid": "5511999999999@g.us"},
+            "message": {"audioMessage": {"url": "https://mmg.whatsapp.net/foo_n.enc", "mimetype": "audio/ogg; codecs=opus"}},
+        }
+    }
+    event = normalize_evolution_payload(payload)
+    assert event.msg_type == "audio"
+    assert event.media_url.endswith(".enc")
+    assert event.media_mimetype == "audio/ogg; codecs=opus"

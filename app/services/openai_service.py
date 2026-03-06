@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import tempfile
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -43,35 +45,90 @@ Saída:
 """
 
 ALLOWED_INTENTS = {"novo", "update", "perdido", "fechado", "corrigir", "vincular", "set"}
+MIMETYPE_EXTENSION = {
+    "audio/ogg": ".ogg",
+    "audio/ogg; codecs=opus": ".ogg",
+    "audio/mp3": ".mp3",
+    "audio/mpeg": ".mp3",
+    "audio/wav": ".wav",
+    "audio/x-wav": ".wav",
+    "audio/webm": ".webm",
+    "audio/mp4": ".m4a",
+    "audio/m4a": ".m4a",
+    "audio/flac": ".flac",
+    "audio/oga": ".oga",
+}
+ALLOWED_EXTENSIONS = {".flac", ".m4a", ".mp3", ".mp4", ".mpeg", ".mpga", ".oga", ".ogg", ".wav", ".webm"}
+
+
+@dataclass
+class AudioResolveError(Exception):
+    reason: str
 
 
 class OpenAIService:
     def __init__(self, api_key: str):
         self.client = OpenAI(api_key=api_key) if api_key else None
 
-    async def transcribe_audio_from_url(self, media_url: str) -> str:
+    def _extension_from_mimetype(self, mimetype: str | None) -> str | None:
+        if not mimetype:
+            return None
+        mt = mimetype.strip().lower()
+        return MIMETYPE_EXTENSION.get(mt)
+
+    def _extension_from_url(self, media_url: str) -> str | None:
+        lower = (media_url or "").lower().split("?")[0]
+        for ext in ALLOWED_EXTENSIONS:
+            if lower.endswith(ext):
+                return ext
+        return None
+
+    async def resolve_whatsapp_audio(self, media_url: str, mimetype: str | None) -> str:
+        extension = self._extension_from_mimetype(mimetype) or self._extension_from_url(media_url)
+        if not extension:
+            logger.error("mimetype_invalido | mimetype=%s media_url=%s", mimetype, media_url)
+            raise AudioResolveError("mimetype_invalido")
+
+        if extension not in ALLOWED_EXTENSIONS:
+            logger.error("midia_nao_suportada | extension=%s mimetype=%s", extension, mimetype)
+            raise AudioResolveError("midia_nao_suportada")
+
+        try:
+            async with httpx.AsyncClient(timeout=120) as client:
+                response = await client.get(media_url)
+                response.raise_for_status()
+                audio_data = response.content
+        except Exception:
+            logger.exception("falha_download_audio | media_url=%s", media_url)
+            raise AudioResolveError("falha_download_audio")
+
+        if not audio_data:
+            logger.error("falha_download_audio | empty_content media_url=%s", media_url)
+            raise AudioResolveError("falha_download_audio")
+
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=extension)
+        tmp.write(audio_data)
+        tmp.flush()
+        tmp.close()
+        return tmp.name
+
+    async def transcribe_audio_from_url(self, media_url: str, mimetype: str | None = None) -> str:
         if not self.client:
             return ""
 
-        async with httpx.AsyncClient(timeout=120) as client:
-            response = await client.get(media_url)
-            response.raise_for_status()
-            audio_data = response.content
-
-        if not audio_data:
-            logger.warning("Audio download returned empty content")
-            return ""
-
-        with tempfile.NamedTemporaryFile(suffix=".ogg") as tmp:
-            tmp.write(audio_data)
-            tmp.flush()
-            with open(tmp.name, "rb") as audio_file:
+        audio_path = await self.resolve_whatsapp_audio(media_url=media_url, mimetype=mimetype)
+        try:
+            with open(audio_path, "rb") as audio_file:
                 transcript = self.client.audio.transcriptions.create(model="whisper-1", file=audio_file)
-
-        text = (transcript.text or "").strip()
-        if not text:
-            logger.warning("Whisper returned empty transcript")
-        return text
+            text = (transcript.text or "").strip()
+            if not text:
+                logger.warning("Whisper returned empty transcript")
+            return text
+        finally:
+            try:
+                os.remove(audio_path)
+            except OSError:
+                logger.warning("Failed to remove temporary audio file: %s", audio_path)
 
     def extract_structured_data(self, raw_text: str) -> LLMExtraction:
         if not self.client:

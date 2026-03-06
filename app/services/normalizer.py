@@ -31,7 +31,6 @@ def _parse_timestamp(raw: Any) -> datetime:
 
     if isinstance(raw, (int, float)):
         ts = float(raw)
-        # milliseconds if very large epoch
         if ts > 1e12:
             ts = ts / 1000.0
         return datetime.utcfromtimestamp(ts)
@@ -58,6 +57,15 @@ def _extract_media_url(message: Dict[str, Any], data: Dict[str, Any], payload: D
         message.get("audio", {}).get("url"),
         data.get("mediaUrl"),
         payload.get("mediaUrl"),
+    )
+
+
+def _extract_mimetype(message: Dict[str, Any], data: Dict[str, Any], payload: Dict[str, Any]) -> Optional[str]:
+    return _first_non_empty(
+        message.get("audioMessage", {}).get("mimetype"),
+        message.get("audio", {}).get("mimetype"),
+        data.get("mimetype"),
+        payload.get("mimetype"),
     )
 
 
@@ -92,6 +100,7 @@ def normalize_evolution_payload(payload: Dict[str, Any]) -> NormalizedEvent:
 
     raw_text = _extract_text(message, data, payload)
     media_url = _extract_media_url(message, data, payload)
+    media_mimetype = _extract_mimetype(message, data, payload)
     msg_type = "audio" if media_url else ("text" if raw_text else "unknown")
 
     timestamp = _parse_timestamp(
@@ -106,6 +115,7 @@ def normalize_evolution_payload(payload: Dict[str, Any]) -> NormalizedEvent:
         msg_type=msg_type,
         raw_text=raw_text,
         media_url=media_url,
+        media_mimetype=media_mimetype,
         timestamp=timestamp,
         chat_id=remote_jid or "",
         is_group=bool((remote_jid or "").endswith("@g.us") or participant),

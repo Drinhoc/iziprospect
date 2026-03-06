@@ -11,6 +11,7 @@ class NormalizedEvent(BaseModel):
     msg_type: Literal["text", "audio", "unknown"] = "unknown"
     raw_text: str = ""
     media_url: Optional[str] = None
+    media_mimetype: Optional[str] = None
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     chat_id: str = ""
     is_group: bool = False

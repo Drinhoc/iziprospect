@@ -10,7 +10,7 @@ CRM invisível para operação comercial da IziClinic: recebe webhook do Evoluti
 3. Filtro por grupo: ignora mensagens fora de grupo e fora de `CRM_TARGET_GROUP_ID`.
 4. Idempotência: se `msg_id` já existir em `ATIVIDADES`, o webhook ignora duplicata (`{ "ok": true, "duplicate": true }`).
 5. Triagem local ignora mensagens vagas (ex.: "ok", "teste") antes de chamar OpenAI.
-6. Se for áudio, baixa `media_url` e transcreve com `whisper-1`.
+6. Se for áudio, resolve mídia com `resolve_whatsapp_audio(media_url, mimetype)`, salva com extensão válida (ex.: `.ogg`) e transcreve com `whisper-1`.
 7. Envia texto para LLM (`gpt-4o-mini`) para extrair JSON estruturado.
 6. Faz matching anti-duplicação no Sheets e upsert em `LEADS`.
 8. Sempre grava entrada em `ATIVIDADES` (incluindo `msg_id`).
@@ -202,3 +202,11 @@ docker run --rm -p 8000:8000 --env-file .env iziclinic-crm
 - Falha da OpenAI não quebra webhook: resposta HTTP 200 com `deferred=true` e `reason=openai_unavailable`.
 - Matching prioriza telefone normalizado, depois instagram, depois nome/lead_key/fuzzy.
 - `REVISAR` é usado para falhas reais (transcrição, ambiguidade, payload inválido), não para mensagens bobas ignoradas.
+
+
+## Fluxo de áudio (WhatsApp)
+
+- Nunca enviamos `.enc` diretamente para OpenAI.
+- O backend usa `mimetype` para decidir extensão válida (`.ogg`, `.mp3`, `.wav`, etc.).
+- A função `resolve_whatsapp_audio(media_url, mimetype)` baixa a mídia, cria arquivo temporário com extensão correta e retorna o `path` pronto para Whisper.
+- Erros de áudio geram logs específicos (`falha_download_audio`, `mimetype_invalido`, `midia_nao_suportada`, `falha_transcricao`) e roteamento para `REVISAR`.

@@ -10,7 +10,7 @@ from openai import APIError, RateLimitError
 from app.config import settings
 from app.services.evolution_service import EvolutionService
 from app.services.normalizer import normalize_evolution_payload
-from app.services.openai_service import OpenAIService
+from app.services.openai_service import AudioResolveError, OpenAIService
 from app.services.sheets_service import SheetsService, norm_phone
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
@@ -116,11 +116,12 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
 
     event = normalize_evolution_payload(payload)
     logger.info(
-        "Mensagem recebida | chat_id=%s is_group=%s msg_id=%s msg_type=%s",
+        "Mensagem recebida | chat_id=%s is_group=%s msg_id=%s msg_type=%s mimetype=%s",
         event.chat_id,
         event.is_group,
         event.msg_id,
         event.msg_type,
+        event.media_mimetype,
     )
 
     if not event.is_group:
@@ -148,10 +149,21 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
     if event.msg_type == "audio" and event.media_url:
         logger.info("Transcrição iniciada para msg_id=%s", event.msg_id)
         try:
-            event.raw_text = await openai_service.transcribe_audio_from_url(event.media_url)
+            event.raw_text = await openai_service.transcribe_audio_from_url(event.media_url, event.media_mimetype)
             logger.info("Transcrição finalizada para msg_id=%s", event.msg_id)
+        except AudioResolveError as exc:
+            logger.exception("falha_transcricao | reason=%s msg_id=%s", exc.reason, event.msg_id)
+            sheets.add_review(
+                when=event.timestamp,
+                mensagem_bruta="",
+                cidade_detectada=None,
+                nome_detectado=None,
+                candidatos=[],
+                acao=exc.reason,
+            )
+            return {"ok": True, "partial": True, "reason": exc.reason}
         except Exception:
-            logger.exception("Erro de transcrição para msg_id=%s", event.msg_id)
+            logger.exception("falha_transcricao | reason=falha_transcricao msg_id=%s", event.msg_id)
             sheets.add_review(
                 when=event.timestamp,
                 mensagem_bruta="",
