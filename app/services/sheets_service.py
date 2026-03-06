@@ -295,3 +295,36 @@ class SheetsService:
             if str(lead_id).strip():
                 return str(lead_id).strip()
         return ""
+
+
+    def create_lead_force(self, lead: Dict[str, str], status: Optional[str], followup_em: Optional[str], when: datetime) -> str:
+        lead = {k: (v or "") for k, v in lead.items()}
+        lead["whatsapp"] = norm_phone(lead.get("whatsapp"))
+        lead["nome_normalizado"] = normalize_text(lead.get("nome", ""))
+        lead["cidade_normalizada"] = normalize_text(lead.get("cidade", ""))
+        canonical_name = canonicalize_name(lead.get("nome", ""))
+        lead["lead_key"] = f"{lead['cidade_normalizada']}:{canonical_name}"
+
+        # segurança anti-duplicação por telefone/instagram mesmo em modo force
+        all_leads = self.leads()
+        if lead.get("whatsapp"):
+            for row in all_leads:
+                if norm_phone(row.get("whatsapp")) == lead["whatsapp"]:
+                    return row.get("lead_id", "")
+        if lead.get("instagram"):
+            insta = normalize_text(lead.get("instagram"))
+            for row in all_leads:
+                if normalize_text(row.get("instagram") or "") == insta:
+                    return row.get("lead_id", "")
+
+        lead_id = self.next_lead_id()
+        row = {
+            "lead_id": lead_id,
+            "status": status or "novo",
+            "ultima_interacao_em": when.isoformat(),
+            "proximo_followup_em": followup_em or "",
+            "observacoes": "",
+            **{k: lead.get(k, "") for k in ["nome", "cidade", "segmento", "whatsapp", "instagram", "site", "nome_normalizado", "cidade_normalizada", "lead_key"]},
+        }
+        self.ws_leads.append_row([row.get(h, "") for h in LEADS_HEADERS])
+        return lead_id

@@ -317,6 +317,19 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
         when=event.timestamp,
     )
 
+    if not lead_id and interpretation.action_type == "novo_lead" and (extracted.lead.whatsapp or extracted.lead.nome):
+        logger.warning(
+            "upsert sem resolução para novo_lead; criando lead forçado | nome=%s whatsapp=%s",
+            extracted.lead.nome,
+            extracted.lead.whatsapp,
+        )
+        lead_id = sheets.create_lead_force(
+            lead=extracted.lead.model_dump(),
+            status=extracted.status_sugerido or "novo",
+            followup_em=extracted.followup_em,
+            when=event.timestamp,
+        )
+
     if not lead_id and interpretation.action_type in {"registrar_atividade", "registrar_followup", "atualizar_lead"}:
         context_lead_id = sheets.latest_linked_lead_id()
         if context_lead_id:
