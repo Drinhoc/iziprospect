@@ -264,6 +264,29 @@ class SheetsService:
         lead["lead_key"] = f"{lead['cidade_normalizada']}:{canonical_name}"
 
         match = self.match_lead(lead)
+        phone_in_new = lead["whatsapp"]  # já normalizado acima
+
+        # Telefone é identificador único. Se o novo lead tem telefone mas o match
+        # foi por similaridade de nome (não por telefone/instagram/lead_key),
+        # verifica se há conflito de telefone com o lead encontrado.
+        # Leads com telefones distintos são entidades distintas → cria novo lead.
+        if phone_in_new and match.score < 0.95:
+            if match.needs_review:
+                # Candidatos fuzzy têm telefones diferentes → novo lead
+                logger.info(
+                    "upsert_lead: telefone único detectado, ignorando revisão fuzzy | phone=%s score=%.2f",
+                    phone_in_new, match.score,
+                )
+                match = MatchResult(matched=None, score=0)
+            elif match.matched:
+                matched_phone = norm_phone(match.matched.get("whatsapp"))
+                if matched_phone and matched_phone != phone_in_new:
+                    logger.info(
+                        "upsert_lead: telefone conflitante no match por nome, criando novo lead | new=%s existing=%s",
+                        phone_in_new, matched_phone,
+                    )
+                    match = MatchResult(matched=None, score=0)
+
         if match.needs_review:
             self.add_review(when, "", lead.get("cidade"), lead.get("nome"), match.candidates or [], "revisar_match")
             return ""
