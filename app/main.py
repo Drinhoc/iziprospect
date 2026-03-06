@@ -351,7 +351,9 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
         logger.info("confirmation skipped | disabled by env")
     else:
         try:
-            await evolution_service.send_confirmation(event.chat_id, f"CRM atualizado para {lead_id or 'REVISAR'}")
+            sent = await evolution_service.send_confirmation(event.chat_id, f"CRM atualizado para {lead_id or 'REVISAR'}")
+            if not sent:
+                logger.warning("confirmation failed | msg_id=%s", event.msg_id)
         except Exception:
             logger.warning("confirmation failed | msg_id=%s", event.msg_id, exc_info=True)
 

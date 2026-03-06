@@ -47,7 +47,7 @@ class Settings:
                 or os.getenv("GROUP_ID_CRM")
                 or os.getenv("CRM_GROUP_ID")
             ),
-            disable_evolution_confirmation=_as_bool(os.getenv("DISABLE_EVOLUTION_CONFIRMATION"), default=False),
+            disable_evolution_confirmation=_as_bool(os.getenv("DISABLE_EVOLUTION_CONFIRMATION"), default=True),
             default_timezone=os.getenv("DEFAULT_TIMEZONE", "UTC"),
         )
 

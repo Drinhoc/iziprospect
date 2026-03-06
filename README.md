@@ -71,7 +71,7 @@ A aplicação usa `logging` padrão do Python com logs para:
 
 
 - `CRM_TARGET_GROUP_ID`: grupo autorizado do CRM (obrigatório em produção). Aceita formatos com/sem `@g.us` e até valor colado de markdown/mailto; o backend normaliza internamente. Mensagens fora do grupo alvo retornam `ignored` com `not_group` ou `unauthorized_group`.
-- `DISABLE_EVOLUTION_CONFIRMATION`: quando `true`, não tenta envio de confirmação para Evolution (`confirmation skipped`).
+- `DISABLE_EVOLUTION_CONFIRMATION`: por padrão fica `true` para evitar ruído/404 no endpoint de confirmação; quando `true`, não tenta envio (`confirmation skipped`).
 
 ## Importante sobre credencial Google no deploy
 
