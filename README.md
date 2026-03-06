@@ -67,12 +67,23 @@ A aplicação usa `logging` padrão do Python com logs para:
 
 ## Variáveis de ambiente
 
+
+## Importante sobre credencial Google no deploy
+
+Para evitar crash de boot por JSON inválido em variável de ambiente:
+
+- Prefira `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` no Railway (mais estável para escaping).
+- Se usar `GOOGLE_SERVICE_ACCOUNT_JSON`, envie JSON válido com aspas duplas (`"`) e sem aspas simples de Python.
+- O app agora tenta parse resiliente (JSON estrito, variação com `\n`, e fallback controlado), mas formato válido continua essencial.
+
+
 Copie `.env.example` para `.env` e preencha:
 
 ```bash
 OPENAI_API_KEY=
 GOOGLE_SHEETS_ID=
 GOOGLE_SERVICE_ACCOUNT_JSON={...}
+GOOGLE_SERVICE_ACCOUNT_JSON_BASE64=
 EVOLUTION_WEBHOOK_SECRET=
 EVOLUTION_API_URL=
 EVOLUTION_API_KEY=
