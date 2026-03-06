@@ -7,6 +7,7 @@ def test_normalize_text_and_phone():
     assert normalize_text(" Clínica Sorriso!! ") == "clinica sorriso"
     assert canonicalize_name("Clínica Bella Estética") == "bella"
     assert norm_phone("(11) 99999-8888") == "+55119999998888"
+    assert norm_phone(11999998888) == "+55119999998888"
 
 
 def test_normalize_evolution_payload_text():

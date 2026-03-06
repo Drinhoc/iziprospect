@@ -82,8 +82,19 @@ def canonicalize_name(value: str) -> str:
 
 
 def norm_phone(value: Optional[str]) -> str:
+    if value is None:
+        return ""
+
+    # Google Sheets pode devolver número como int/float em get_all_records.
+    if isinstance(value, (int, float)):
+        value = str(int(value))
+    else:
+        value = str(value)
+
+    value = value.strip()
     if not value:
         return ""
+
     digits = "".join(ch for ch in value if ch.isdigit())
     if digits and not digits.startswith("55") and len(digits) >= 10:
         digits = f"55{digits}"
