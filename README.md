@@ -68,6 +68,8 @@ A aplicação usa `logging` padrão do Python com logs para:
 ## Variáveis de ambiente
 
 
+- `CRM_TARGET_GROUP_ID`: se definido, processa apenas mensagens desse grupo (`@g.us`). Mensagens fora do grupo alvo retornam `ignored`.
+
 ## Importante sobre credencial Google no deploy
 
 Para evitar crash de boot por JSON inválido em variável de ambiente:
@@ -87,6 +89,7 @@ GOOGLE_SERVICE_ACCOUNT_JSON_BASE64=
 EVOLUTION_WEBHOOK_SECRET=
 EVOLUTION_API_URL=
 EVOLUTION_API_KEY=
+CRM_TARGET_GROUP_ID=
 DEFAULT_TIMEZONE=UTC
 ```
 

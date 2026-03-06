@@ -5,6 +5,7 @@ import re
 from typing import Dict
 
 from fastapi import FastAPI, Header, HTTPException
+from openai import APIError, RateLimitError
 
 from app.config import settings
 from app.services.evolution_service import EvolutionService
@@ -55,20 +56,33 @@ def health():
 
 @app.post("/webhook/evolution")
 async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header(default=None)):
-    logger.info("Mensagem recebida no webhook")
-
     if settings.evolution_webhook_secret and x_webhook_secret != settings.evolution_webhook_secret:
         raise HTTPException(status_code=401, detail="Invalid webhook secret")
+
+    event = normalize_evolution_payload(payload)
+    logger.info(
+        "Mensagem recebida | chat_id=%s is_group=%s msg_id=%s msg_type=%s",
+        event.chat_id,
+        event.is_group,
+        event.msg_id,
+        event.msg_type,
+    )
+
+    if not event.is_group:
+        logger.info("ignored: not_group | chat_id=%s", event.chat_id)
+        return {"ok": True, "ignored": True, "reason": "not_group"}
+
+    if settings.crm_target_group_id and event.chat_id != settings.crm_target_group_id:
+        logger.info("ignored: wrong_group | chat_id=%s target=%s", event.chat_id, settings.crm_target_group_id)
+        return {"ok": True, "ignored": True, "reason": "wrong_group"}
+
+    logger.info("processing: crm_group_message | chat_id=%s", event.chat_id)
 
     try:
         sheets = get_sheets_service()
     except Exception as exc:
         logger.exception("Falha ao inicializar Google Sheets")
         raise HTTPException(status_code=503, detail=f"Sheets unavailable: {exc}") from exc
-
-    event = normalize_evolution_payload(payload)
-    logger.info("msg_id extraído: %s", event.msg_id)
-    logger.info("tipo da mensagem: %s", event.msg_type)
 
     if event.msg_id and sheets.activity_exists_by_msg_id(event.msg_id):
         logger.info("Duplicata ignorada para msg_id=%s", event.msg_id)
@@ -134,7 +148,17 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
         ok = sheets.update_lead_fields(lead_id, fields)
         return {"ok": ok, "action": "update_fields", "lead_id": lead_id, "fields": fields}
 
-    extracted = openai_service.extract_structured_data(raw_text)
+    try:
+        extracted = openai_service.extract_structured_data(raw_text)
+    except RateLimitError:
+        logger.exception("OpenAI rate limit ao extrair dados | msg_id=%s", event.msg_id)
+        return {"ok": True, "deferred": True, "reason": "openai_unavailable"}
+    except APIError:
+        logger.exception("OpenAI API error ao extrair dados | msg_id=%s", event.msg_id)
+        return {"ok": True, "deferred": True, "reason": "openai_unavailable"}
+    except Exception:
+        logger.exception("Erro inesperado na OpenAI ao extrair dados | msg_id=%s", event.msg_id)
+        return {"ok": True, "deferred": True, "reason": "openai_unavailable"}
 
     lead_id = sheets.upsert_lead(
         lead=extracted.lead.model_dump(),
