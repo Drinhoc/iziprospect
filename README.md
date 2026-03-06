@@ -7,12 +7,14 @@ CRM invisível para operação comercial da IziClinic: recebe webhook do Evoluti
 1. `POST /webhook/evolution` recebe payload do Evolution.
 2. Payload é normalizado para:
    - `msg_id`, `msg_type`, `raw_text`, `media_url`, `timestamp`, `chat_id`, `is_group`
-3. Idempotência: se `msg_id` já existir em `ATIVIDADES`, o webhook ignora duplicata (`{ "ok": true, "duplicate": true }`).
-4. Se for áudio, baixa `media_url` e transcreve com `whisper-1`.
-5. Envia texto para LLM (`gpt-4o-mini`) para extrair JSON estruturado.
+3. Filtro por grupo: ignora mensagens fora de grupo e fora de `CRM_TARGET_GROUP_ID`.
+4. Idempotência: se `msg_id` já existir em `ATIVIDADES`, o webhook ignora duplicata (`{ "ok": true, "duplicate": true }`).
+5. Triagem local ignora mensagens vagas (ex.: "ok", "teste") antes de chamar OpenAI.
+6. Se for áudio, baixa `media_url` e transcreve com `whisper-1`.
+7. Envia texto para LLM (`gpt-4o-mini`) para extrair JSON estruturado.
 6. Faz matching anti-duplicação no Sheets e upsert em `LEADS`.
-7. Sempre grava entrada em `ATIVIDADES` (incluindo `msg_id`).
-8. Em ambiguidades/falhas, envia para aba `REVISAR`.
+8. Sempre grava entrada em `ATIVIDADES` (incluindo `msg_id`).
+9. Em ambiguidades/falhas reais, envia para aba `REVISAR`.
 
 ## Estrutura das abas
 
@@ -68,7 +70,8 @@ A aplicação usa `logging` padrão do Python com logs para:
 ## Variáveis de ambiente
 
 
-- `CRM_TARGET_GROUP_ID`: se definido, processa apenas mensagens desse grupo (`@g.us`). Mensagens fora do grupo alvo retornam `ignored`.
+- `CRM_TARGET_GROUP_ID`: se definido, processa apenas mensagens desse grupo (`@g.us`). Mensagens fora do grupo alvo retornam `ignored` com `not_group` ou `wrong_group`.
+- `DISABLE_EVOLUTION_CONFIRMATION`: quando `true`, não tenta envio de confirmação para Evolution (`confirmation skipped`).
 
 ## Importante sobre credencial Google no deploy
 
@@ -90,6 +93,7 @@ EVOLUTION_WEBHOOK_SECRET=
 EVOLUTION_API_URL=
 EVOLUTION_API_KEY=
 CRM_TARGET_GROUP_ID=
+DISABLE_EVOLUTION_CONFIRMATION=true
 DEFAULT_TIMEZONE=UTC
 ```
 
@@ -190,3 +194,11 @@ docker run --rm -p 8000:8000 --env-file .env iziclinic-crm
 
 - Falha de confirmação via Evolution API não quebra processamento do webhook.
 - Em falha de transcrição ou mensagem não processável, o evento é roteado para `REVISAR`.
+
+
+## Regras operacionais de robustez
+
+- Mensagens vagas são ignoradas antes da OpenAI (`message_too_vague`) para reduzir custo e sujeira.
+- Falha da OpenAI não quebra webhook: resposta HTTP 200 com `deferred=true` e `reason=openai_unavailable`.
+- Matching prioriza telefone normalizado, depois instagram, depois nome/lead_key/fuzzy.
+- `REVISAR` é usado para falhas reais (transcrição, ambiguidade, payload inválido), não para mensagens bobas ignoradas.

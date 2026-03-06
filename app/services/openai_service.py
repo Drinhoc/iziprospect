@@ -21,13 +21,28 @@ PROMPT = """Você extrai CRM de mensagens WhatsApp em português. Retorne SOMENT
   "activity": {"tipo":"", "resumo":""}
 }
 Regras obrigatórias:
-- Nunca invente nome de clínica, cidade, instagram, whatsapp ou site.
+- Nunca invente nome, cidade, instagram, whatsapp ou site.
 - Se não souber um campo, retorne null.
-- Se não houver nome claro do lead, mantenha lead.nome = null.
-- Se a mensagem for vaga, ainda assim preencha activity.tipo e activity.resumo com o que for observável.
-- Preserve datas relativas quando não for possível resolver com segurança (ex.: "amanhã", "semana que vem").
+- Se houver texto suficiente para um nome provável no início da mensagem, preencha lead.nome com esse trecho.
+- Não corrigir ortografia do usuário.
 - Não inferir telefone inexistente.
-- Retorne somente JSON válido e sem markdown."""
+- Se intent for incerto, use "update" (nunca null).
+- activity.resumo deve ser curto, factual e operacional.
+- Retorne somente JSON válido e sem markdown.
+
+Exemplo:
+Entrada: "Clinca sorrisa, 19 998998988 odonto"
+Saída:
+{
+"intent":"novo",
+"lead":{"nome":"Clinca sorrisa","cidade":null,"segmento":"odonto","whatsapp":"19998998988","instagram":null,"site":null},
+"status_sugerido":"novo",
+"followup_em":null,
+"activity":{"tipo":"contato inicial","resumo":"Lead informado com nome provável 'Clinca sorrisa', telefone 19 998998988 e segmento odonto."}
+}
+"""
+
+ALLOWED_INTENTS = {"novo", "update", "perdido", "fechado", "corrigir", "vincular", "set"}
 
 
 class OpenAIService:
@@ -73,4 +88,7 @@ class OpenAIService:
         )
         content: Any = resp.choices[0].message.content or "{}"
         data = json.loads(content)
+        intent = str(data.get("intent") or "").strip().lower()
+        if intent not in ALLOWED_INTENTS:
+            data["intent"] = "update"
         return LLMExtraction.model_validate(data)

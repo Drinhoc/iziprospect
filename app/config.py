@@ -12,6 +12,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _as_bool(raw: str | None, default: bool = False) -> bool:
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 @dataclass
 class Settings:
     openai_api_key: str
@@ -22,6 +28,7 @@ class Settings:
     evolution_api_url: Optional[str]
     evolution_api_key: Optional[str]
     crm_target_group_id: Optional[str]
+    disable_evolution_confirmation: bool
     default_timezone: str = "UTC"
 
     @classmethod
@@ -35,6 +42,7 @@ class Settings:
             evolution_api_url=os.getenv("EVOLUTION_API_URL"),
             evolution_api_key=os.getenv("EVOLUTION_API_KEY"),
             crm_target_group_id=os.getenv("CRM_TARGET_GROUP_ID"),
+            disable_evolution_confirmation=_as_bool(os.getenv("DISABLE_EVOLUTION_CONFIRMATION"), default=False),
             default_timezone=os.getenv("DEFAULT_TIMEZONE", "UTC"),
         )
 
@@ -44,20 +52,17 @@ class Settings:
         if not value:
             raise ValueError("Empty Google service account payload")
 
-        # 1) Strict JSON first
         try:
             return json.loads(value)
         except json.JSONDecodeError:
             pass
 
-        # 2) Try with escaped newlines / wrapped quotes (common in env vars)
         unwrapped = value.strip('"').strip("'").replace("\\n", "\n")
         try:
             return json.loads(unwrapped)
         except json.JSONDecodeError:
             pass
 
-        # 3) Last-resort for single-quoted dict-like payload
         parsed = ast.literal_eval(unwrapped)
         if isinstance(parsed, dict):
             return parsed

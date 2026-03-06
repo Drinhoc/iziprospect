@@ -137,7 +137,7 @@ class SheetsService:
             records = self.ws_ativ.get_all_records()
         except Exception:
             return False
-        return any(str(row.get("msg_id", "")).strip() == msg_id for row in records)
+        return any(str(row.get("msg_id", "")).strip().lower() == msg_id.strip().lower() for row in records)
 
     def match_lead(self, lead: Dict[str, str]) -> MatchResult:
         all_leads = self.leads()
@@ -163,6 +163,8 @@ class SheetsService:
             row_name = canonicalize_name(row.get("nome", ""))
             if cidade_norm and row.get("cidade_normalizada") == cidade_norm and nome_norm and nome_norm in row_name:
                 return MatchResult(matched=row, score=0.9)
+            if not cidade_norm and nome_norm and (nome_norm in row_name or row_name in nome_norm):
+                return MatchResult(matched=row, score=0.89)
 
         scored: List[Tuple[float, Dict[str, str]]] = []
         for row in all_leads:

@@ -11,10 +11,14 @@ from app.config import settings
 from app.services.evolution_service import EvolutionService
 from app.services.normalizer import normalize_evolution_payload
 from app.services.openai_service import OpenAIService
-from app.services.sheets_service import SheetsService
+from app.services.sheets_service import SheetsService, norm_phone
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
 logger = logging.getLogger(__name__)
+
+INTENT_HINTS = {"novo", "update", "perdido", "fechado", "corrigir", "vincular", "set"}
+VAGUE_TERMS = {"ok", "oi", "opa", "blz", "teste", "testando", "hello", "ola", "olá"}
+PHONE_PATTERN = re.compile(r"(?:\+?55\s*)?(?:\(?\d{2}\)?\s*)?\d{4,5}[-\s]?\d{4}")
 
 app = FastAPI(title="IziClinic Invisible CRM")
 
@@ -39,6 +43,57 @@ def get_sheets_service() -> SheetsService:
 def parse_kv_pairs(raw: str) -> Dict[str, str]:
     matches = re.findall(r"(\w+)=([^\s]+)", raw)
     return {k.lower(): v for k, v in matches}
+
+
+def is_message_too_vague(raw_text: str) -> bool:
+    text = (raw_text or "").strip().lower()
+    if not text:
+        return True
+
+    has_phone = bool(PHONE_PATTERN.search(text))
+    has_intent_hint = any(h in text for h in INTENT_HINTS)
+    short = len(text) < 12
+
+    if has_phone or has_intent_hint:
+        return False
+
+    if short:
+        compact = re.sub(r"[^a-záéíóúàâêôãõç0-9\s]", "", text).strip()
+        if compact in VAGUE_TERMS or len(compact.split()) <= 3:
+            return True
+    return False
+
+
+def extract_name_before_phone(raw_text: str) -> str | None:
+    text = (raw_text or "").strip()
+    match = PHONE_PATTERN.search(text)
+    if not match:
+        return None
+    candidate = text[: match.start()].strip(" ,.;:-")
+    candidate = re.sub(r"\s+", " ", candidate)
+    if len(candidate) < 3:
+        return None
+    return candidate
+
+
+def factual_summary(raw_text: str, nome: str | None, telefone: str | None, segmento: str | None, llm_summary: str) -> str:
+    base = (llm_summary or "").strip()
+    if base and len(base) <= 220 and not any(x in base.lower() for x in ["provavelmente", "parece que talvez"]):
+        return base
+
+    chunks = []
+    if nome:
+        chunks.append(f"nome provável '{nome}'")
+    if telefone:
+        chunks.append(f"telefone {telefone}")
+    if segmento:
+        chunks.append(f"segmento {segmento}")
+
+    if chunks:
+        return "Lead informado com " + ", ".join(chunks) + "."
+
+    tiny = re.sub(r"\s+", " ", raw_text).strip()
+    return f"Mensagem recebida: {tiny[:180]}"
 
 
 @app.get("/health")
@@ -85,7 +140,7 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
         raise HTTPException(status_code=503, detail=f"Sheets unavailable: {exc}") from exc
 
     if event.msg_id and sheets.activity_exists_by_msg_id(event.msg_id):
-        logger.info("Duplicata ignorada para msg_id=%s", event.msg_id)
+        logger.info("duplicate webhook ignored | msg_id=%s", event.msg_id)
         return {"ok": True, "duplicate": True}
     if not event.msg_id:
         logger.warning("Mensagem recebida sem msg_id")
@@ -132,6 +187,10 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
         )
         return {"ok": True, "ignored": True}
 
+    if is_message_too_vague(raw_text):
+        logger.info("ignored: message_too_vague | msg_id=%s", event.msg_id)
+        return {"ok": True, "ignored": True, "reason": "message_too_vague"}
+
     upper = raw_text.upper()
 
     if upper.startswith("VINCULAR L"):
@@ -151,14 +210,30 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
     try:
         extracted = openai_service.extract_structured_data(raw_text)
     except RateLimitError:
-        logger.exception("OpenAI rate limit ao extrair dados | msg_id=%s", event.msg_id)
+        logger.exception("openai unavailable | rate_limit | msg_id=%s", event.msg_id)
         return {"ok": True, "deferred": True, "reason": "openai_unavailable"}
     except APIError:
-        logger.exception("OpenAI API error ao extrair dados | msg_id=%s", event.msg_id)
+        logger.exception("openai unavailable | api_error | msg_id=%s", event.msg_id)
         return {"ok": True, "deferred": True, "reason": "openai_unavailable"}
     except Exception:
-        logger.exception("Erro inesperado na OpenAI ao extrair dados | msg_id=%s", event.msg_id)
+        logger.exception("openai unavailable | unexpected | msg_id=%s", event.msg_id)
         return {"ok": True, "deferred": True, "reason": "openai_unavailable"}
+
+    if not extracted.lead.nome:
+        extracted.lead.nome = extract_name_before_phone(raw_text) or None
+    if not extracted.intent or extracted.intent not in INTENT_HINTS:
+        extracted.intent = "update"
+
+    phone_match = PHONE_PATTERN.search(raw_text)
+    found_phone = norm_phone(phone_match.group(0)) if phone_match else None
+    summary = factual_summary(
+        raw_text=raw_text,
+        nome=extracted.lead.nome,
+        telefone=found_phone,
+        segmento=extracted.lead.segmento,
+        llm_summary=extracted.activity.resumo,
+    )
+    extracted.activity.resumo = summary
 
     lead_id = sheets.upsert_lead(
         lead=extracted.lead.model_dump(),
@@ -191,10 +266,13 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
             acao="lead_id_nao_resolvido",
         )
 
-    try:
-        await evolution_service.send_confirmation(event.chat_id, f"CRM atualizado para {lead_id or 'REVISAR'}")
-    except Exception:
-        logger.warning("Erro de confirmação no WhatsApp para msg_id=%s", event.msg_id, exc_info=True)
+    if settings.disable_evolution_confirmation:
+        logger.info("confirmation skipped | disabled by env")
+    else:
+        try:
+            await evolution_service.send_confirmation(event.chat_id, f"CRM atualizado para {lead_id or 'REVISAR'}")
+        except Exception:
+            logger.warning("confirmation failed | msg_id=%s", event.msg_id, exc_info=True)
 
     return {
         "ok": True,

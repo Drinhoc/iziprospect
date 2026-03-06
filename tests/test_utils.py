@@ -1,3 +1,4 @@
+from app.main import extract_name_before_phone, is_message_too_vague
 from app.services.normalizer import normalize_evolution_payload
 from app.services.sheets_service import canonicalize_name, norm_phone, normalize_text
 
@@ -22,3 +23,10 @@ def test_normalize_evolution_payload_text():
     assert event.msg_type == "text"
     assert event.raw_text == "oi"
     assert event.is_group is True
+
+
+def test_vague_message_and_name_fallback_helpers():
+    assert is_message_too_vague("ok") is True
+    assert is_message_too_vague("teste") is True
+    assert is_message_too_vague("Clinca sorrisa, 19 998998988 odonto") is False
+    assert extract_name_before_phone("Clinca sorrisa, 19 998998988 odonto") == "Clinca sorrisa"

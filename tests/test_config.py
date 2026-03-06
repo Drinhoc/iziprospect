@@ -20,6 +20,8 @@ def test_parse_service_account_payload_accepts_base64_json():
         evolution_webhook_secret=None,
         evolution_api_url=None,
         evolution_api_key=None,
+        crm_target_group_id=None,
+        disable_evolution_confirmation=True,
     )
     parsed = settings.service_account_info()
     assert parsed["project_id"] == "x"
