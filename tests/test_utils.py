@@ -1,4 +1,4 @@
-from app.main import extract_name_before_phone, is_message_too_vague
+from app.main import extract_name_before_phone, is_authorized_crm_group, is_message_too_vague
 from app.services.normalizer import normalize_evolution_payload
 from app.services.sheets_service import canonicalize_name, norm_phone, normalize_text
 
@@ -43,3 +43,9 @@ def test_normalize_evolution_payload_audio_mimetype():
     assert event.msg_type == "audio"
     assert event.media_url.endswith(".enc")
     assert event.media_mimetype == "audio/ogg; codecs=opus"
+
+
+def test_is_authorized_crm_group_not_group():
+    ok, reason = is_authorized_crm_group("5511999999999@s.whatsapp.net", False)
+    assert ok is False
+    assert reason == "not_group"

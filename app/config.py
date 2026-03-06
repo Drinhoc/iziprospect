@@ -41,7 +41,7 @@ class Settings:
             evolution_webhook_secret=os.getenv("EVOLUTION_WEBHOOK_SECRET"),
             evolution_api_url=os.getenv("EVOLUTION_API_URL"),
             evolution_api_key=os.getenv("EVOLUTION_API_KEY"),
-            crm_target_group_id=os.getenv("CRM_TARGET_GROUP_ID"),
+            crm_target_group_id=os.getenv("CRM_TARGET_GROUP_ID") or os.getenv("GROUP_ID_CRM_CONFIGURADO"),
             disable_evolution_confirmation=_as_bool(os.getenv("DISABLE_EVOLUTION_CONFIRMATION"), default=False),
             default_timezone=os.getenv("DEFAULT_TIMEZONE", "UTC"),
         )

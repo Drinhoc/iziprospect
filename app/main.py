@@ -46,6 +46,33 @@ def parse_kv_pairs(raw: str) -> Dict[str, str]:
     return {k.lower(): v for k, v in matches}
 
 
+def _normalize_group_id(value: str | None) -> str:
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+    if "@g.us" in raw:
+        idx = raw.find("@g.us")
+        start = idx
+        while start > 0 and raw[start - 1].isdigit():
+            start -= 1
+        if start < idx:
+            return raw[start : idx + len("@g.us")]
+    return raw
+
+
+def is_authorized_crm_group(chat_id: str, is_group: bool) -> tuple[bool, str]:
+    if not is_group:
+        return False, "not_group"
+
+    expected = _normalize_group_id(settings.crm_target_group_id)
+    current = _normalize_group_id(chat_id)
+
+    if not expected:
+        return False, "unauthorized_group"
+    if current != expected:
+        return False, "unauthorized_group"
+    return True, "authorized"
+
 def is_message_too_vague(raw_text: str) -> bool:
     text = (raw_text or "").strip().lower()
     if not text:
@@ -125,15 +152,17 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
         event.media_mimetype,
     )
 
-    if not event.is_group:
-        logger.info("ignored: not_group | chat_id=%s", event.chat_id)
-        return {"ok": True, "ignored": True, "reason": "not_group"}
+    authorized, reason = is_authorized_crm_group(event.chat_id, event.is_group)
+    if not authorized:
+        if reason == "not_group":
+            logger.info("ignored: not_group | chat_id=%s", event.chat_id)
+            return {"ok": True, "ignored": True, "reason": "not_group"}
 
-    if settings.crm_target_group_id and event.chat_id != settings.crm_target_group_id:
-        logger.info("ignored: wrong_group | chat_id=%s target=%s", event.chat_id, settings.crm_target_group_id)
-        return {"ok": True, "ignored": True, "reason": "wrong_group"}
+        expected = _normalize_group_id(settings.crm_target_group_id)
+        logger.info("ignored: unauthorized_group | chat_id=%s expected=%s", event.chat_id, expected)
+        return {"ok": True, "ignored": True, "reason": "unauthorized_group"}
 
-    logger.info("processing: crm_group_message | chat_id=%s", event.chat_id)
+    logger.info("processing: crm_group_message | chat_id=%s", _normalize_group_id(event.chat_id))
 
     try:
         sheets = get_sheets_service()

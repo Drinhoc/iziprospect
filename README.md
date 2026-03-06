@@ -70,7 +70,7 @@ A aplicação usa `logging` padrão do Python com logs para:
 ## Variáveis de ambiente
 
 
-- `CRM_TARGET_GROUP_ID`: se definido, processa apenas mensagens desse grupo (`@g.us`). Mensagens fora do grupo alvo retornam `ignored` com `not_group` ou `wrong_group`.
+- `CRM_TARGET_GROUP_ID`: se definido, processa apenas mensagens desse grupo (`@g.us`). Mensagens fora do grupo alvo retornam `ignored` com `not_group` ou `unauthorized_group`.
 - `DISABLE_EVOLUTION_CONFIRMATION`: quando `true`, não tenta envio de confirmação para Evolution (`confirmation skipped`).
 
 ## Importante sobre credencial Google no deploy
