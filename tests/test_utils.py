@@ -1,4 +1,4 @@
-from app.main import extract_name_before_phone, is_authorized_crm_group, is_message_too_vague
+from app.main import _normalize_group_id, extract_name_before_phone, is_authorized_crm_group, is_message_too_vague
 from app.services.normalizer import normalize_evolution_payload
 from app.services.sheets_service import canonicalize_name, norm_phone, normalize_text
 
@@ -49,3 +49,9 @@ def test_is_authorized_crm_group_not_group():
     ok, reason = is_authorized_crm_group("5511999999999@s.whatsapp.net", False)
     assert ok is False
     assert reason == "not_group"
+
+
+def test_normalize_group_id_formats():
+    assert _normalize_group_id("120363425165290144@g.us") == "120363425165290144@g.us"
+    assert _normalize_group_id("120363425165290144") == "120363425165290144@g.us"
+    assert _normalize_group_id("[120363425165290144@g.us](mailto:120363425165290144@g.us)") == "120363425165290144@g.us"

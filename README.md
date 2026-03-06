@@ -70,7 +70,7 @@ A aplicação usa `logging` padrão do Python com logs para:
 ## Variáveis de ambiente
 
 
-- `CRM_TARGET_GROUP_ID`: se definido, processa apenas mensagens desse grupo (`@g.us`). Mensagens fora do grupo alvo retornam `ignored` com `not_group` ou `unauthorized_group`.
+- `CRM_TARGET_GROUP_ID`: grupo autorizado do CRM (obrigatório em produção). Aceita formatos com/sem `@g.us` e até valor colado de markdown/mailto; o backend normaliza internamente. Mensagens fora do grupo alvo retornam `ignored` com `not_group` ou `unauthorized_group`.
 - `DISABLE_EVOLUTION_CONFIRMATION`: quando `true`, não tenta envio de confirmação para Evolution (`confirmation skipped`).
 
 ## Importante sobre credencial Google no deploy
@@ -94,6 +94,10 @@ EVOLUTION_API_URL=
 EVOLUTION_API_KEY=
 CRM_TARGET_GROUP_ID=
 DISABLE_EVOLUTION_CONFIRMATION=true
+# aliases opcionais de compatibilidade (caso sua infra use outro nome):
+GROUP_ID_CRM_CONFIGURADO=
+GROUP_ID_CRM=
+CRM_GROUP_ID=
 DEFAULT_TIMEZONE=UTC
 ```
 

@@ -47,7 +47,7 @@ def parse_kv_pairs(raw: str) -> Dict[str, str]:
 
 
 def _normalize_group_id(value: str | None) -> str:
-    raw = (value or "").strip()
+    raw = (value or "").strip().strip('"').strip("'")
     if not raw:
         return ""
     if "@g.us" in raw:
@@ -57,7 +57,11 @@ def _normalize_group_id(value: str | None) -> str:
             start -= 1
         if start < idx:
             return raw[start : idx + len("@g.us")]
-    return raw
+
+    only_digits = "".join(ch for ch in raw if ch.isdigit())
+    if only_digits:
+        return f"{only_digits}@g.us"
+    return ""
 
 
 def is_authorized_crm_group(chat_id: str, is_group: bool) -> tuple[bool, str]:
@@ -68,7 +72,7 @@ def is_authorized_crm_group(chat_id: str, is_group: bool) -> tuple[bool, str]:
     current = _normalize_group_id(chat_id)
 
     if not expected:
-        return False, "unauthorized_group"
+        return False, "unauthorized_group_missing_config"
     if current != expected:
         return False, "unauthorized_group"
     return True, "authorized"
@@ -159,6 +163,14 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
             return {"ok": True, "ignored": True, "reason": "not_group"}
 
         expected = _normalize_group_id(settings.crm_target_group_id)
+        if reason == "unauthorized_group_missing_config":
+            logger.warning(
+                "ignored: unauthorized_group | chat_id=%s expected=%s (CRM_TARGET_GROUP_ID missing)",
+                event.chat_id,
+                expected,
+            )
+            return {"ok": True, "ignored": True, "reason": "unauthorized_group"}
+
         logger.info("ignored: unauthorized_group | chat_id=%s expected=%s", event.chat_id, expected)
         return {"ok": True, "ignored": True, "reason": "unauthorized_group"}
 
