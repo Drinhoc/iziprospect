@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import functools
+import logging
 import re
+import threading
+import time
 import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
@@ -10,6 +14,8 @@ from typing import Dict, List, Optional, Tuple
 import gspread
 from google.oauth2.service_account import Credentials
 from rapidfuzz import fuzz
+
+logger = logging.getLogger(__name__)
 
 LEADS_HEADERS = [
     "lead_id",
@@ -59,6 +65,31 @@ GENERIC_NAME_TOKENS = {
     "estetica",
     "estética",
 }
+
+
+def _gspread_retry(max_retries: int = 3, initial_delay: float = 1.0):
+    """Decorator que reprocessa chamadas ao gspread em erros transientes (429, 500, 503)."""
+    def decorator(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            delay = initial_delay
+            for attempt in range(max_retries + 1):
+                try:
+                    return fn(*args, **kwargs)
+                except gspread.exceptions.APIError as exc:
+                    status = 0
+                    if hasattr(exc, "response") and hasattr(exc.response, "status_code"):
+                        status = exc.response.status_code
+                    if attempt == max_retries or status not in (429, 500, 503):
+                        raise
+                    logger.warning(
+                        "gspread transient error | status=%s | retry %d/%d | delay=%.1fs",
+                        status, attempt + 1, max_retries, delay,
+                    )
+                    time.sleep(delay)
+                    delay *= 2
+        return wrapper
+    return decorator
 
 
 def _strip_accents(value: str) -> str:
@@ -118,6 +149,8 @@ class SheetsService:
         self.ws_leads = self._get_or_create("LEADS", LEADS_HEADERS)
         self.ws_ativ = self._get_or_create("ATIVIDADES", ATIV_HEADERS)
         self.ws_rev = self._get_or_create("REVISAR", REV_HEADERS)
+        # Lock para evitar race condition na geração de lead_id
+        self._lock = threading.Lock()
 
     def _get_or_create(self, title: str, headers: List[str]):
         try:
@@ -133,6 +166,7 @@ class SheetsService:
             ws.append_row(headers)
         return ws
 
+    @_gspread_retry()
     def leads(self) -> List[Dict[str, str]]:
         return self.ws_leads.get_all_records()
 
@@ -141,13 +175,11 @@ class SheetsService:
         numeric = [int(i[1:]) for i in ids if isinstance(i, str) and i.startswith("L") and i[1:].isdigit()]
         return f"L{(max(numeric) + 1) if numeric else 1:04d}"
 
+    @_gspread_retry()
     def activity_exists_by_msg_id(self, msg_id: str) -> bool:
         if not msg_id:
             return False
-        try:
-            records = self.ws_ativ.get_all_records()
-        except Exception:
-            return False
+        records = self.ws_ativ.get_all_records()
         return any(str(row.get("msg_id", "")).strip().lower() == msg_id.strip().lower() for row in records)
 
     def match_lead(self, lead: Dict[str, str]) -> MatchResult:
@@ -199,6 +231,30 @@ class SheetsService:
             return MatchResult(matched=None, score=best_score, needs_review=True, candidates=top3)
         return MatchResult(matched=None, score=best_score)
 
+    def _update_lead_row(
+        self,
+        lead_id: str,
+        lead: Dict[str, str],
+        status: Optional[str],
+        followup_em: Optional[str],
+        when: datetime,
+    ) -> str:
+        """Atualiza os campos de um lead existente pelo seu row index."""
+        records = self.ws_leads.get_all_values()
+        row_idx = next(i for i, row in enumerate(records, start=1) if i > 1 and row[0] == lead_id)
+        existing = dict(zip(LEADS_HEADERS, records[row_idx - 1]))
+        for key in ["nome", "cidade", "segmento", "whatsapp", "instagram", "site", "nome_normalizado", "cidade_normalizada", "lead_key"]:
+            if lead.get(key):
+                existing[key] = lead[key]
+        existing["ultima_interacao_em"] = when.isoformat()
+        if status:
+            existing["status"] = status
+        if followup_em:
+            existing["proximo_followup_em"] = followup_em
+        self.ws_leads.update(f"A{row_idx}:N{row_idx}", [[existing[h] for h in LEADS_HEADERS]])
+        return lead_id
+
+    @_gspread_retry()
     def upsert_lead(self, lead: Dict[str, str], status: Optional[str], followup_em: Optional[str], when: datetime) -> str:
         lead = {k: (v or "") for k, v in lead.items()}
         lead["whatsapp"] = norm_phone(lead.get("whatsapp"))
@@ -213,33 +269,28 @@ class SheetsService:
             return ""
 
         if match.matched:
-            lead_id = match.matched["lead_id"]
-            records = self.ws_leads.get_all_values()
-            row_idx = next(i for i, row in enumerate(records, start=1) if i > 1 and row[0] == lead_id)
-            existing = dict(zip(LEADS_HEADERS, records[row_idx - 1]))
-            for key in ["nome", "cidade", "segmento", "whatsapp", "instagram", "site", "nome_normalizado", "cidade_normalizada", "lead_key"]:
-                if lead.get(key):
-                    existing[key] = lead[key]
-            existing["ultima_interacao_em"] = when.isoformat()
-            if status:
-                existing["status"] = status
-            if followup_em:
-                existing["proximo_followup_em"] = followup_em
-            self.ws_leads.update(f"A{row_idx}:N{row_idx}", [[existing[h] for h in LEADS_HEADERS]])
+            return self._update_lead_row(match.matched["lead_id"], lead, status, followup_em, when)
+
+        # Sem match – usa lock para evitar race condition na geração do lead_id
+        with self._lock:
+            # Re-verifica após adquirir o lock: outra thread pode ter criado o lead entre o match acima e o lock
+            match2 = self.match_lead(lead)
+            if match2.matched:
+                return self._update_lead_row(match2.matched["lead_id"], lead, status, followup_em, when)
+
+            lead_id = self.next_lead_id()
+            row = {
+                "lead_id": lead_id,
+                "status": status or "novo",
+                "ultima_interacao_em": when.isoformat(),
+                "proximo_followup_em": followup_em or "",
+                "observacoes": "",
+                **{k: lead.get(k, "") for k in ["nome", "cidade", "segmento", "whatsapp", "instagram", "site", "nome_normalizado", "cidade_normalizada", "lead_key"]},
+            }
+            self.ws_leads.append_row([row.get(h, "") for h in LEADS_HEADERS])
             return lead_id
 
-        lead_id = self.next_lead_id()
-        row = {
-            "lead_id": lead_id,
-            "status": status or "novo",
-            "ultima_interacao_em": when.isoformat(),
-            "proximo_followup_em": followup_em or "",
-            "observacoes": "",
-            **{k: lead.get(k, "") for k in ["nome", "cidade", "segmento", "whatsapp", "instagram", "site", "nome_normalizado", "cidade_normalizada", "lead_key"]},
-        }
-        self.ws_leads.append_row([row.get(h, "") for h in LEADS_HEADERS])
-        return lead_id
-
+    @_gspread_retry()
     def add_activity(self, when: datetime, msg_id: str, lead_id: str, tipo: str, canal: str, mensagem_bruta: str, resumo: str, followup_em: Optional[str]):
         self.ws_ativ.append_row([
             when.isoformat(),
@@ -252,10 +303,12 @@ class SheetsService:
             followup_em or "",
         ])
 
+    @_gspread_retry()
     def add_review(self, when: datetime, mensagem_bruta: str, cidade_detectada: Optional[str], nome_detectado: Optional[str], candidatos: List[Dict[str, str]], acao: str):
         cand = "; ".join(f"{c.get('lead_id')}:{c.get('nome')}" for c in candidatos)
         self.ws_rev.append_row([when.isoformat(), mensagem_bruta, cidade_detectada or "", nome_detectado or "", cand, acao, ""])
 
+    @_gspread_retry()
     def update_lead_fields(self, lead_id: str, fields: Dict[str, str]) -> bool:
         records = self.ws_leads.get_all_values()
         for idx, row in enumerate(records[1:], start=2):
@@ -271,6 +324,7 @@ class SheetsService:
                 return True
         return False
 
+    @_gspread_retry()
     def bind_latest_activity_to_lead(self, lead_id: str) -> bool:
         # MVP: vincula na atividade mais recente que ainda não possui lead_id.
         records = self.ws_ativ.get_all_values()
@@ -285,6 +339,7 @@ class SheetsService:
                 return True
         return False
 
+    @_gspread_retry()
     def latest_linked_lead_id(self) -> str:
         records = self.ws_ativ.get_all_values()
         if len(records) < 2:
