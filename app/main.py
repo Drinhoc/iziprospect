@@ -8,10 +8,11 @@ from fastapi import FastAPI, Header, HTTPException
 from openai import APIError, RateLimitError
 
 from app.config import settings
+from app.services.crm_interpreter import extract_phone, interpret_crm_message
 from app.services.evolution_service import EvolutionService
 from app.services.normalizer import normalize_evolution_payload
 from app.services.openai_service import AudioResolveError, OpenAIService
-from app.services.sheets_service import SheetsService, norm_phone
+from app.services.sheets_service import SheetsService
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -236,12 +237,33 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
     if not extracted.intent or extracted.intent not in INTENT_HINTS:
         extracted.intent = "update"
 
-    phone_match = PHONE_PATTERN.search(raw_text)
-    found_phone = norm_phone(phone_match.group(0)) if phone_match else None
+    found_phone = extract_phone(raw_text)
+    if found_phone and not extracted.lead.whatsapp:
+        extracted.lead.whatsapp = found_phone
+
+    interpretation = interpret_crm_message(
+        raw_text=raw_text,
+        has_name=bool(extracted.lead.nome),
+        has_phone=bool(extracted.lead.whatsapp),
+    )
+    logger.info(
+        "crm_interpretation | action=%s activity=%s confidence=%.2f",
+        interpretation.action_type,
+        interpretation.activity_type,
+        interpretation.confidence,
+    )
+
+    if interpretation.followup_em and not extracted.followup_em:
+        extracted.followup_em = interpretation.followup_em
+    if interpretation.status_sugerido and not extracted.status_sugerido:
+        extracted.status_sugerido = interpretation.status_sugerido
+    if not extracted.activity.tipo or extracted.activity.tipo == "nota":
+        extracted.activity.tipo = interpretation.activity_type
+
     summary = factual_summary(
         raw_text=raw_text,
         nome=extracted.lead.nome,
-        telefone=found_phone,
+        telefone=extracted.lead.whatsapp,
         segmento=extracted.lead.segmento,
         llm_summary=extracted.activity.resumo,
     )
@@ -253,6 +275,12 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
         followup_em=extracted.followup_em,
         when=event.timestamp,
     )
+
+    if not lead_id and interpretation.action_type in {"registrar_atividade", "registrar_followup", "atualizar_lead"}:
+        context_lead_id = sheets.latest_linked_lead_id()
+        if context_lead_id:
+            logger.info("Lead resolvido por contexto da conversa: %s", context_lead_id)
+            lead_id = context_lead_id
 
     logger.info("Lead resolvido: %s", lead_id or "REVISAR")
 
@@ -290,5 +318,6 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
         "ok": True,
         "lead_id": lead_id,
         "intent": extracted.intent,
+        "action_type": interpretation.action_type,
         "msg_type": event.msg_type,
     }

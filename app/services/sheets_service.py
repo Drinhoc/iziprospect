@@ -273,3 +273,14 @@ class SheetsService:
                 self.ws_ativ.update(f"C{row_idx}", [[lead_id]])
                 return True
         return False
+
+    def latest_linked_lead_id(self) -> str:
+        records = self.ws_ativ.get_all_values()
+        if len(records) < 2:
+            return ""
+        for row_idx in range(len(records), 1, -1):
+            row = records[row_idx - 1]
+            lead_id = row[2] if len(row) > 2 else ""
+            if str(lead_id).strip():
+                return str(lead_id).strip()
+        return ""

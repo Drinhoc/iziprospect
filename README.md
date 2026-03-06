@@ -210,3 +210,50 @@ docker run --rm -p 8000:8000 --env-file .env iziclinic-crm
 - O backend usa `mimetype` para decidir extensão válida (`.ogg`, `.mp3`, `.wav`, etc.).
 - A função `resolve_whatsapp_audio(media_url, mimetype)` baixa a mídia, cria arquivo temporário com extensão correta e retorna o `path` pronto para Whisper.
 - Erros de áudio geram logs específicos (`falha_download_audio`, `mimetype_invalido`, `midia_nao_suportada`, `falha_transcricao`) e roteamento para `REVISAR`.
+
+
+## Interpretação CRM (texto e áudio)
+
+Após transcrever (quando áudio), o backend aplica interpretação CRM para classificar a ação:
+
+- `novo_lead`
+- `atualizar_lead`
+- `registrar_atividade`
+- `registrar_followup`
+- `revisao_manual`
+
+### Lógica de interpretação
+
+1. Extrai telefone do texto (se houver).
+2. Detecta follow-up (ex.: "amanhã", "semana que vem", "depois das 14").
+3. Classifica tipo de atividade (respondeu, pediu proposta, sem interesse, número inválido etc.).
+4. Se o LLM não trouxer nome, tenta fallback local com trecho anterior ao telefone.
+5. Mantém intent segura (`update`) quando vier inválida/vazia.
+
+### Pipeline final
+
+receber evento
+→ resolver áudio
+→ transcrever
+→ normalizar texto
+→ interpretar intenção CRM
+→ localizar lead (telefone > nome exato/semelhante > contexto)
+→ registrar em LEADS / ATIVIDADES / REVISAR
+
+### Exemplos de entrada/saída
+
+Entrada: `"Clínica Sorriso, odonto, 19 99898-9888"`
+- Ação esperada: `novo_lead`
+- Resultado: upsert em LEADS + atividade `contato inicial`
+
+Entrada: `"A clínica sorriso respondeu"`
+- Ação esperada: `atualizar_lead` (ou `registrar_atividade` com contexto)
+- Resultado: atividade `respondeu`
+
+Entrada: `"Retornar amanhã"`
+- Ação esperada: `registrar_followup`
+- Resultado: `followup_em` preenchido
+
+Entrada: `"Número errado"`
+- Ação esperada: `registrar_atividade`
+- Resultado: atividade `número inválido`, status sugerido de contato inválido
