@@ -118,14 +118,23 @@ def normalize_evolution_payload(payload: Dict[str, Any]) -> NormalizedEvent:
             type(raw_media_key).__name__,
             str(raw_media_key)[:30] if raw_media_key is not None else "None",
         )
-    # mediaKey pode vir como str (base64) ou bytes — normaliza para str
-    if isinstance(raw_media_key, bytes):
-        import base64 as _b64
-        media_key: Optional[str] = _b64.b64encode(raw_media_key).decode()
-    elif isinstance(raw_media_key, str) and raw_media_key.strip():
+    # mediaKey pode vir em formatos diferentes dependendo da versão do Evolution:
+    # - str: base64 padrão ("ABC123==")
+    # - bytes: bytes raw
+    # - dict: {"0": 97, "1": 13, ...} (serialização protobuf do Evolution)
+    import base64 as _b64
+    media_key: Optional[str] = None
+    if isinstance(raw_media_key, str) and raw_media_key.strip():
         media_key = raw_media_key.strip()
-    else:
-        media_key = None
+    elif isinstance(raw_media_key, bytes):
+        media_key = _b64.b64encode(raw_media_key).decode()
+    elif isinstance(raw_media_key, dict) and raw_media_key:
+        # {"0": 97, "1": 13, ...} → bytes → base64
+        try:
+            raw_bytes = bytes(raw_media_key[str(i)] for i in range(len(raw_media_key)))
+            media_key = _b64.b64encode(raw_bytes).decode()
+        except Exception:
+            pass
     is_audio = bool(
         message.get("audioMessage")
         or message.get("audio")
