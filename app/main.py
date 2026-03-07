@@ -198,24 +198,31 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
         # Fallback: quando o toggle "Webhook Based64" do Evolution tem bug e não envia
         # base64 no payload, busca via API getBase64FromMediaMessage antes de tentar
         # baixar o arquivo .enc criptografado (que causaria AudioResolveError).
-        if (
-            event.msg_type == "audio"
-            and not event.media_base64
-            and settings.evolution_instance_name
-            and event.raw_msg_key
-            and event.raw_message_obj
-        ):
-            logger.info("Tentando fetch_audio_base64 via API | msg_id=%s", event.msg_id)
-            fetched_b64 = await evolution_service.fetch_audio_base64(
-                instance_name=settings.evolution_instance_name,
-                msg_key=event.raw_msg_key,
-                message_obj=event.raw_message_obj,
-            )
-            if fetched_b64:
-                event.media_base64 = fetched_b64
-                logger.info("fetch_audio_base64 OK | msg_id=%s", event.msg_id)
+        if event.msg_type == "audio" and not event.media_base64:
+            if not settings.evolution_instance_name:
+                logger.warning(
+                    "fetch_audio_base64 ignorado: EVOLUTION_INSTANCE_NAME não configurado | msg_id=%s",
+                    event.msg_id,
+                )
+            elif not event.raw_msg_key or not event.raw_message_obj:
+                logger.warning(
+                    "fetch_audio_base64 ignorado: raw_msg_key=%s raw_message_obj=%s | msg_id=%s",
+                    bool(event.raw_msg_key),
+                    bool(event.raw_message_obj),
+                    event.msg_id,
+                )
             else:
-                logger.warning("fetch_audio_base64 falhou, tentará via URL | msg_id=%s", event.msg_id)
+                logger.info("Tentando fetch_audio_base64 via API | msg_id=%s", event.msg_id)
+                fetched_b64 = await evolution_service.fetch_audio_base64(
+                    instance_name=settings.evolution_instance_name,
+                    msg_key=event.raw_msg_key,
+                    message_obj=event.raw_message_obj,
+                )
+                if fetched_b64:
+                    event.media_base64 = fetched_b64
+                    logger.info("fetch_audio_base64 OK | msg_id=%s", event.msg_id)
+                else:
+                    logger.warning("fetch_audio_base64 falhou, tentará via URL | msg_id=%s", event.msg_id)
 
         if event.msg_type == "audio" and (event.media_url or event.media_base64):
             logger.info(
