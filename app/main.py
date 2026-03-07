@@ -5,7 +5,10 @@ import logging
 import re
 from typing import Dict
 
+import pathlib
+
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.staticfiles import StaticFiles
 from openai import APIError, RateLimitError
 
 from app.config import settings
@@ -24,6 +27,14 @@ VAGUE_TERMS = {"ok", "oi", "opa", "blz", "teste", "testando", "hello", "ola", "o
 PHONE_PATTERN = re.compile(r"(?:\+?55\s*)?(?:\(?\d{2}\)?\s*)?\d{4,5}[-\s]?\d{4}")
 
 app = FastAPI(title="IziClinic Invisible CRM")
+
+# Static files and UI routers
+_STATIC_DIR = pathlib.Path(__file__).parent / "static"
+app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+
+from app.routers import api_leads, dashboard_ui  # noqa: E402
+app.include_router(api_leads.router)
+app.include_router(dashboard_ui.router)
 
 openai_service = OpenAIService(settings.openai_api_key)
 evolution_service = EvolutionService(

@@ -620,6 +620,195 @@ class DBService:
     # Sync Sheets → DB (edições manuais do usuário)
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # Dashboard API methods
+    # ------------------------------------------------------------------
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Returns aggregated stats for the dashboard."""
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT status, COUNT(*) FROM leads WHERE status != 'arquivado' GROUP BY status ORDER BY COUNT(*) DESC"
+                )
+                by_status = {r[0]: r[1] for r in cur.fetchall()}
+
+                cur.execute(
+                    "SELECT segmento, COUNT(*) FROM leads WHERE status != 'arquivado' AND segmento != '' GROUP BY segmento ORDER BY COUNT(*) DESC"
+                )
+                by_segmento = {r[0]: r[1] for r in cur.fetchall()}
+
+                cur.execute(
+                    "SELECT prioridade, COUNT(*) FROM leads WHERE status != 'arquivado' AND prioridade != '' GROUP BY prioridade ORDER BY COUNT(*) DESC"
+                )
+                by_prioridade = {r[0]: r[1] for r in cur.fetchall()}
+
+                cur.execute(
+                    "SELECT COUNT(*) FROM leads WHERE status NOT IN ('arquivado', 'perdido', 'fechado')"
+                )
+                total_ativos = cur.fetchone()[0]
+
+                cur.execute(
+                    """SELECT COUNT(*) FROM leads
+                       WHERE proximo_followup_em != '' AND LEFT(proximo_followup_em, 10) < CURRENT_DATE::text
+                         AND status NOT IN ('fechado', 'perdido', 'arquivado')"""
+                )
+                followups_vencidos = cur.fetchone()[0]
+
+                cur.execute(
+                    "SELECT COUNT(*) FROM leads WHERE LEFT(proximo_followup_em, 10) = CURRENT_DATE::text"
+                )
+                followups_hoje = cur.fetchone()[0]
+
+                cur.execute(
+                    "SELECT COUNT(*) FROM leads WHERE LEFT(data_criacao, 10) >= (CURRENT_DATE - INTERVAL '7 days')::text"
+                )
+                criados_semana = cur.fetchone()[0]
+
+                cur.execute(
+                    """SELECT lead_id, nome, segmento, status, prioridade, data_criacao FROM leads
+                       WHERE status != 'arquivado' ORDER BY data_criacao DESC LIMIT 5"""
+                )
+                cols = [d[0] for d in cur.description]
+                recentes = [dict(zip(cols, r)) for r in cur.fetchall()]
+
+                cur.execute(
+                    """SELECT lead_id, nome, segmento, status, prioridade, proximo_followup_em, pendencia
+                       FROM leads WHERE proximo_followup_em != ''
+                         AND LEFT(proximo_followup_em, 10) >= CURRENT_DATE::text
+                         AND status NOT IN ('fechado', 'perdido', 'arquivado')
+                       ORDER BY proximo_followup_em ASC LIMIT 5"""
+                )
+                cols = [d[0] for d in cur.description]
+                proximos_followups = [dict(zip(cols, r)) for r in cur.fetchall()]
+
+            return {
+                "by_status": by_status,
+                "by_segmento": by_segmento,
+                "by_prioridade": by_prioridade,
+                "total_ativos": total_ativos,
+                "followups_vencidos": followups_vencidos,
+                "followups_hoje": followups_hoje,
+                "criados_semana": criados_semana,
+                "recentes": recentes,
+                "proximos_followups": proximos_followups,
+            }
+        finally:
+            self._put(conn)
+
+    def list_leads(
+        self,
+        status: Optional[str] = None,
+        segmento: Optional[str] = None,
+        prioridade: Optional[str] = None,
+        search: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> Dict[str, Any]:
+        """Returns paginated leads with optional filters."""
+        conditions = ["status != 'arquivado'"]
+        params: List[Any] = []
+
+        if status:
+            conditions.append("status = %s")
+            params.append(status)
+        if segmento:
+            conditions.append("segmento = %s")
+            params.append(segmento)
+        if prioridade:
+            conditions.append("prioridade = %s")
+            params.append(prioridade)
+        if search:
+            conditions.append("(nome ILIKE %s OR cidade ILIKE %s OR responsavel ILIKE %s OR whatsapp ILIKE %s)")
+            s = f"%{search}%"
+            params.extend([s, s, s, s])
+
+        where = " AND ".join(conditions)
+        offset = (page - 1) * page_size
+
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT COUNT(*) FROM leads WHERE {where}", params)
+                total = cur.fetchone()[0]
+
+                cur.execute(
+                    f"""SELECT * FROM leads WHERE {where}
+                        ORDER BY
+                            CASE WHEN ultima_interacao_em = '' OR ultima_interacao_em IS NULL THEN '0'
+                                 ELSE ultima_interacao_em END DESC
+                        LIMIT %s OFFSET %s""",
+                    params + [page_size, offset],
+                )
+                leads = self._fetchall_dict(cur)
+            return {"leads": leads, "total": total, "page": page, "page_size": page_size}
+        finally:
+            self._put(conn)
+
+    def create_lead_from_dashboard(self, data: Dict[str, Any]) -> str:
+        """Creates a new lead from dashboard input."""
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        lead: Dict[str, Any] = {k: (str(v).strip() if v is not None else "") for k, v in data.items()}
+        lead["whatsapp"] = _norm_phone(lead.get("whatsapp", ""))
+        lead["email"] = lead.get("email", "").strip().lower()
+        lead["nome_normalizado"] = _normalize_text(lead.get("nome", ""))
+        lead["cidade_normalizada"] = _normalize_text(lead.get("cidade", ""))
+        lead["lead_key"] = f"{lead['cidade_normalizada']}:{_canonicalize_name(lead.get('nome', ''))}"
+        return self._create_lead(lead, data.get("status", "novo"), data.get("proximo_followup_em") or None, now)
+
+    def update_lead_from_dashboard(self, lead_id: str, data: Dict[str, Any]) -> bool:
+        """Updates a lead from dashboard input (allows more fields than Sheets sync)."""
+        allowed = {
+            "nome", "cidade", "segmento", "whatsapp", "email",
+            "instagram", "site", "responsavel", "fonte",
+            "status", "prioridade", "observacoes", "proximo_followup_em", "pendencia",
+        }
+        safe_fields: Dict[str, Any] = {
+            k: str(v).strip() for k, v in data.items()
+            if k in allowed and v is not None
+        }
+        if not safe_fields:
+            return False
+
+        if "whatsapp" in safe_fields:
+            safe_fields["whatsapp"] = _norm_phone(safe_fields["whatsapp"])
+        if "email" in safe_fields:
+            safe_fields["email"] = safe_fields["email"].strip().lower()
+        if "nome" in safe_fields:
+            safe_fields["nome_normalizado"] = _normalize_text(safe_fields["nome"])
+        if "cidade" in safe_fields:
+            safe_fields["cidade_normalizada"] = _normalize_text(safe_fields["cidade"])
+        if "nome_normalizado" in safe_fields or "cidade_normalizada" in safe_fields:
+            safe_fields["lead_key"] = (
+                f"{safe_fields.get('cidade_normalizada', '')}:"
+                f"{_canonicalize_name(safe_fields.get('nome', ''))}"
+            )
+
+        set_clause = ", ".join(f"{k} = %s" for k in safe_fields)
+        values = list(safe_fields.values()) + [lead_id]
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"UPDATE leads SET {set_clause} WHERE lead_id = %s", values)
+            conn.commit()
+        finally:
+            self._put(conn)
+        logger.info("update_lead_from_dashboard | lead_id=%s", lead_id)
+        return True
+
+    def archive_lead(self, lead_id: str) -> bool:
+        """Soft-deletes a lead by setting status to 'arquivado'."""
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE leads SET status = 'arquivado' WHERE lead_id = %s", (lead_id,))
+            conn.commit()
+            return True
+        finally:
+            self._put(conn)
+
     def update_lead_from_sheets(self, lead_id: str, fields: Dict[str, Any]) -> bool:
         """Atualiza campos editáveis pelo usuário vindos do Sheets.
 

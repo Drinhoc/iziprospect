@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Dashboard</h1>
+  <span class="page-subtitle" id="last-update"></span>
+</div>
+
+<!-- Stat cards -->
+<div class="stat-grid" id="stat-cards">
+  <div class="stat-card">
+    <div class="stat-value" id="stat-ativos">—</div>
+    <div class="stat-label">Leads ativos</div>
+  </div>
+  <div class="stat-card stat-card--warning">
+    <div class="stat-value" id="stat-vencidos">—</div>
+    <div class="stat-label">Follow-ups vencidos</div>
+  </div>
+  <div class="stat-card stat-card--blue">
+    <div class="stat-value" id="stat-hoje">—</div>
+    <div class="stat-label">Follow-ups hoje</div>
+  </div>
+  <div class="stat-card stat-card--green">
+    <div class="stat-value" id="stat-semana">—</div>
+    <div class="stat-label">Novos esta semana</div>
+  </div>
+</div>
+
+<!-- Charts row -->
+<div class="charts-row">
+  <!-- Pipeline por status -->
+  <div class="chart-card">
+    <h2 class="chart-title">Pipeline</h2>
+    <div class="bar-chart" id="chart-status"></div>
+  </div>
+
+  <!-- Por segmento -->
+  <div class="chart-card">
+    <h2 class="chart-title">Segmentos</h2>
+    <div class="bar-chart" id="chart-segmento"></div>
+  </div>
+
+  <!-- Por prioridade -->
+  <div class="chart-card chart-card--small">
+    <h2 class="chart-title">Prioridade</h2>
+    <div class="bar-chart" id="chart-prioridade"></div>
+  </div>
+</div>
+
+<!-- Bottom lists -->
+<div class="lists-row">
+  <!-- Próximos follow-ups -->
+  <div class="list-card">
+    <h2 class="list-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      Próximos follow-ups
+    </h2>
+    <ul class="mini-list" id="list-followups"></ul>
+  </div>
+
+  <!-- Leads recentes -->
+  <div class="list-card">
+    <h2 class="list-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+      Leads recentes
+    </h2>
+    <ul class="mini-list" id="list-recentes"></ul>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/dashboard.js"></script>
+{% endblock %}

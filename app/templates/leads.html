@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% block title %}Leads{% endblock %}
+
+{% block content %}
+<div class="page-header leads-header">
+  <h1 class="page-title">Leads</h1>
+  <span class="total-label" id="total-label"></span>
+</div>
+
+<!-- Search + filter bar -->
+<div class="filter-bar">
+  <div class="search-wrap">
+    <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input type="search" id="search-input" class="search-input" placeholder="Buscar por nome, cidade…" />
+  </div>
+  <button class="btn-filter" id="btn-filter" onclick="openFilters()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+    Filtrar
+    <span class="filter-badge hidden" id="filter-badge">0</span>
+  </button>
+</div>
+
+<!-- Active filter chips -->
+<div class="filter-chips hidden" id="filter-chips"></div>
+
+<!-- Desktop table -->
+<div class="table-wrap desktop-only">
+  <table class="leads-table">
+    <thead>
+      <tr>
+        <th>Nome</th>
+        <th>Cidade</th>
+        <th>Segmento</th>
+        <th>Status</th>
+        <th>Prioridade</th>
+        <th>Pendência</th>
+        <th>Última interação</th>
+        <th>Follow-up</th>
+      </tr>
+    </thead>
+    <tbody id="leads-tbody"></tbody>
+  </table>
+</div>
+
+<!-- Mobile card list -->
+<div class="leads-cards mobile-only" id="leads-cards"></div>
+
+<!-- Empty state -->
+<div class="empty-state hidden" id="empty-state">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+  <p>Nenhum lead encontrado</p>
+</div>
+
+<!-- Loading -->
+<div class="loading-state" id="loading-state">
+  <div class="spinner"></div>
+</div>
+
+<!-- Pagination -->
+<div class="pagination hidden" id="pagination">
+  <button class="btn-page" id="btn-prev" onclick="changePage(-1)">← Anterior</button>
+  <span class="page-info" id="page-info"></span>
+  <button class="btn-page" id="btn-next" onclick="changePage(1)">Próxima →</button>
+</div>
+
+<!-- FAB: New lead -->
+<button class="fab" onclick="openLeadModal(null)" title="Novo lead">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+</button>
+
+<!-- Lead modal / bottom sheet -->
+<div class="modal-overlay hidden" id="modal-overlay" onclick="closeModal()"></div>
+<div class="modal-sheet hidden" id="modal-sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-header">
+    <h2 class="sheet-title" id="sheet-title">Novo Lead</h2>
+    <button class="btn-close" onclick="closeModal()">✕</button>
+  </div>
+  <div class="sheet-body">
+    <form id="lead-form" onsubmit="saveLead(event)">
+      <input type="hidden" id="form-lead-id" />
+
+      <div class="form-section">
+        <div class="form-group required">
+          <label>Nome / Clínica</label>
+          <input type="text" id="f-nome" required placeholder="Ex: Clínica Sorrir" />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Cidade</label>
+            <input type="text" id="f-cidade" placeholder="Ex: São Paulo" />
+          </div>
+          <div class="form-group">
+            <label>Segmento</label>
+            <select id="f-segmento">
+              <option value="">— selecione —</option>
+              <option>odonto</option>
+              <option>estética</option>
+              <option>médica</option>
+              <option>nutrição</option>
+              <option>fisio</option>
+              <option>outro</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Status</label>
+            <select id="f-status">
+              <option value="novo">Novo</option>
+              <option value="em contato">Em contato</option>
+              <option value="qualificado">Qualificado</option>
+              <option value="proposta enviada">Proposta enviada</option>
+              <option value="negociando">Negociando</option>
+              <option value="fechado">Fechado</option>
+              <option value="perdido">Perdido</option>
+              <option value="sem resposta">Sem resposta</option>
+              <option value="contato inválido">Contato inválido</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Prioridade</label>
+            <select id="f-prioridade">
+              <option value="alta">Alta</option>
+              <option value="media" selected>Média</option>
+              <option value="baixa">Baixa</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-row">
+          <div class="form-group">
+            <label>WhatsApp</label>
+            <input type="tel" id="f-whatsapp" placeholder="+55 11 99999-9999" />
+          </div>
+          <div class="form-group">
+            <label>E-mail</label>
+            <input type="email" id="f-email" placeholder="contato@clinica.com" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Instagram</label>
+            <input type="text" id="f-instagram" placeholder="@clinica" />
+          </div>
+          <div class="form-group">
+            <label>Site</label>
+            <input type="text" id="f-site" placeholder="clinica.com.br" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Responsável</label>
+            <input type="text" id="f-responsavel" placeholder="Dr. João" />
+          </div>
+          <div class="form-group">
+            <label>Fonte</label>
+            <select id="f-fonte">
+              <option value="">— selecione —</option>
+              <option value="cold">Cold</option>
+              <option value="referral">Referral</option>
+              <option value="instagram">Instagram</option>
+              <option value="event">Evento</option>
+              <option value="outro">Outro</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-group">
+          <label>Próximo follow-up</label>
+          <input type="date" id="f-followup" />
+        </div>
+        <div class="form-group">
+          <label>Pendência</label>
+          <input type="text" id="f-pendencia" placeholder="Ex: Enviar proposta" />
+        </div>
+        <div class="form-group">
+          <label>Observações</label>
+          <textarea id="f-observacoes" rows="3" placeholder="Notas manuais…"></textarea>
+        </div>
+      </div>
+
+      <!-- Read-only info (only visible on edit) -->
+      <div class="form-section readonly-section hidden" id="readonly-section">
+        <div class="readonly-field">
+          <span class="readonly-label">Lead ID</span>
+          <span class="readonly-value" id="ro-lead-id"></span>
+        </div>
+        <div class="readonly-field">
+          <span class="readonly-label">Resumo IA</span>
+          <span class="readonly-value" id="ro-resumo"></span>
+        </div>
+        <div class="readonly-field">
+          <span class="readonly-label">Criado em</span>
+          <span class="readonly-value" id="ro-criado"></span>
+        </div>
+        <div class="readonly-field">
+          <span class="readonly-label">Última interação</span>
+          <span class="readonly-value" id="ro-ultima"></span>
+        </div>
+      </div>
+
+      <div class="sheet-actions">
+        <button type="button" class="btn-archive hidden" id="btn-archive" onclick="archiveLead()">
+          Arquivar
+        </button>
+        <div class="sheet-actions-right">
+          <button type="button" class="btn-cancel" onclick="closeModal()">Cancelar</button>
+          <button type="submit" class="btn-save" id="btn-save">Salvar</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Filters bottom sheet -->
+<div class="modal-overlay hidden" id="filters-overlay" onclick="closeFilters()"></div>
+<div class="modal-sheet hidden" id="filters-sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-header">
+    <h2 class="sheet-title">Filtros</h2>
+    <button class="btn-close" onclick="closeFilters()">✕</button>
+  </div>
+  <div class="sheet-body">
+    <div class="form-group">
+      <label>Status</label>
+      <select id="filter-status" onchange="applyFilters()">
+        <option value="">Todos</option>
+        <option value="novo">Novo</option>
+        <option value="em contato">Em contato</option>
+        <option value="qualificado">Qualificado</option>
+        <option value="proposta enviada">Proposta enviada</option>
+        <option value="negociando">Negociando</option>
+        <option value="fechado">Fechado</option>
+        <option value="perdido">Perdido</option>
+        <option value="sem resposta">Sem resposta</option>
+        <option value="contato inválido">Contato inválido</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Segmento</label>
+      <select id="filter-segmento" onchange="applyFilters()">
+        <option value="">Todos</option>
+        <option>odonto</option>
+        <option>estética</option>
+        <option>médica</option>
+        <option>nutrição</option>
+        <option>fisio</option>
+        <option>outro</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Prioridade</label>
+      <select id="filter-prioridade" onchange="applyFilters()">
+        <option value="">Todas</option>
+        <option value="alta">Alta</option>
+        <option value="media">Média</option>
+        <option value="baixa">Baixa</option>
+      </select>
+    </div>
+    <div class="sheet-actions">
+      <button class="btn-cancel" onclick="clearFilters()">Limpar filtros</button>
+      <button class="btn-save" onclick="closeFilters()">Aplicar</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/leads.js"></script>
+{% endblock %}
