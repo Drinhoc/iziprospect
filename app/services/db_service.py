@@ -798,6 +798,18 @@ class DBService:
         logger.info("update_lead_from_dashboard | lead_id=%s", lead_id)
         return True
 
+    def delete_lead(self, lead_id: str) -> bool:
+        """Hard-deletes a lead and its activities from the database."""
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM atividades WHERE lead_id = %s", (lead_id,))
+                cur.execute("DELETE FROM leads WHERE lead_id = %s", (lead_id,))
+            conn.commit()
+            return True
+        finally:
+            self._put(conn)
+
     def archive_lead(self, lead_id: str) -> bool:
         """Soft-deletes a lead by setting status to 'arquivado'."""
         conn = self._conn()

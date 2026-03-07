@@ -69,9 +69,9 @@ def update_lead(lead_id: str, body: dict):
 
 
 @router.delete("/leads/{lead_id}")
-def archive_lead(lead_id: str):
+def delete_lead(lead_id: str):
     db = _get_db()
     if db.get_lead(lead_id) is None:
         raise HTTPException(status_code=404, detail="Lead not found")
-    db.archive_lead(lead_id)
+    db.delete_lead(lead_id)
     return {"ok": True}

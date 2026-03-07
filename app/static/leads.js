@@ -367,14 +367,15 @@ async function saveLead(e) {
   }
 }
 
-async function archiveLead() {
+async function deleteLead() {
   const leadId = document.getElementById('form-lead-id').value;
   if (!leadId) return;
-  if (!confirm('Arquivar este lead? Ele ficará oculto mas poderá ser visto no Sheets.')) return;
+  const nome = document.getElementById('f-nome').value || leadId;
+  if (!confirm(`Deletar "${nome}" permanentemente? Esta ação não pode ser desfeita.`)) return;
 
   try {
     const res = await fetch(`/api/leads/${leadId}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error('Erro ao arquivar');
+    if (!res.ok) throw new Error('Erro ao deletar');
     closeModal();
     loadLeads();
   } catch (err) {
