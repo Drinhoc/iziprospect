@@ -6,8 +6,8 @@ from app.services.sheets_service import canonicalize_name, norm_phone, normalize
 def test_normalize_text_and_phone():
     assert normalize_text(" Clínica Sorriso!! ") == "clinica sorriso"
     assert canonicalize_name("Clínica Bella Estética") == "bella"
-    assert norm_phone("(11) 99999-8888") == "+55119999998888"
-    assert norm_phone(11999998888) == "+55119999998888"
+    assert norm_phone("(11) 99999-8888") == "+5511999998888"   # DDD 11 + 9 dígitos
+    assert norm_phone(11999998888) == "+5511999998888"         # mesmo número como int
 
 
 def test_normalize_evolution_payload_text():
