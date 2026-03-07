@@ -38,6 +38,8 @@ LEADS_HEADERS = [
     "ultima_interacao_em",
     "proximo_followup_em",
     "observacoes",
+    "resumo",
+    "pendencia",
     "nome_normalizado",
     "cidade_normalizada",
     "lead_key",
@@ -91,7 +93,7 @@ LEAD_UPSERT_FIELDS = [
 
 # Larguras em pixels por coluna de LEADS (mesma ordem de LEADS_HEADERS)
 LEADS_COL_WIDTHS = [75, 200, 110, 110, 140, 180, 130, 150, 130, 100,
-                    140, 90, 155, 155, 155, 220, 1, 1, 1]  # últimas 3 ocultas
+                    140, 90, 155, 155, 155, 220, 220, 220, 1, 1, 1]  # últimas 3 ocultas
 
 # Larguras de ATIVIDADES (mesma ordem de ATIV_HEADERS)
 ATIV_COL_WIDTHS = [155, 90, 75, 140, 110, 140, 80, 90, 280, 300, 140]
@@ -475,9 +477,14 @@ class SheetsService:
         creds = Credentials.from_service_account_info(service_account_info, scopes=scopes)
         self.gc = gspread.authorize(creds)
         self.sheet = self.gc.open_by_key(sheet_id)
-        self.ws_leads = self._get_or_migrate("LEADS", LEADS_HEADERS)
-        self.ws_ativ = self._get_or_migrate("ATIVIDADES", ATIV_HEADERS)
-        self.ws_rev = self._get_or_migrate("REVISAR", REV_HEADERS)
+        self.ws_leads, _leads_new = self._get_or_migrate("LEADS", LEADS_HEADERS)
+        self.ws_ativ,  _ativ_new  = self._get_or_migrate("ATIVIDADES", ATIV_HEADERS)
+        self.ws_rev,   _rev_new   = self._get_or_migrate("REVISAR", REV_HEADERS)
+        self._sheets_new = {
+            "LEADS": _leads_new,
+            "ATIVIDADES": _ativ_new,
+            "REVISAR": _rev_new,
+        }
         self._lock = threading.Lock()
 
         # Aplica formatação visual e Dashboard (não-crítico — falha não interrompe startup)
@@ -494,20 +501,21 @@ class SheetsService:
     # Sheet management
     # ------------------------------------------------------------------
 
-    def _get_or_migrate(self, title: str, headers: List[str]):
-        """Cria a worksheet se não existir; se existir, migra colunas novas sem perder dados."""
+    def _get_or_migrate(self, title: str, headers: List[str]) -> tuple:
+        """Cria a worksheet se não existir; se existir, migra colunas novas sem perder dados.
+        Retorna (ws, is_new) onde is_new=True indica sheet recém-criada."""
         try:
             ws = self.sheet.worksheet(title)
         except gspread.WorksheetNotFound:
             ws = self.sheet.add_worksheet(title=title, rows=2000, cols=len(headers) + 5)
             ws.append_row(headers, value_input_option="RAW")
             logger.info("sheet_created | title=%s cols=%d", title, len(headers))
-            return ws
+            return ws, True
 
         existing_headers = ws.row_values(1)
 
         if existing_headers == headers:
-            return ws  # já está atualizado
+            return ws, False  # já está atualizado
 
         new_cols = [h for h in headers if h not in existing_headers]
         if new_cols:
@@ -523,7 +531,7 @@ class SheetsService:
                 title, existing_headers, headers,
             )
 
-        return ws
+        return ws, False
 
     def _get_spreadsheet_metadata(self) -> Dict:
         """Busca metadados completos da planilha (inclui conditionalFormats e bandings)."""
@@ -712,13 +720,14 @@ class SheetsService:
             requests.append(_header_style_request(sid, num_cols))
             requests.append(_header_row_height_request(sid))
 
-            # Larguras de coluna (e ocultação para colunas com width <= 1)
-            for col_idx, width in enumerate(col_widths):
-                if col_idx >= num_cols:
-                    break
-                requests.append(_col_width_request(sid, col_idx, max(width, 1)))
-                if width <= 1:
-                    requests.append(_hide_col_request(sid, col_idx))
+            # Larguras de coluna — só aplica em sheets recém-criadas para preservar ajustes manuais
+            if self._sheets_new.get(ws.title, False):
+                for col_idx, width in enumerate(col_widths):
+                    if col_idx >= num_cols:
+                        break
+                    requests.append(_col_width_request(sid, col_idx, max(width, 1)))
+                    if width <= 1:
+                        requests.append(_hide_col_request(sid, col_idx))
 
             # Banded rows (zebra stripes)
             requests.append(_banded_rows_request(sid, num_cols))
