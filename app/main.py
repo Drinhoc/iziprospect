@@ -183,9 +183,9 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
         logger.info("ignored: unauthorized_group | chat_id=%s expected=%s", event.chat_id, expected)
         return {"ok": True, "ignored": True, "reason": "unauthorized_group"}
 
-    if event.from_me:
-        logger.info("ignored: from_me | msg_id=%s", event.msg_id)
-        return {"ok": True, "ignored": True, "reason": "from_me"}
+    if event.from_me and event.raw_text.startswith("."):
+        logger.info("ignored: bot_message | msg_id=%s", event.msg_id)
+        return {"ok": True, "ignored": True, "reason": "bot_message"}
 
     logger.info("processing: crm_group_message | chat_id=%s", _normalize_group_id(event.chat_id))
 
