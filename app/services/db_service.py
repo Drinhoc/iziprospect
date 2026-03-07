@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import logging
 import re
-import sqlite3
-import threading
 import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
 from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Tuple
 
+import psycopg2
+import psycopg2.extras
+import psycopg2.pool
 from rapidfuzz import fuzz
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,7 @@ CREATE TABLE IF NOT EXISTS leads (
 );
 
 CREATE TABLE IF NOT EXISTS atividades (
-    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    id               SERIAL PRIMARY KEY,
     data_hora        TEXT,
     msg_id           TEXT UNIQUE,
     lead_id          TEXT DEFAULT '',
@@ -67,8 +68,9 @@ GENERIC_NAME_TOKENS = {
     "odontologia", "odonto", "estetica", "estética",
 }
 
+
 # ---------------------------------------------------------------------------
-# Text helpers (mesmos de sheets_service para manter consistência)
+# Text helpers
 # ---------------------------------------------------------------------------
 
 def _strip_accents(value: str) -> str:
@@ -107,6 +109,13 @@ def _norm_phone(value: Any) -> str:
     return f"+{digits}" if digits else ""
 
 
+def _safe_float(v: Any) -> Optional[float]:
+    try:
+        return float(v) if v not in (None, "", "None") else None
+    except (ValueError, TypeError):
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Match result
 # ---------------------------------------------------------------------------
@@ -120,26 +129,44 @@ class DBMatchResult:
 
 
 # ---------------------------------------------------------------------------
-# DBService
+# DBService — PostgreSQL via psycopg2
 # ---------------------------------------------------------------------------
 
 class DBService:
-    def __init__(self, db_path: str):
-        self.db_path = db_path
-        self._lock = threading.Lock()
+    def __init__(self, database_url: str):
+        self._pool = psycopg2.pool.ThreadedConnectionPool(
+            minconn=1,
+            maxconn=10,
+            dsn=database_url,
+        )
         self._init_db()
 
-    def _conn(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path, check_same_thread=False)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA foreign_keys=ON")
-        return conn
+    def _conn(self):
+        return self._pool.getconn()
+
+    def _put(self, conn) -> None:
+        self._pool.putconn(conn)
 
     def _init_db(self) -> None:
-        with self._conn() as conn:
-            conn.executescript(CREATE_TABLES_SQL)
-        logger.info("db_init OK | path=%s", self.db_path)
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(CREATE_TABLES_SQL)
+            conn.commit()
+        finally:
+            self._put(conn)
+        logger.info("db_init OK (PostgreSQL)")
+
+    def _fetchall_dict(self, cur) -> List[Dict[str, Any]]:
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+    def _fetchone_dict(self, cur) -> Optional[Dict[str, Any]]:
+        row = cur.fetchone()
+        if row is None:
+            return None
+        cols = [d[0] for d in cur.description]
+        return dict(zip(cols, row))
 
     # ------------------------------------------------------------------
     # Idempotência
@@ -148,98 +175,101 @@ class DBService:
     def already_processed(self, msg_id: str) -> bool:
         if not msg_id:
             return False
-        with self._conn() as conn:
-            row = conn.execute(
-                "SELECT 1 FROM atividades WHERE msg_id = ?", (msg_id,)
-            ).fetchone()
-        return row is not None
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1 FROM atividades WHERE msg_id = %s", (msg_id,))
+                return cur.fetchone() is not None
+        finally:
+            self._put(conn)
 
     # ------------------------------------------------------------------
-    # Seeding a partir do Sheets (executado uma vez na primeira subida)
+    # Seeding a partir do Sheets
     # ------------------------------------------------------------------
 
     def is_seeded(self) -> bool:
-        with self._conn() as conn:
-            row = conn.execute("SELECT COUNT(*) FROM leads").fetchone()
-        return row[0] > 0
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM leads")
+                return cur.fetchone()[0] > 0
+        finally:
+            self._put(conn)
 
     def seed(self, leads: List[Dict[str, Any]], activities: List[Dict[str, Any]]) -> None:
-        """Importa dados existentes do Sheets para o SQLite (idempotente)."""
-        with self._lock, self._conn() as conn:
-            for lead in leads:
-                lid = str(lead.get("lead_id", "")).strip()
-                if not lid:
-                    continue
-                conn.execute(
-                    """INSERT OR IGNORE INTO leads (
-                        lead_id, nome, cidade, segmento, whatsapp, email,
-                        instagram, site, responsavel, fonte, status, prioridade,
-                        resumo, pendencia, observacoes, data_criacao,
-                        ultima_interacao_em, proximo_followup_em,
-                        nome_normalizado, cidade_normalizada, lead_key
-                    ) VALUES (
-                        :lead_id, :nome, :cidade, :segmento, :whatsapp, :email,
-                        :instagram, :site, :responsavel, :fonte, :status, :prioridade,
-                        :resumo, :pendencia, :observacoes, :data_criacao,
-                        :ultima_interacao_em, :proximo_followup_em,
-                        :nome_normalizado, :cidade_normalizada, :lead_key
-                    )""",
-                    {
-                        "lead_id": lid,
-                        "nome": lead.get("nome", ""),
-                        "cidade": lead.get("cidade", ""),
-                        "segmento": lead.get("segmento", ""),
-                        "whatsapp": _norm_phone(lead.get("whatsapp")),
-                        "email": (lead.get("email") or "").strip().lower(),
-                        "instagram": lead.get("instagram", ""),
-                        "site": lead.get("site", ""),
-                        "responsavel": lead.get("responsavel", ""),
-                        "fonte": lead.get("fonte", ""),
-                        "status": lead.get("status", "novo"),
-                        "prioridade": lead.get("prioridade", "media"),
-                        "resumo": lead.get("resumo", ""),
-                        "pendencia": lead.get("pendencia", ""),
-                        "observacoes": lead.get("observacoes", ""),
-                        "data_criacao": lead.get("data_criacao", ""),
-                        "ultima_interacao_em": lead.get("ultima_interacao_em", ""),
-                        "proximo_followup_em": lead.get("proximo_followup_em", ""),
-                        "nome_normalizado": lead.get("nome_normalizado")
-                            or _normalize_text(lead.get("nome", "")),
-                        "cidade_normalizada": lead.get("cidade_normalizada")
-                            or _normalize_text(lead.get("cidade", "")),
-                        "lead_key": lead.get("lead_key")
-                            or f"{_normalize_text(lead.get('cidade',''))}:{_canonicalize_name(lead.get('nome',''))}",
-                    },
-                )
-
-            for act in activities:
-                mid = str(act.get("msg_id", "")).strip()
-                if not mid:
-                    continue
-                try:
-                    conn.execute(
-                        """INSERT OR IGNORE INTO atividades (
-                            data_hora, msg_id, lead_id, tipo, canal, acao_executada,
-                            confianca_ia, duracao_audio_s, mensagem_bruta, resumo, followup_em
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                for lead in leads:
+                    lid = str(lead.get("lead_id", "")).strip()
+                    if not lid:
+                        continue
+                    cur.execute(
+                        """INSERT INTO leads (
+                            lead_id, nome, cidade, segmento, whatsapp, email,
+                            instagram, site, responsavel, fonte, status, prioridade,
+                            resumo, pendencia, observacoes, data_criacao,
+                            ultima_interacao_em, proximo_followup_em,
+                            nome_normalizado, cidade_normalizada, lead_key
+                        ) VALUES (
+                            %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s
+                        ) ON CONFLICT (lead_id) DO NOTHING""",
                         (
-                            act.get("data_hora", ""),
-                            mid,
-                            act.get("lead_id", ""),
-                            act.get("tipo", ""),
-                            act.get("canal", ""),
-                            act.get("acao_executada", ""),
-                            _safe_float(act.get("confianca_ia")),
-                            _safe_float(act.get("duracao_audio_s")),
-                            act.get("mensagem_bruta", ""),
-                            act.get("resumo", ""),
-                            act.get("followup_em", ""),
+                            lid,
+                            lead.get("nome", ""),
+                            lead.get("cidade", ""),
+                            lead.get("segmento", ""),
+                            _norm_phone(lead.get("whatsapp")),
+                            (lead.get("email") or "").strip().lower(),
+                            lead.get("instagram", ""),
+                            lead.get("site", ""),
+                            lead.get("responsavel", ""),
+                            lead.get("fonte", ""),
+                            lead.get("status", "novo"),
+                            lead.get("prioridade", "media"),
+                            lead.get("resumo", ""),
+                            lead.get("pendencia", ""),
+                            lead.get("observacoes", ""),
+                            lead.get("data_criacao", ""),
+                            lead.get("ultima_interacao_em", ""),
+                            lead.get("proximo_followup_em", ""),
+                            lead.get("nome_normalizado") or _normalize_text(lead.get("nome", "")),
+                            lead.get("cidade_normalizada") or _normalize_text(lead.get("cidade", "")),
+                            lead.get("lead_key") or f"{_normalize_text(lead.get('cidade',''))}:{_canonicalize_name(lead.get('nome',''))}",
                         ),
                     )
-                except Exception:
-                    pass  # ignora erros individuais no seeding
+
+                for act in activities:
+                    mid = str(act.get("msg_id", "")).strip()
+                    if not mid:
+                        continue
+                    try:
+                        cur.execute(
+                            """INSERT INTO atividades (
+                                data_hora, msg_id, lead_id, tipo, canal, acao_executada,
+                                confianca_ia, duracao_audio_s, mensagem_bruta, resumo, followup_em
+                            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                            ON CONFLICT (msg_id) DO NOTHING""",
+                            (
+                                act.get("data_hora", ""),
+                                mid,
+                                act.get("lead_id", ""),
+                                act.get("tipo", ""),
+                                act.get("canal", ""),
+                                act.get("acao_executada", ""),
+                                _safe_float(act.get("confianca_ia")),
+                                _safe_float(act.get("duracao_audio_s")),
+                                act.get("mensagem_bruta", ""),
+                                act.get("resumo", ""),
+                                act.get("followup_em", ""),
+                            ),
+                        )
+                    except Exception:
+                        conn.rollback()
 
             conn.commit()
+        finally:
+            self._put(conn)
         logger.info("db_seeded | leads=%d activities=%d", len(leads), len(activities))
 
     # ------------------------------------------------------------------
@@ -254,67 +284,65 @@ class DBService:
         cidade_norm = lead.get("cidade_normalizada", "")
         canonical_name = _canonicalize_name(lead.get("nome") or "")
 
-        with self._conn() as conn:
-            # 1. Telefone
-            if whatsapp:
-                row = conn.execute(
-                    "SELECT * FROM leads WHERE whatsapp = ?", (whatsapp,)
-                ).fetchone()
-                if row:
-                    return DBMatchResult(lead_id=row["lead_id"], score=1.0)
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                # 1. Telefone
+                if whatsapp:
+                    cur.execute("SELECT * FROM leads WHERE whatsapp = %s LIMIT 1", (whatsapp,))
+                    row = self._fetchone_dict(cur)
+                    if row:
+                        return DBMatchResult(lead_id=row["lead_id"], score=1.0)
 
-            # 2. Email
-            if email:
-                row = conn.execute(
-                    "SELECT * FROM leads WHERE email = ? AND email != ''", (email,)
-                ).fetchone()
-                if row:
-                    return DBMatchResult(lead_id=row["lead_id"], score=0.995)
+                # 2. Email
+                if email:
+                    cur.execute("SELECT * FROM leads WHERE email = %s AND email != '' LIMIT 1", (email,))
+                    row = self._fetchone_dict(cur)
+                    if row:
+                        return DBMatchResult(lead_id=row["lead_id"], score=0.995)
 
-            # 3. Instagram
-            if instagram:
-                rows = conn.execute(
-                    "SELECT * FROM leads WHERE instagram != ''",
-                ).fetchall()
-                for row in rows:
-                    if _normalize_text(row["instagram"]) == instagram:
-                        return DBMatchResult(lead_id=row["lead_id"], score=0.99)
+                # 3. Instagram (comparação normalizada)
+                if instagram:
+                    cur.execute("SELECT * FROM leads WHERE instagram != ''")
+                    rows = self._fetchall_dict(cur)
+                    for row in rows:
+                        if _normalize_text(row["instagram"]) == instagram:
+                            return DBMatchResult(lead_id=row["lead_id"], score=0.99)
 
-            # 4. lead_key
-            if lead_key:
-                row = conn.execute(
-                    "SELECT * FROM leads WHERE lead_key = ? AND lead_key != ''", (lead_key,)
-                ).fetchone()
-                if row:
-                    return DBMatchResult(lead_id=row["lead_id"], score=0.98)
+                # 4. lead_key exato
+                if lead_key:
+                    cur.execute("SELECT * FROM leads WHERE lead_key = %s AND lead_key != '' LIMIT 1", (lead_key,))
+                    row = self._fetchone_dict(cur)
+                    if row:
+                        return DBMatchResult(lead_id=row["lead_id"], score=0.98)
 
-            # 5. City + name substring
-            if cidade_norm and canonical_name:
-                rows = conn.execute(
-                    "SELECT * FROM leads WHERE cidade_normalizada = ?", (cidade_norm,)
-                ).fetchall()
-                for row in rows:
-                    row_name = _canonicalize_name(row["nome"])
-                    if canonical_name in row_name:
-                        return DBMatchResult(lead_id=row["lead_id"], score=0.9)
-            elif canonical_name:
-                rows = conn.execute(
-                    "SELECT * FROM leads WHERE nome_normalizado != ''",
-                ).fetchall()
-                for row in rows:
-                    row_name = _canonicalize_name(row["nome"])
-                    if canonical_name in row_name or row_name in canonical_name:
-                        return DBMatchResult(lead_id=row["lead_id"], score=0.89)
-                rows = []  # já processados acima
+                # 5. City + name substring
+                if cidade_norm and canonical_name:
+                    cur.execute("SELECT * FROM leads WHERE cidade_normalizada = %s", (cidade_norm,))
+                    rows = self._fetchall_dict(cur)
+                    for row in rows:
+                        if canonical_name in _canonicalize_name(row["nome"]):
+                            return DBMatchResult(lead_id=row["lead_id"], score=0.9)
+                elif canonical_name:
+                    cur.execute("SELECT * FROM leads WHERE nome_normalizado != ''")
+                    rows = self._fetchall_dict(cur)
+                    for row in rows:
+                        row_name = _canonicalize_name(row["nome"])
+                        if canonical_name in row_name or row_name in canonical_name:
+                            return DBMatchResult(lead_id=row["lead_id"], score=0.89)
+                    rows = []
 
-            # 6. Fuzzy matching
-            if cidade_norm:
-                candidates = conn.execute(
-                    "SELECT * FROM leads WHERE cidade_normalizada = ? OR cidade_normalizada = ''",
-                    (cidade_norm,),
-                ).fetchall()
-            else:
-                candidates = conn.execute("SELECT * FROM leads").fetchall()
+                # 6. Fuzzy — pré-filtra por cidade
+                if cidade_norm:
+                    cur.execute(
+                        "SELECT * FROM leads WHERE cidade_normalizada = %s OR cidade_normalizada = ''",
+                        (cidade_norm,),
+                    )
+                else:
+                    cur.execute("SELECT * FROM leads")
+                candidates = self._fetchall_dict(cur)
+        finally:
+            self._put(conn)
 
         if not candidates or not canonical_name:
             return DBMatchResult(lead_id=None, score=0)
@@ -340,17 +368,18 @@ class DBService:
         if best_score >= 0.88:
             return DBMatchResult(lead_id=best_row["lead_id"], score=best_score)
         if 0.78 <= best_score < 0.88:
-            top3 = [dict(r) for _, r in scored[:3]]
+            top3 = [r for _, r in scored[:3]]
             return DBMatchResult(lead_id=None, score=best_score, needs_review=True, candidates=top3)
         return DBMatchResult(lead_id=None, score=best_score)
 
-    def _next_lead_id(self, conn: sqlite3.Connection) -> str:
-        row = conn.execute(
+    def _next_lead_id(self, cur) -> str:
+        cur.execute(
             "SELECT lead_id FROM leads WHERE lead_id LIKE 'L%' ORDER BY lead_id DESC LIMIT 1"
-        ).fetchone()
+        )
+        row = cur.fetchone()
         if row:
             try:
-                num = int(row["lead_id"][1:]) + 1
+                num = int(row[0][1:]) + 1
             except (ValueError, IndexError):
                 num = 1
         else:
@@ -379,32 +408,35 @@ class DBService:
         match = self._match(lead)
         phone_in_new = lead["whatsapp"]
 
-        # Se tem telefone novo e match por nome com score baixo, cria novo lead
         if phone_in_new and match.score < 0.95:
             if match.needs_review:
                 match = DBMatchResult(lead_id=None, score=0)
             elif match.lead_id:
-                with self._conn() as conn:
-                    row = conn.execute(
-                        "SELECT whatsapp FROM leads WHERE lead_id = ?", (match.lead_id,)
-                    ).fetchone()
-                if row and row["whatsapp"] and row["whatsapp"] != phone_in_new:
+                existing_phone = self._get_phone(match.lead_id)
+                if existing_phone and existing_phone != phone_in_new:
                     match = DBMatchResult(lead_id=None, score=0)
 
         if match.needs_review:
             return ""
 
-        with self._lock:
-            # Double-check dentro do lock
-            if not match.lead_id:
-                match2 = self._match(lead)
-                if match2.lead_id and not match2.needs_review:
-                    match = match2
+        if match.lead_id:
+            return self._update_lead(match.lead_id, lead, status, followup_em, when)
 
-            if match.lead_id:
-                return self._update_lead(match.lead_id, lead, status, followup_em, when)
-            else:
-                return self._create_lead(lead, status, followup_em, when)
+        # Double-check + create
+        match2 = self._match(lead)
+        if match2.lead_id and not match2.needs_review:
+            return self._update_lead(match2.lead_id, lead, status, followup_em, when)
+        return self._create_lead(lead, status, followup_em, when)
+
+    def _get_phone(self, lead_id: str) -> str:
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT whatsapp FROM leads WHERE lead_id = %s", (lead_id,))
+                row = cur.fetchone()
+                return row[0] if row else ""
+        finally:
+            self._put(conn)
 
     def _update_lead(
         self,
@@ -414,24 +446,29 @@ class DBService:
         followup_em: Optional[str],
         when: datetime,
     ) -> str:
-        fields_to_update = [
-            "nome", "cidade", "segmento", "whatsapp", "email",
-            "instagram", "site", "responsavel", "fonte",
-            "nome_normalizado", "cidade_normalizada", "lead_key",
-        ]
-        updates: Dict[str, Any] = {"ultima_interacao_em": when.isoformat(), "lead_id": lead_id}
-        for k in fields_to_update:
-            if lead.get(k):
-                updates[k] = lead[k]
+        fields = {
+            k: lead[k] for k in [
+                "nome", "cidade", "segmento", "whatsapp", "email",
+                "instagram", "site", "responsavel", "fonte",
+                "nome_normalizado", "cidade_normalizada", "lead_key",
+            ] if lead.get(k)
+        }
+        fields["ultima_interacao_em"] = when.isoformat()
         if status:
-            updates["status"] = status
+            fields["status"] = status
         if followup_em:
-            updates["proximo_followup_em"] = followup_em
+            fields["proximo_followup_em"] = followup_em
 
-        set_clause = ", ".join(f"{k} = :{k}" for k in updates if k != "lead_id")
-        with self._conn() as conn:
-            conn.execute(f"UPDATE leads SET {set_clause} WHERE lead_id = :lead_id", updates)
+        set_clause = ", ".join(f"{k} = %s" for k in fields)
+        values = list(fields.values()) + [lead_id]
+
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"UPDATE leads SET {set_clause} WHERE lead_id = %s", values)
             conn.commit()
+        finally:
+            self._put(conn)
         logger.info("lead_atualizado | lead_id=%s", lead_id)
         return lead_id
 
@@ -443,41 +480,32 @@ class DBService:
         when: datetime,
     ) -> str:
         now_iso = when.isoformat()
-        with self._conn() as conn:
-            lead_id = self._next_lead_id(conn)
-            conn.execute(
-                """INSERT INTO leads (
-                    lead_id, nome, cidade, segmento, whatsapp, email, instagram, site,
-                    responsavel, fonte, status, prioridade, observacoes, data_criacao,
-                    ultima_interacao_em, proximo_followup_em,
-                    nome_normalizado, cidade_normalizada, lead_key
-                ) VALUES (
-                    :lead_id, :nome, :cidade, :segmento, :whatsapp, :email, :instagram, :site,
-                    :responsavel, :fonte, :status, 'media', '', :data_criacao,
-                    :ultima_interacao_em, :proximo_followup_em,
-                    :nome_normalizado, :cidade_normalizada, :lead_key
-                )""",
-                {
-                    "lead_id": lead_id,
-                    "nome": lead.get("nome", ""),
-                    "cidade": lead.get("cidade", ""),
-                    "segmento": lead.get("segmento", ""),
-                    "whatsapp": lead.get("whatsapp", ""),
-                    "email": lead.get("email", ""),
-                    "instagram": lead.get("instagram", ""),
-                    "site": lead.get("site", ""),
-                    "responsavel": lead.get("responsavel", ""),
-                    "fonte": lead.get("fonte", ""),
-                    "status": status or "novo",
-                    "data_criacao": now_iso,
-                    "ultima_interacao_em": now_iso,
-                    "proximo_followup_em": followup_em or "",
-                    "nome_normalizado": lead.get("nome_normalizado", ""),
-                    "cidade_normalizada": lead.get("cidade_normalizada", ""),
-                    "lead_key": lead.get("lead_key", ""),
-                },
-            )
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                lead_id = self._next_lead_id(cur)
+                cur.execute(
+                    """INSERT INTO leads (
+                        lead_id, nome, cidade, segmento, whatsapp, email, instagram, site,
+                        responsavel, fonte, status, prioridade, observacoes, data_criacao,
+                        ultima_interacao_em, proximo_followup_em,
+                        nome_normalizado, cidade_normalizada, lead_key
+                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'media','',%s,%s,%s,%s,%s,%s)""",
+                    (
+                        lead_id,
+                        lead.get("nome", ""), lead.get("cidade", ""),
+                        lead.get("segmento", ""), lead.get("whatsapp", ""),
+                        lead.get("email", ""), lead.get("instagram", ""),
+                        lead.get("site", ""), lead.get("responsavel", ""),
+                        lead.get("fonte", ""), status or "novo",
+                        now_iso, now_iso, followup_em or "",
+                        lead.get("nome_normalizado", ""), lead.get("cidade_normalizada", ""),
+                        lead.get("lead_key", ""),
+                    ),
+                )
             conn.commit()
+        finally:
+            self._put(conn)
         logger.info("novo_lead_criado | lead_id=%s nome=%s", lead_id, lead.get("nome"))
         return lead_id
 
@@ -499,33 +527,41 @@ class DBService:
         resumo: str,
         followup_em: Optional[str],
     ) -> None:
-        with self._conn() as conn:
-            conn.execute(
-                """INSERT OR IGNORE INTO atividades (
-                    data_hora, msg_id, lead_id, tipo, canal, acao_executada,
-                    confianca_ia, duracao_audio_s, mensagem_bruta, resumo, followup_em
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    when.isoformat(), msg_id, lead_id, tipo, canal, acao_executada,
-                    confianca_ia, duracao_audio_s, mensagem_bruta, resumo, followup_em or "",
-                ),
-            )
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO atividades (
+                        data_hora, msg_id, lead_id, tipo, canal, acao_executada,
+                        confianca_ia, duracao_audio_s, mensagem_bruta, resumo, followup_em
+                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (msg_id) DO NOTHING""",
+                    (
+                        when.isoformat(), msg_id, lead_id, tipo, canal, acao_executada,
+                        confianca_ia, duracao_audio_s, mensagem_bruta, resumo, followup_em or "",
+                    ),
+                )
             conn.commit()
+        finally:
+            self._put(conn)
 
     # ------------------------------------------------------------------
     # Lead summary / pendencia
     # ------------------------------------------------------------------
 
     def get_lead_recent_activity_summaries(self, lead_id: str, n: int = 5) -> List[str]:
-        """Retorna os últimos N resumos de atividade do lead para gerar o resumo cumulativo."""
-        with self._conn() as conn:
-            rows = conn.execute(
-                """SELECT resumo FROM atividades
-                   WHERE lead_id = ? AND resumo != ''
-                   ORDER BY data_hora DESC LIMIT ?""",
-                (lead_id, n),
-            ).fetchall()
-        return [row["resumo"] for row in rows]
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT resumo FROM atividades
+                       WHERE lead_id = %s AND resumo != ''
+                       ORDER BY data_hora DESC LIMIT %s""",
+                    (lead_id, n),
+                )
+                return [row[0] for row in cur.fetchall()]
+        finally:
+            self._put(conn)
 
     def update_lead_resumo_pendencia(
         self,
@@ -533,55 +569,44 @@ class DBService:
         resumo: Optional[str],
         pendencia: Optional[str],
     ) -> None:
-        updates: Dict[str, Any] = {"lead_id": lead_id}
+        fields: Dict[str, Any] = {}
         if resumo is not None:
-            updates["resumo"] = resumo
+            fields["resumo"] = resumo
         if pendencia is not None:
-            updates["pendencia"] = pendencia
-        if len(updates) <= 1:
+            fields["pendencia"] = pendencia
+        if not fields:
             return
-        set_clause = ", ".join(f"{k} = :{k}" for k in updates if k != "lead_id")
-        with self._conn() as conn:
-            conn.execute(f"UPDATE leads SET {set_clause} WHERE lead_id = :lead_id", updates)
+        set_clause = ", ".join(f"{k} = %s" for k in fields)
+        values = list(fields.values()) + [lead_id]
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"UPDATE leads SET {set_clause} WHERE lead_id = %s", values)
             conn.commit()
+        finally:
+            self._put(conn)
 
     def get_lead(self, lead_id: str) -> Optional[Dict[str, Any]]:
-        with self._conn() as conn:
-            row = conn.execute(
-                "SELECT * FROM leads WHERE lead_id = ?", (lead_id,)
-            ).fetchone()
-        return dict(row) if row else None
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM leads WHERE lead_id = %s", (lead_id,))
+                return self._fetchone_dict(cur)
+        finally:
+            self._put(conn)
 
     # ------------------------------------------------------------------
-    # Context fallback (usado quando lead_id não é resolvido na mensagem)
+    # Context fallback
     # ------------------------------------------------------------------
 
     def latest_linked_lead_id(self) -> str:
-        with self._conn() as conn:
-            row = conn.execute(
-                """SELECT lead_id FROM atividades
-                   WHERE lead_id != ''
-                   ORDER BY data_hora DESC LIMIT 1"""
-            ).fetchone()
-        return row["lead_id"] if row else ""
-
-    # ------------------------------------------------------------------
-    # Review candidates (para adicionar ao Sheets REVISAR)
-    # ------------------------------------------------------------------
-
-    def match_for_review(self, lead: Dict[str, Any]) -> Tuple[DBMatchResult, List[Dict[str, Any]]]:
-        """Retorna match + candidatos para registro em REVISAR."""
-        lead = {k: (v or "") for k, v in lead.items()}
-        lead["nome_normalizado"] = _normalize_text(lead.get("nome", ""))
-        lead["cidade_normalizada"] = _normalize_text(lead.get("cidade", ""))
-        lead["lead_key"] = f"{lead['cidade_normalizada']}:{_canonicalize_name(lead.get('nome', ''))}"
-        match = self._match(lead)
-        candidates = match.candidates or []
-        return match, candidates
-
-
-def _safe_float(v: Any) -> Optional[float]:
-    try:
-        return float(v) if v not in (None, "", "None") else None
-    except (ValueError, TypeError):
-        return None
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT lead_id FROM atividades WHERE lead_id != '' ORDER BY data_hora DESC LIMIT 1"
+                )
+                row = cur.fetchone()
+                return row[0] if row else ""
+        finally:
+            self._put(conn)

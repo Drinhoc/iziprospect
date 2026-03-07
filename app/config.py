@@ -30,6 +30,7 @@ class Settings:
     evolution_instance_name: Optional[str]
     crm_target_group_id: Optional[str]
     disable_evolution_confirmation: bool
+    database_url: Optional[str]
     default_timezone: str = "UTC"
 
     @classmethod
@@ -50,6 +51,7 @@ class Settings:
                 or os.getenv("CRM_GROUP_ID")
             ),
             disable_evolution_confirmation=_as_bool(os.getenv("DISABLE_EVOLUTION_CONFIRMATION"), default=False),
+            database_url=os.getenv("DATABASE_URL"),
             default_timezone=os.getenv("DEFAULT_TIMEZONE", "UTC"),
         )
 

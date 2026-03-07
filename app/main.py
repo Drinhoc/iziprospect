@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import re
 from typing import Dict
 
@@ -39,14 +38,12 @@ db_service: DBService | None = None
 # sobrecarga no Sheets/OpenAI e prevenir race conditions.
 _webhook_semaphore = asyncio.Semaphore(5)
 
-_DB_PATH = os.environ.get("CRM_DB_PATH", "data/crm.db")
-
-
 def get_db_service() -> DBService:
     global db_service
     if db_service is None:
-        os.makedirs(os.path.dirname(_DB_PATH) or ".", exist_ok=True)
-        db_service = DBService(_DB_PATH)
+        if not settings.database_url:
+            raise RuntimeError("DATABASE_URL is required")
+        db_service = DBService(settings.database_url)
     return db_service
 
 
@@ -65,7 +62,7 @@ def get_sheets_service() -> SheetsService:
 
 @app.on_event("startup")
 async def _seed_db_from_sheets() -> None:
-    """Na primeira subida, importa leads e atividades existentes do Sheets → SQLite."""
+    """Na primeira subida, importa leads e atividades existentes do Sheets → PostgreSQL."""
     try:
         db = get_db_service()
         if db.is_seeded():
