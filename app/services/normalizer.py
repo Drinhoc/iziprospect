@@ -107,9 +107,17 @@ def normalize_evolution_payload(payload: Dict[str, Any]) -> NormalizedEvent:
     # evitando a necessidade de baixar o arquivo criptografado do CDN do WhatsApp.
     media_base64 = _first_non_empty(data.get("base64"), payload.get("base64"))
     # mediaKey vem dentro de audioMessage e é necessária para descriptografar o .enc
+    audio_msg = message.get("audioMessage", {}) or message.get("audio", {}) or {}
+    if audio_msg:
+        import logging as _logging
+        _logging.getLogger(__name__).info(
+            "audioMessage_keys=%s | mediaKey_present=%s",
+            list(audio_msg.keys()),
+            "mediaKey" in audio_msg,
+        )
     media_key = _first_non_empty(
-        message.get("audioMessage", {}).get("mediaKey"),
-        message.get("audio", {}).get("mediaKey"),
+        audio_msg.get("mediaKey"),
+        data.get("mediaKey"),
     )
     is_audio = bool(
         message.get("audioMessage")

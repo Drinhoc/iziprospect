@@ -40,28 +40,41 @@ class EvolutionService:
             logger.warning("fetch_audio_base64 ignorado: base_url ou api_key ausente")
             return None
 
-        url = f"{self.base_url.rstrip('/')}/message/getBase64FromMediaMessage/{instance_name}"
         headers = {"apikey": self.api_key, "Content-Type": "application/json"}
         body = {"message": {"key": msg_key, "message": message_obj}, "convertToMp4": False}
 
+        # Tenta múltiplos paths pois o endpoint varia por versão do Evolution API
+        candidate_paths = [
+            f"/chat/getBase64FromMedia/{instance_name}",
+            f"/message/getBase64FromMediaMessage/{instance_name}",
+        ]
+
         try:
             async with httpx.AsyncClient(timeout=60) as client:
-                resp = await client.post(url, json=body, headers=headers)
-            if not resp.is_success:
-                logger.error(
-                    "fetch_audio_base64 falhou | status=%s body=%s",
-                    resp.status_code,
-                    resp.text[:300],
-                )
-                return None
-            data = resp.json()
-            # Evolution retorna {"base64": "...", "mimetype": "..."}
-            b64 = data.get("base64") or data.get("data", {}).get("base64")
-            if not b64:
-                logger.error("fetch_audio_base64: campo base64 ausente na resposta | keys=%s", list(data.keys()))
-                return None
-            logger.info("fetch_audio_base64 OK | tamanho=%d chars", len(b64))
-            return b64
+                for path in candidate_paths:
+                    url = f"{self.base_url.rstrip('/')}{path}"
+                    resp = await client.post(url, json=body, headers=headers)
+                    if resp.status_code == 404:
+                        logger.warning("fetch_audio_base64 path não encontrado, tentando próximo | path=%s", path)
+                        continue
+                    if not resp.is_success:
+                        logger.error(
+                            "fetch_audio_base64 falhou | path=%s status=%s body=%s",
+                            path, resp.status_code, resp.text[:300],
+                        )
+                        return None
+                    data = resp.json()
+                    b64 = data.get("base64") or data.get("data", {}).get("base64")
+                    if not b64:
+                        logger.error(
+                            "fetch_audio_base64: campo base64 ausente | path=%s keys=%s",
+                            path, list(data.keys()),
+                        )
+                        return None
+                    logger.info("fetch_audio_base64 OK | path=%s tamanho=%d chars", path, len(b64))
+                    return b64
+            logger.error("fetch_audio_base64: todos os paths retornaram 404")
+            return None
         except Exception:
             logger.exception("fetch_audio_base64 exception")
             return None
