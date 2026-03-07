@@ -107,21 +107,9 @@ def normalize_evolution_payload(payload: Dict[str, Any]) -> NormalizedEvent:
     # evitando a necessidade de baixar o arquivo criptografado do CDN do WhatsApp.
     media_base64 = _first_non_empty(data.get("base64"), payload.get("base64"))
     # mediaKey vem dentro de audioMessage e é necessária para descriptografar o .enc
+    # O Evolution serializa bytes como dict {"0": 97, "1": 13, ...} em vez de base64
     audio_msg = message.get("audioMessage", {}) or message.get("audio", {}) or {}
     raw_media_key = audio_msg.get("mediaKey") or data.get("mediaKey")
-    if audio_msg:
-        import logging as _logging
-        _logging.getLogger(__name__).info(
-            "audioMessage_keys=%s | mediaKey_present=%s | mediaKey_type=%s | mediaKey_val=%s",
-            list(audio_msg.keys()),
-            "mediaKey" in audio_msg,
-            type(raw_media_key).__name__,
-            str(raw_media_key)[:30] if raw_media_key is not None else "None",
-        )
-    # mediaKey pode vir em formatos diferentes dependendo da versão do Evolution:
-    # - str: base64 padrão ("ABC123==")
-    # - bytes: bytes raw
-    # - dict: {"0": 97, "1": 13, ...} (serialização protobuf do Evolution)
     import base64 as _b64
     media_key: Optional[str] = None
     if isinstance(raw_media_key, str) and raw_media_key.strip():
@@ -129,7 +117,7 @@ def normalize_evolution_payload(payload: Dict[str, Any]) -> NormalizedEvent:
     elif isinstance(raw_media_key, bytes):
         media_key = _b64.b64encode(raw_media_key).decode()
     elif isinstance(raw_media_key, dict) and raw_media_key:
-        # {"0": 97, "1": 13, ...} → bytes → base64
+        # {"0": 97, "1": 13, ...} → bytes → base64 (formato protobuf do Evolution)
         try:
             raw_bytes = bytes(raw_media_key[str(i)] for i in range(len(raw_media_key)))
             media_key = _b64.b64encode(raw_bytes).decode()
