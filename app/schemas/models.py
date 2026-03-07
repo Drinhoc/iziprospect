@@ -12,6 +12,7 @@ class NormalizedEvent(BaseModel):
     raw_text: str = ""
     media_url: Optional[str] = None
     media_mimetype: Optional[str] = None
+    media_base64: Optional[str] = None
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     chat_id: str = ""
     is_group: bool = False

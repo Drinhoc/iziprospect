@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import os
@@ -119,11 +120,35 @@ class OpenAIService:
         tmp.close()
         return tmp.name
 
-    async def transcribe_audio_from_url(self, media_url: str, mimetype: str | None = None) -> str:
+    def _save_base64_audio(self, b64_data: str, mimetype: str | None) -> str:
+        """Decodifica base64 do Evolution API e salva em arquivo temporário."""
+        audio_bytes = base64.b64decode(b64_data)
+        extension = self._extension_from_mimetype(mimetype) or ".ogg"
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=extension)
+        tmp.write(audio_bytes)
+        tmp.flush()
+        tmp.close()
+        return tmp.name
+
+    async def transcribe_audio_from_url(
+        self,
+        media_url: str | None,
+        mimetype: str | None = None,
+        media_base64: str | None = None,
+    ) -> str:
         if not self.client:
             return ""
 
-        audio_path = await self.resolve_whatsapp_audio(media_url=media_url, mimetype=mimetype)
+        # Prefere base64 (Evolution "Webhook Based64") para evitar baixar arquivo
+        # criptografado do CDN do WhatsApp.
+        if media_base64:
+            logger.info("transcricao via base64 | tamanho=%d bytes", len(media_base64))
+            audio_path = self._save_base64_audio(media_base64, mimetype)
+        elif media_url:
+            audio_path = await self.resolve_whatsapp_audio(media_url=media_url, mimetype=mimetype)
+        else:
+            raise AudioResolveError("sem_midia")
+
         try:
             with open(audio_path, "rb") as audio_file:
                 transcript = self.client.audio.transcriptions.create(model="whisper-1", file=audio_file)

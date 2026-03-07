@@ -62,6 +62,22 @@ def test_normalize_evolution_payload_audio_prefers_media_url():
     assert not event.media_url.endswith(".enc")
 
 
+def test_normalize_evolution_payload_audio_base64():
+    # "Webhook Based64" do Evolution: áudio entregue como base64 no payload
+    payload = {
+        "data": {
+            "key": {"id": "AUDIO3", "remoteJid": "5511999999999@g.us"},
+            "base64": "T2dnUwACAAAAAAAAAA==",
+            "message": {"audioMessage": {"url": "https://mmg.whatsapp.net/foo_n.enc", "mimetype": "audio/ogg; codecs=opus"}},
+        }
+    }
+    event = normalize_evolution_payload(payload)
+    assert event.msg_type == "audio"
+    assert event.media_base64 == "T2dnUwACAAAAAAAAAA=="
+    # Sem mediaUrl no payload, cai no fallback .enc (mas base64 será usado na transcrição)
+    assert event.media_url is not None and event.media_url.endswith(".enc")
+
+
 def test_is_authorized_crm_group_not_group():
     ok, reason = is_authorized_crm_group("5511999999999@s.whatsapp.net", False)
     assert ok is False
