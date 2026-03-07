@@ -34,6 +34,7 @@ def test_vague_message_and_name_fallback_helpers():
 
 
 def test_normalize_evolution_payload_audio_mimetype():
+    # Fallback: sem mediaUrl do Evolution, usa URL criptografada do CDN
     payload = {
         "data": {
             "key": {"id": "AUDIO1", "remoteJid": "5511999999999@g.us"},
@@ -44,6 +45,21 @@ def test_normalize_evolution_payload_audio_mimetype():
     assert event.msg_type == "audio"
     assert event.media_url.endswith(".enc")
     assert event.media_mimetype == "audio/ogg; codecs=opus"
+
+
+def test_normalize_evolution_payload_audio_prefers_media_url():
+    # Prioridade: mediaUrl do Evolution (descriptografado) sobre audioMessage.url (.enc)
+    payload = {
+        "data": {
+            "key": {"id": "AUDIO2", "remoteJid": "5511999999999@g.us"},
+            "mediaUrl": "https://evolution-server/media/audio123.ogg",
+            "message": {"audioMessage": {"url": "https://mmg.whatsapp.net/foo_n.enc", "mimetype": "audio/ogg; codecs=opus"}},
+        }
+    }
+    event = normalize_evolution_payload(payload)
+    assert event.msg_type == "audio"
+    assert event.media_url == "https://evolution-server/media/audio123.ogg"
+    assert not event.media_url.endswith(".enc")
 
 
 def test_is_authorized_crm_group_not_group():

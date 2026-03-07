@@ -84,6 +84,13 @@ class OpenAIService:
         return None
 
     async def resolve_whatsapp_audio(self, media_url: str, mimetype: str | None) -> str:
+        # Arquivo .enc = CDN do WhatsApp criptografado. O Evolution API precisa estar
+        # configurado para baixar e servir a mídia descriptografada (mediaUrl no payload).
+        url_path = (media_url or "").lower().split("?")[0]
+        if url_path.endswith(".enc"):
+            logger.error("audio_encriptado | Evolution nao descriptografou a midia | url=%s", media_url)
+            raise AudioResolveError("audio_encriptado")
+
         extension = self._extension_from_mimetype(mimetype) or self._extension_from_url(media_url)
         if not extension:
             logger.error("mimetype_invalido | mimetype=%s media_url=%s", mimetype, media_url)

@@ -52,11 +52,13 @@ def _extract_text(message: Dict[str, Any], data: Dict[str, Any], payload: Dict[s
 
 
 def _extract_media_url(message: Dict[str, Any], data: Dict[str, Any], payload: Dict[str, Any]) -> Optional[str]:
+    # Prioriza a URL do Evolution API (já descriptografada) sobre a URL direta
+    # do CDN do WhatsApp, que é um arquivo .enc criptografado inutilizável.
     return _first_non_empty(
-        message.get("audioMessage", {}).get("url"),
-        message.get("audio", {}).get("url"),
         data.get("mediaUrl"),
         payload.get("mediaUrl"),
+        message.get("audioMessage", {}).get("url"),
+        message.get("audio", {}).get("url"),
     )
 
 
