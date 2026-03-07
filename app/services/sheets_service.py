@@ -6,14 +6,11 @@ import re
 import threading
 import time
 import unicodedata
-from dataclasses import dataclass
 from datetime import datetime
-from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Tuple
 
 import gspread
 from google.oauth2.service_account import Credentials
-from rapidfuzz import fuzz
 
 logger = logging.getLogger(__name__)
 
@@ -70,20 +67,16 @@ REV_HEADERS = [
 ]
 
 GENERIC_NAME_TOKENS = {
-    "clinica",
-    "clínica",
-    "consultorio",
-    "consultório",
-    "odontologia",
-    "odonto",
-    "estetica",
-    "estética",
+    "clinica", "clínica", "consultorio", "consultório",
+    "odontologia", "odonto", "estetica", "estética",
 }
 
-# Colunas de LEADS que são copiadas/atualizadas a partir dos dados do lead
-LEAD_UPSERT_FIELDS = [
+# Campos gerenciados pelo bot no sync (não inclui campos manuais como observacoes)
+LEAD_SYNC_FIELDS = [
     "nome", "cidade", "segmento", "whatsapp", "email",
     "instagram", "site", "responsavel", "fonte",
+    "status", "prioridade", "ultima_interacao_em", "proximo_followup_em",
+    "resumo", "pendencia",
     "nome_normalizado", "cidade_normalizada", "lead_key",
 ]
 
@@ -209,18 +202,6 @@ def norm_phone(value: Optional[str]) -> str:
     if digits and not digits.startswith("55") and len(digits) >= 10:
         digits = f"55{digits}"
     return f"+{digits}" if digits else ""
-
-
-# ---------------------------------------------------------------------------
-# Match result
-# ---------------------------------------------------------------------------
-
-@dataclass
-class MatchResult:
-    matched: Optional[Dict[str, str]]
-    score: float = 0.0
-    needs_review: bool = False
-    candidates: Optional[List[Dict[str, str]]] = None
 
 
 # ---------------------------------------------------------------------------
@@ -485,7 +466,6 @@ class SheetsService:
             "ATIVIDADES": _ativ_new,
             "REVISAR": _rev_new,
         }
-        self._lock = threading.Lock()
 
         # Aplica formatação visual e Dashboard (não-crítico — falha não interrompe startup)
         try:
@@ -848,175 +828,59 @@ class SheetsService:
         logger.info("_apply_formatting OK | requests=%d", len(requests))
 
     # ------------------------------------------------------------------
-    # Data access
+    # Seeding data — exporta dados existentes para o DB SQLite
     # ------------------------------------------------------------------
 
-    def _header_map(self, ws) -> Dict[str, int]:
-        """Retorna mapa {nome_coluna: índice_0based} da primeira linha."""
-        return {h: i for i, h in enumerate(ws.row_values(1))}
-
     @_gspread_retry()
-    def leads(self) -> List[Dict[str, str]]:
+    def all_leads(self) -> List[Dict[str, str]]:
         return self.ws_leads.get_all_records()
 
-    def next_lead_id(self) -> str:
-        ids = [row.get("lead_id", "") for row in self.leads()]
-        numeric = [int(i[1:]) for i in ids if isinstance(i, str) and i.startswith("L") and i[1:].isdigit()]
-        return f"L{(max(numeric) + 1) if numeric else 1:04d}"
+    @_gspread_retry()
+    def all_activities(self) -> List[Dict[str, str]]:
+        return self.ws_ativ.get_all_records()
+
+    # ------------------------------------------------------------------
+    # Sync write-only — DB resolve o matching, Sheets só persiste
+    # ------------------------------------------------------------------
 
     @_gspread_retry()
-    def activity_exists_by_msg_id(self, msg_id: str) -> bool:
-        if not msg_id:
-            return False
-        records = self.ws_ativ.get_all_records()
-        return any(str(row.get("msg_id", "")).strip().lower() == msg_id.strip().lower() for row in records)
+    def sync_lead(self, lead_dict: Dict[str, Any]) -> None:
+        """Sincroniza um lead já resolvido pelo DB para o Sheets.
 
-    def match_lead(self, lead: Dict[str, str]) -> MatchResult:
-        all_leads = self.leads()
-        whatsapp = norm_phone(lead.get("whatsapp"))
-        insta = normalize_text(lead.get("instagram") or "")
-        email = (lead.get("email") or "").strip().lower()
+        Encontra a linha pelo lead_id e atualiza. Se não encontrar, insere.
+        Preserva campos manuais (observacoes) que existam na planilha.
+        """
+        lead_id = lead_dict.get("lead_id", "")
+        if not lead_id:
+            return
 
-        canonical_name = canonicalize_name(lead.get("nome") or "")
-        lead_key = f"{normalize_text(lead.get('cidade') or '')}:{canonical_name}"
-
-        for row in all_leads:
-            if whatsapp and norm_phone(row.get("whatsapp")) == whatsapp:
-                return MatchResult(matched=row, score=1.0)
-        for row in all_leads:
-            if email and (row.get("email") or "").strip().lower() == email:
-                return MatchResult(matched=row, score=0.995)
-        for row in all_leads:
-            if insta and normalize_text(row.get("instagram") or "") == insta:
-                return MatchResult(matched=row, score=0.99)
-        for row in all_leads:
-            if lead_key and row.get("lead_key") == lead_key:
-                return MatchResult(matched=row, score=0.98)
-
-        cidade_norm = normalize_text(lead.get("cidade") or "")
-        nome_norm = canonical_name
-        for row in all_leads:
-            row_name = canonicalize_name(row.get("nome", ""))
-            if cidade_norm and row.get("cidade_normalizada") == cidade_norm and nome_norm and nome_norm in row_name:
-                return MatchResult(matched=row, score=0.9)
-            if not cidade_norm and nome_norm and (nome_norm in row_name or row_name in nome_norm):
-                return MatchResult(matched=row, score=0.89)
-
-        scored: List[Tuple[float, Dict[str, str]]] = []
-        for row in all_leads:
-            if cidade_norm and row.get("cidade_normalizada") and row.get("cidade_normalizada") != cidade_norm:
-                continue
-            target = canonicalize_name(row.get("nome", ""))
-            if not nome_norm or not target:
-                continue
-            sim = max(fuzz.ratio(nome_norm, target) / 100.0, SequenceMatcher(None, nome_norm, target).ratio())
-            scored.append((sim, row))
-
-        if not scored:
-            return MatchResult(matched=None, score=0)
-
-        scored.sort(key=lambda x: x[0], reverse=True)
-        best_score, best_row = scored[0]
-        if best_score >= 0.88:
-            return MatchResult(matched=best_row, score=best_score)
-        if 0.78 <= best_score < 0.88:
-            top3 = [r for _, r in scored[:3]]
-            return MatchResult(matched=None, score=best_score, needs_review=True, candidates=top3)
-        return MatchResult(matched=None, score=best_score)
-
-    def _update_lead_row(
-        self,
-        lead_id: str,
-        lead: Dict[str, str],
-        status: Optional[str],
-        followup_em: Optional[str],
-        when: datetime,
-    ) -> str:
-        """Atualiza os campos de um lead existente pelo seu row index."""
         records = self.ws_leads.get_all_values()
+        if not records:
+            return
         headers = records[0]
-        row_idx = next(i for i, row in enumerate(records, start=1) if i > 1 and row[0] == lead_id)
-        existing = dict(zip(headers, records[row_idx - 1]))
-        for key in LEAD_UPSERT_FIELDS:
-            if lead.get(key):
-                existing[key] = lead[key]
-        existing["ultima_interacao_em"] = when.isoformat()
-        if status:
-            existing["status"] = status
-        if followup_em:
-            existing["proximo_followup_em"] = followup_em
-        rng = _row_range(row_idx, headers)
-        self.ws_leads.update(rng, [[existing.get(h, "") for h in headers]])
-        return lead_id
+
+        # Procura linha existente por lead_id
+        for row_idx, row in enumerate(records[1:], start=2):
+            if row and row[0] == lead_id:
+                existing = dict(zip(headers, row))
+                # Atualiza apenas os campos gerenciados pelo bot; preserva manuais
+                for field in LEAD_SYNC_FIELDS:
+                    if field in lead_dict and lead_dict[field] is not None:
+                        existing[field] = str(lead_dict[field])
+                rng = _row_range(row_idx, headers)
+                self.ws_leads.update(rng, [[existing.get(h, "") for h in headers]])
+                return
+
+        # Não encontrou — insere nova linha
+        row_data = {h: str(lead_dict.get(h, "") or "") for h in headers}
+        self.ws_leads.append_row(
+            [row_data.get(h, "") for h in headers],
+            value_input_option="RAW",
+        )
+        logger.info("sync_lead: novo lead inserido no Sheets | lead_id=%s", lead_id)
 
     @_gspread_retry()
-    def upsert_lead(
-        self,
-        lead: Dict[str, str],
-        status: Optional[str],
-        followup_em: Optional[str],
-        when: datetime,
-    ) -> str:
-        lead = {k: (v or "") for k, v in lead.items()}
-        lead["whatsapp"] = norm_phone(lead.get("whatsapp"))
-        lead["nome_normalizado"] = normalize_text(lead.get("nome", ""))
-        lead["cidade_normalizada"] = normalize_text(lead.get("cidade", ""))
-        canonical_name = canonicalize_name(lead.get("nome", ""))
-        lead["lead_key"] = f"{lead['cidade_normalizada']}:{canonical_name}"
-
-        match = self.match_lead(lead)
-        phone_in_new = lead["whatsapp"]
-
-        if phone_in_new and match.score < 0.95:
-            if match.needs_review:
-                logger.info(
-                    "upsert_lead: telefone único detectado, ignorando revisão fuzzy | phone=%s score=%.2f",
-                    phone_in_new, match.score,
-                )
-                match = MatchResult(matched=None, score=0)
-            elif match.matched:
-                matched_phone = norm_phone(match.matched.get("whatsapp"))
-                if matched_phone and matched_phone != phone_in_new:
-                    logger.info(
-                        "upsert_lead: telefone conflitante no match por nome, criando novo lead | new=%s existing=%s",
-                        phone_in_new, matched_phone,
-                    )
-                    match = MatchResult(matched=None, score=0)
-
-        if match.needs_review:
-            self.add_review(when, "", lead.get("cidade"), lead.get("nome"), match.candidates or [], "revisar_match")
-            return ""
-
-        if match.matched:
-            return self._update_lead_row(match.matched["lead_id"], lead, status, followup_em, when)
-
-        with self._lock:
-            match2 = self.match_lead(lead)
-            if match2.matched:
-                return self._update_lead_row(match2.matched["lead_id"], lead, status, followup_em, when)
-
-            lead_id = self.next_lead_id()
-            now_iso = when.isoformat()
-            row_data = {
-                "lead_id": lead_id,
-                "status": status or "novo",
-                "prioridade": "media",
-                "data_criacao": now_iso,
-                "ultima_interacao_em": now_iso,
-                "proximo_followup_em": followup_em or "",
-                "observacoes": "",
-                **{k: lead.get(k, "") for k in LEAD_UPSERT_FIELDS},
-            }
-            actual_headers = self.ws_leads.row_values(1)
-            self.ws_leads.append_row(
-                [row_data.get(h, "") for h in actual_headers],
-                value_input_option="RAW",
-            )
-            logger.info("novo_lead_criado | lead_id=%s nome=%s", lead_id, lead.get("nome"))
-            return lead_id
-
-    @_gspread_retry()
-    def add_activity(
+    def sync_activity(
         self,
         when: datetime,
         msg_id: str,
@@ -1029,7 +893,7 @@ class SheetsService:
         mensagem_bruta: str,
         resumo: str,
         followup_em: Optional[str],
-    ):
+    ) -> None:
         actual_headers = self.ws_ativ.row_values(1)
         row_data = {
             "data_hora": when.isoformat(),

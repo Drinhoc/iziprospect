@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 from typing import Dict
 
@@ -10,6 +11,7 @@ from openai import APIError, RateLimitError
 
 from app.config import settings
 from app.services.crm_interpreter import extract_phone, interpret_crm_message
+from app.services.db_service import DBService
 from app.services.evolution_service import EvolutionService
 from app.services.normalizer import normalize_evolution_payload
 from app.services.openai_service import AudioResolveError, OpenAIService
@@ -31,10 +33,21 @@ evolution_service = EvolutionService(
     settings.evolution_instance_name,
 )
 sheets_service: SheetsService | None = None
+db_service: DBService | None = None
 
 # Limita o número de processamentos simultâneos de webhook para evitar
-# sobrecarga no Google Sheets e no OpenAI e prevenir race conditions.
+# sobrecarga no Sheets/OpenAI e prevenir race conditions.
 _webhook_semaphore = asyncio.Semaphore(5)
+
+_DB_PATH = os.environ.get("CRM_DB_PATH", "data/crm.db")
+
+
+def get_db_service() -> DBService:
+    global db_service
+    if db_service is None:
+        os.makedirs(os.path.dirname(_DB_PATH) or ".", exist_ok=True)
+        db_service = DBService(_DB_PATH)
+    return db_service
 
 
 def get_sheets_service() -> SheetsService:
@@ -48,6 +61,22 @@ def get_sheets_service() -> SheetsService:
     info = settings.service_account_info()
     sheets_service = SheetsService(info, settings.google_sheets_id)
     return sheets_service
+
+
+@app.on_event("startup")
+async def _seed_db_from_sheets() -> None:
+    """Na primeira subida, importa leads e atividades existentes do Sheets → SQLite."""
+    try:
+        db = get_db_service()
+        if db.is_seeded():
+            logger.info("db_seed: já existem dados, seeding ignorado")
+            return
+        sheets = await asyncio.to_thread(get_sheets_service)
+        leads = await asyncio.to_thread(sheets.all_leads)
+        activities = await asyncio.to_thread(sheets.all_activities)
+        await asyncio.to_thread(db.seed, leads, activities)
+    except Exception:
+        logger.warning("db_seed falhou — não crítico", exc_info=True)
 
 
 def parse_kv_pairs(raw: str) -> Dict[str, str]:
@@ -197,7 +226,9 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
             logger.exception("Falha ao inicializar Google Sheets")
             raise HTTPException(status_code=503, detail=f"Sheets unavailable: {exc}") from exc
 
-        if event.msg_id and await asyncio.to_thread(sheets.activity_exists_by_msg_id, event.msg_id):
+        db = get_db_service()
+
+        if event.msg_id and await asyncio.to_thread(db.already_processed, event.msg_id):
             logger.info("duplicate webhook ignored | msg_id=%s", event.msg_id)
             return {"ok": True, "duplicate": True}
         if not event.msg_id:
@@ -351,8 +382,9 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
         )
         extracted.activity.resumo = summary
 
+        # --- 1. DB: upsert lead (matching em SQLite) ---
         lead_id = await asyncio.to_thread(
-            sheets.upsert_lead,
+            db.upsert_lead,
             extracted.lead.model_dump(),
             extracted.status_sugerido,
             extracted.followup_em,
@@ -360,15 +392,56 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
         )
 
         if not lead_id and interpretation.action_type in {"registrar_atividade", "registrar_followup", "atualizar_lead"}:
-            context_lead_id = await asyncio.to_thread(sheets.latest_linked_lead_id)
+            context_lead_id = await asyncio.to_thread(db.latest_linked_lead_id)
             if context_lead_id:
                 logger.info("Lead resolvido por contexto da conversa: %s", context_lead_id)
                 lead_id = context_lead_id
 
         logger.info("Lead resolvido: %s", lead_id or "REVISAR")
 
+        # --- 2. DB: registrar atividade ---
         await asyncio.to_thread(
-            sheets.add_activity,
+            db.add_activity,
+            event.timestamp,
+            event.msg_id or "",
+            lead_id,
+            extracted.activity.tipo,
+            "whatsapp_group" if event.is_group else "whatsapp",
+            interpretation.action_type,
+            interpretation.confidence,
+            event.audio_seconds,
+            raw_text,
+            extracted.activity.resumo,
+            extracted.followup_em,
+        )
+
+        # --- 3. DB: gerar resumo cumulativo do lead + pendência ---
+        if lead_id:
+            recent_summaries = await asyncio.to_thread(
+                db.get_lead_recent_activity_summaries, lead_id, 5
+            )
+            lead_resumo = await asyncio.to_thread(
+                openai_service.generate_lead_summary,
+                extracted.lead.nome,
+                extracted.lead.segmento,
+                extracted.status_sugerido,
+                recent_summaries,
+            )
+            await asyncio.to_thread(
+                db.update_lead_resumo_pendencia,
+                lead_id,
+                lead_resumo or None,
+                extracted.pendencia,
+            )
+
+        # --- 4. Sheets: sync lead + atividade (write-only) ---
+        if lead_id:
+            lead_dict = await asyncio.to_thread(db.get_lead, lead_id)
+            if lead_dict:
+                await asyncio.to_thread(sheets.sync_lead, lead_dict)
+
+        await asyncio.to_thread(
+            sheets.sync_activity,
             event.timestamp,
             event.msg_id or "",
             lead_id,

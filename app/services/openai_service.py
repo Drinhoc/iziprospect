@@ -41,6 +41,7 @@ Schema:
   },
   "status_sugerido": null,
   "followup_em": null,
+  "pendencia": null,
   "activity": {"tipo": "", "resumo": ""}
 }
 
@@ -52,6 +53,7 @@ Regras:
 - lead.fonte: como o lead chegou (cold, indicação, instagram, grupo, evento, etc.). null se ausente.
 - lead.email: endereço de e-mail se mencionado. null se ausente.
 - followup_em: data/hora de próximo contato se mencionada (ISO 8601 ou texto como "amanhã 10h").
+- pendencia: ação concreta pendente identificada na mensagem. Exemplos: "Enviar proposta", "Aguardando retorno", "Confirmar visita", "Agendar demo". null se não há ação pendente clara.
 - status_sugerido: novo | em contato | qualificado | proposta enviada | negociando | fechado | perdido | sem resposta | contato inválido
 - activity.tipo: contato inicial | respondeu | pediu proposta | sem interesse | número inválido | retorno agendado | aguardando resposta | demo agendada | nota
 - activity.resumo: máx 220 chars, factual, sem especulação.
@@ -60,11 +62,17 @@ Regras:
 
 Exemplos:
 Entrada: "Clinca sorrisa, 19 998998988 odonto, falar com Dr. Paulo"
-Saída: {"intent":"novo","lead":{"nome":"Clinca sorrisa","cidade":null,"segmento":"odonto","whatsapp":"19998998988","email":null,"instagram":null,"site":null,"responsavel":"Dr. Paulo","fonte":null},"status_sugerido":"novo","followup_em":null,"activity":{"tipo":"contato inicial","resumo":"Novo lead: Clinca sorrisa, odonto, tel 19998998988, contato Dr. Paulo."}}
+Saída: {"intent":"novo","lead":{"nome":"Clinca sorrisa","cidade":null,"segmento":"odonto","whatsapp":"19998998988","email":null,"instagram":null,"site":null,"responsavel":"Dr. Paulo","fonte":null},"status_sugerido":"novo","followup_em":null,"pendencia":null,"activity":{"tipo":"contato inicial","resumo":"Novo lead: Clinca sorrisa, odonto, tel 19998998988, contato Dr. Paulo."}}
 
 Entrada: "Clínica Vida, Campinas, sem interesse por enquanto"
-Saída: {"intent":"perdido","lead":{"nome":"Clínica Vida","cidade":"Campinas","segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"perdido","followup_em":null,"activity":{"tipo":"sem interesse","resumo":"Clínica Vida (Campinas) não tem interesse no momento."}}
+Saída: {"intent":"perdido","lead":{"nome":"Clínica Vida","cidade":"Campinas","segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"perdido","followup_em":null,"pendencia":null,"activity":{"tipo":"sem interesse","resumo":"Clínica Vida (Campinas) não tem interesse no momento."}}
+
+Entrada: "Clínica Sorrir, vou mandar a proposta amanhã"
+Saída: {"intent":"update","lead":{"nome":"Clínica Sorrir","cidade":null,"segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"proposta enviada","followup_em":"amanhã","pendencia":"Enviar proposta","activity":{"tipo":"pediu proposta","resumo":"Proposta a ser enviada amanhã para Clínica Sorrir."}}
 """
+
+LEAD_SUMMARY_PROMPT = """Você é um assistente de CRM. Com base nos dados do lead e nas últimas interações, \
+escreva um resumo executivo em 1-2 frases (máx 180 chars). Seja factual e direto. Não use markdown."""
 
 ALLOWED_INTENTS = {"novo", "update", "perdido", "fechado", "corrigir", "vincular", "set"}
 MIMETYPE_EXTENSION = {
@@ -255,6 +263,41 @@ class OpenAIService:
                 os.remove(audio_path)
             except OSError:
                 logger.warning("Failed to remove temporary audio file: %s", audio_path)
+
+    def generate_lead_summary(
+        self,
+        nome: str | None,
+        segmento: str | None,
+        status: str | None,
+        recent_summaries: list[str],
+    ) -> str:
+        """Gera um resumo cumulativo do lead com base nos dados + últimas atividades.
+
+        Retorna string ≤180 chars. Fallback se OpenAI indisponível.
+        """
+        if not self.client or not recent_summaries:
+            return ""
+
+        summaries_text = "\n- ".join(recent_summaries)
+        user_msg = (
+            f"Lead: {nome or 'desconhecido'} | Segmento: {segmento or '?'} | Status: {status or '?'}\n"
+            f"Últimas interações:\n- {summaries_text}"
+        )
+        try:
+            resp = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                temperature=0,
+                max_tokens=80,
+                messages=[
+                    {"role": "system", "content": LEAD_SUMMARY_PROMPT},
+                    {"role": "user", "content": user_msg},
+                ],
+            )
+            summary = (resp.choices[0].message.content or "").strip()
+            return summary[:180]
+        except Exception:
+            logger.warning("generate_lead_summary falhou", exc_info=True)
+            return ""
 
     def extract_structured_data(self, raw_text: str) -> LLMExtraction:
         if not self.client:
