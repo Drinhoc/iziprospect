@@ -53,7 +53,11 @@ Regras:
 - lead.fonte: como o lead chegou (cold, indicação, instagram, grupo, evento, etc.). null se ausente.
 - lead.email: endereço de e-mail se mencionado. null se ausente.
 - followup_em: data/hora de próximo contato se mencionada (ISO 8601 ou texto como "amanhã 10h").
-- pendencia: ação concreta pendente identificada na mensagem. Exemplos: "Enviar proposta", "Aguardando retorno", "Confirmar visita", "Agendar demo". null se não há ação pendente clara.
+- pendencia: próxima ação comercial concreta. Preencha sempre que houver contexto suficiente.
+  Por status: "novo"→"Fazer primeiro contato", "em contato"→"Fazer follow-up",
+  "qualificado"→"Enviar proposta", "proposta enviada"→"Aguardar retorno",
+  "negociando"→"Fechar contrato", "fechado"→"Emitir contrato/NF".
+  null APENAS para mensagens de nota pura sem ação decorrente.
 - status_sugerido: novo | em contato | qualificado | proposta enviada | negociando | fechado | perdido | sem resposta | contato inválido
 - activity.tipo: contato inicial | respondeu | pediu proposta | sem interesse | número inválido | retorno agendado | aguardando resposta | demo agendada | nota
 - activity.resumo: máx 220 chars, factual, sem especulação.
@@ -62,17 +66,26 @@ Regras:
 
 Exemplos:
 Entrada: "Clinca sorrisa, 19 998998988 odonto, falar com Dr. Paulo"
-Saída: {"intent":"novo","lead":{"nome":"Clinca sorrisa","cidade":null,"segmento":"odonto","whatsapp":"19998998988","email":null,"instagram":null,"site":null,"responsavel":"Dr. Paulo","fonte":null},"status_sugerido":"novo","followup_em":null,"pendencia":null,"activity":{"tipo":"contato inicial","resumo":"Novo lead: Clinca sorrisa, odonto, tel 19998998988, contato Dr. Paulo."}}
+Saída: {"intent":"novo","lead":{"nome":"Clinca sorrisa","cidade":null,"segmento":"odonto","whatsapp":"19998998988","email":null,"instagram":null,"site":null,"responsavel":"Dr. Paulo","fonte":null},"status_sugerido":"novo","followup_em":null,"pendencia":"Fazer primeiro contato","activity":{"tipo":"contato inicial","resumo":"Novo lead: Clinca sorrisa, odonto, tel 19998998988, contato Dr. Paulo."}}
 
 Entrada: "Clínica Vida, Campinas, sem interesse por enquanto"
 Saída: {"intent":"perdido","lead":{"nome":"Clínica Vida","cidade":"Campinas","segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"perdido","followup_em":null,"pendencia":null,"activity":{"tipo":"sem interesse","resumo":"Clínica Vida (Campinas) não tem interesse no momento."}}
 
 Entrada: "Clínica Sorrir, vou mandar a proposta amanhã"
 Saída: {"intent":"update","lead":{"nome":"Clínica Sorrir","cidade":null,"segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"proposta enviada","followup_em":"amanhã","pendencia":"Enviar proposta","activity":{"tipo":"pediu proposta","resumo":"Proposta a ser enviada amanhã para Clínica Sorrir."}}
+
+Entrada: "Odonto Sul SP, liguei hoje, vai pensar e me liga semana que vem"
+Saída: {"intent":"update","lead":{"nome":"Odonto Sul","cidade":"SP","segmento":"odonto","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"em contato","followup_em":"semana que vem","pendencia":"Aguardar retorno da clínica","activity":{"tipo":"aguardando resposta","resumo":"Odonto Sul (SP): contato feito, aguardando retorno semana que vem."}}
 """
 
-LEAD_SUMMARY_PROMPT = """Você é um assistente de CRM. Com base nos dados do lead e nas últimas interações, \
-escreva um resumo executivo em 1-2 frases (máx 180 chars). Seja factual e direto. Não use markdown."""
+LEAD_SUMMARY_PROMPT = """Você é um assistente de CRM para prospecção de clínicas no Brasil.
+Com base nos dados do lead e nas últimas interações, escreva um resumo executivo comercial em 1-2 frases (máx 200 chars).
+Siga este formato: "[Nome/Tipo] em [cidade] — [último acontecimento relevante] — [próximo passo]."
+Exemplos:
+- "Clínica Sorrir (odonto) em SP — proposta enviada em mar/26 — aguardar retorno do Dr. Paulo."
+- "Studio Estética em BH — qualificado, alta prioridade — enviar proposta esta semana."
+- "OdontoVida (odonto) em Campinas — sem interesse no momento — sem ação pendente."
+Seja factual, direto e orientado a ação. Não use markdown."""
 
 ALLOWED_INTENTS = {"novo", "update", "perdido", "fechado", "corrigir", "vincular", "set"}
 MIMETYPE_EXTENSION = {
@@ -287,7 +300,7 @@ class OpenAIService:
             resp = self.client.chat.completions.create(
                 model="gpt-4o-mini",
                 temperature=0,
-                max_tokens=80,
+                max_tokens=100,
                 messages=[
                     {"role": "system", "content": LEAD_SUMMARY_PROMPT},
                     {"role": "user", "content": user_msg},

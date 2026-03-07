@@ -76,6 +76,39 @@ async def _seed_db_from_sheets() -> None:
         logger.warning("db_seed falhou — não crítico", exc_info=True)
 
 
+async def _do_sheets_sync() -> int:
+    """Lê todos os leads do Sheets e atualiza o DB com edições manuais do usuário."""
+    sheets = await asyncio.to_thread(get_sheets_service)
+    db = get_db_service()
+    leads = await asyncio.to_thread(sheets.all_leads)
+    updated = 0
+    for lead in leads:
+        lead_id = str(lead.get("lead_id", "")).strip()
+        if not lead_id:
+            continue
+        ok = await asyncio.to_thread(db.update_lead_from_sheets, lead_id, lead)
+        if ok:
+            updated += 1
+    return updated
+
+
+@app.on_event("startup")
+async def _start_sheets_sync_loop() -> None:
+    """Inicia loop de sincronização Sheets→DB em background."""
+    async def _loop():
+        interval = settings.sheets_sync_interval_minutes * 60
+        logger.info("sheets_sync_loop iniciado | interval=%ds", interval)
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                updated = await _do_sheets_sync()
+                logger.info("sheets_sync_loop OK | updated=%d", updated)
+            except Exception:
+                logger.warning("sheets_sync_loop falhou", exc_info=True)
+
+    asyncio.create_task(_loop())
+
+
 def parse_kv_pairs(raw: str) -> Dict[str, str]:
     matches = re.findall(r"(\w+)=([^\s]+)", raw)
     return {k.lower(): v for k, v in matches}
@@ -174,6 +207,29 @@ def health():
         reason = str(exc)
         logger.warning("Health degraded: Sheets not ready (%s)", exc)
     return {"status": "ok", "sheets_ready": ready, "reason": reason}
+
+
+@app.post("/sync/sheets-to-db")
+async def sync_sheets_to_db(x_webhook_secret: str | None = Header(default=None)):
+    """Sincroniza edições manuais do Sheets para o DB imediatamente."""
+    if settings.evolution_webhook_secret and x_webhook_secret != settings.evolution_webhook_secret:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        updated = await _do_sheets_sync()
+        return {"ok": True, "updated": updated}
+    except Exception as exc:
+        logger.exception("sync_sheets_to_db falhou")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+# Tabela de fallback: quando OpenAI não extrai pendência mas o status implica ação
+_STATUS_PENDENCIA: Dict[str, str] = {
+    "novo": "Fazer primeiro contato",
+    "em contato": "Fazer follow-up",
+    "qualificado": "Enviar proposta",
+    "proposta enviada": "Aguardar retorno",
+    "negociando": "Fechar contrato",
+}
 
 
 @app.post("/webhook/evolution")
@@ -370,6 +426,10 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
         if not extracted.activity.tipo or extracted.activity.tipo == "nota":
             extracted.activity.tipo = interpretation.activity_type
 
+        # Fallback de pendência: se OpenAI retornou null mas status implica ação, infere
+        if not extracted.pendencia and extracted.status_sugerido in _STATUS_PENDENCIA:
+            extracted.pendencia = _STATUS_PENDENCIA[extracted.status_sugerido]
+
         summary = factual_summary(
             raw_text=raw_text,
             nome=extracted.lead.nome,
@@ -380,21 +440,39 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
         extracted.activity.resumo = summary
 
         # --- 1. DB: upsert lead (matching em PostgreSQL) ---
-        lead_id = await asyncio.to_thread(
-            db.upsert_lead,
-            extracted.lead.model_dump(),
-            extracted.status_sugerido,
-            extracted.followup_em,
-            event.timestamp,
+        # Só tenta upsert se a mensagem tem identidade de lead (nome/tel/email/instagram).
+        # Mensagens sem identidade (ex: segundo áudio complementar) vão direto ao fallback de contexto,
+        # evitando criação de leads fantasmas.
+        has_lead_identity = bool(
+            extracted.lead.nome
+            or extracted.lead.whatsapp
+            or extracted.lead.email
+            or extracted.lead.instagram
         )
 
-        if not lead_id and interpretation.action_type in {"registrar_atividade", "registrar_followup", "atualizar_lead"}:
+        needs_review = False
+        review_candidates: list = []
+
+        if has_lead_identity:
+            lead_id, needs_review, review_candidates = await asyncio.to_thread(
+                db.upsert_lead,
+                extracted.lead.model_dump(),
+                extracted.status_sugerido,
+                extracted.followup_em,
+                event.timestamp,
+            )
+        else:
+            lead_id = ""
+            logger.info("Mensagem sem identidade de lead — usando contexto da conversa | msg_id=%s", event.msg_id)
+
+        # Fallback de contexto: usa o último lead vinculado quando não há match ou identidade
+        if not lead_id:
             context_lead_id = await asyncio.to_thread(db.latest_linked_lead_id)
             if context_lead_id:
                 logger.info("Lead resolvido por contexto da conversa: %s", context_lead_id)
                 lead_id = context_lead_id
 
-        logger.info("Lead resolvido: %s", lead_id or "REVISAR")
+        logger.info("Lead resolvido: %s | needs_review=%s", lead_id or "REVISAR", needs_review)
 
         # --- 2. DB: registrar atividade ---
         await asyncio.to_thread(
@@ -467,12 +545,33 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
                 raw_text,
                 extracted.lead.cidade,
                 extracted.lead.nome,
-                [],
+                review_candidates,
                 "lead_id_nao_resolvido",
             )
 
         if settings.disable_evolution_confirmation:
             logger.info("confirmation skipped | disabled by env")
+        elif not lead_id and needs_review:
+            # Pergunta no grupo quando há dúvida sobre o lead (REGRA: mensagem DEVE começar com ".")
+            try:
+                if review_candidates:
+                    cands = " | ".join(
+                        f"{c.get('lead_id','?')} {c.get('nome','?')}" for c in review_candidates[:3]
+                    )
+                    msg = (
+                        f". Dúvida: esta mensagem é sobre qual lead?\n"
+                        f"{cands}\n"
+                        f"Responda: VINCULAR L0001 (ou o ID correto) — ou ignore se for lead novo."
+                    )
+                else:
+                    nome_hint = f" ({extracted.lead.nome})" if extracted.lead.nome else ""
+                    msg = (
+                        f". Lead{nome_hint} não identificado com certeza. "
+                        f"Se for lead existente, responda: VINCULAR L0001 (substitua pelo ID correto)."
+                    )
+                await evolution_service.send_confirmation(event.chat_id, msg)
+            except Exception:
+                logger.warning("duvida_confirmation failed | msg_id=%s", event.msg_id, exc_info=True)
         else:
             try:
                 lead_name = extracted.lead.nome or ""

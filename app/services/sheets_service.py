@@ -19,27 +19,27 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 LEADS_HEADERS = [
-    "lead_id",
-    "nome",
-    "cidade",
-    "segmento",
-    "whatsapp",
+    "lead_id",              # col 0 — DEVE ser primeiro (chave de matching), oculta
+    "nome",                 # Identidade
+    "status",               # Pipeline
+    "prioridade",           # Urgência
+    "whatsapp",             # Contato principal
     "email",
     "instagram",
-    "site",
-    "responsavel",
+    "segmento",             # Classificação
+    "cidade",
+    "responsavel",          # Contato na clínica
     "fonte",
-    "status",
-    "prioridade",
-    "data_criacao",
-    "ultima_interacao_em",
+    "site",
+    "ultima_interacao_em",  # Temporal
     "proximo_followup_em",
-    "observacoes",
+    "data_criacao",
+    "pendencia",            # Notas automáticas
     "resumo",
-    "pendencia",
-    "nome_normalizado",
-    "cidade_normalizada",
-    "lead_key",
+    "observacoes",          # Nota manual
+    "nome_normalizado",     # oculta
+    "cidade_normalizada",   # oculta
+    "lead_key",             # oculta
 ]
 
 ATIV_HEADERS = [
@@ -85,8 +85,14 @@ LEAD_SYNC_FIELDS = [
 # ---------------------------------------------------------------------------
 
 # Larguras em pixels por coluna de LEADS (mesma ordem de LEADS_HEADERS)
-LEADS_COL_WIDTHS = [75, 200, 110, 110, 140, 180, 130, 150, 130, 100,
-                    140, 90, 155, 155, 155, 220, 220, 220, 1, 1, 1]  # últimas 3 ocultas
+# lead_id(oculta), nome, status, prioridade, whatsapp, email, instagram,
+# segmento, cidade, responsavel, fonte, site,
+# ultima_interacao_em, proximo_followup_em, data_criacao,
+# pendencia, resumo, observacoes, nome_norm(oculta), cidade_norm(oculta), lead_key(oculta)
+LEADS_COL_WIDTHS = [1, 200, 140, 90, 140, 170, 130,
+                    110, 110, 140, 100, 140,
+                    155, 155, 155,
+                    220, 220, 220, 1, 1, 1]
 
 # Larguras de ATIVIDADES (mesma ordem de ATIV_HEADERS)
 ATIV_COL_WIDTHS = [155, 90, 75, 140, 110, 140, 80, 90, 280, 300, 140]
@@ -483,6 +489,7 @@ class SheetsService:
 
     def _get_or_migrate(self, title: str, headers: List[str]) -> tuple:
         """Cria a worksheet se não existir; se existir, migra colunas novas sem perder dados.
+        Se a ordem das colunas mudou, reordena preservando todos os dados.
         Retorna (ws, is_new) onde is_new=True indica sheet recém-criada."""
         try:
             ws = self.sheet.worksheet(title)
@@ -499,19 +506,53 @@ class SheetsService:
 
         new_cols = [h for h in headers if h not in existing_headers]
         if new_cols:
+            # Adiciona colunas novas ao final
             merged = list(existing_headers)
             for col in headers:
                 if col not in merged:
                     merged.append(col)
             ws.update("A1", [merged], value_input_option="RAW")
             logger.info("sheet_migrated | title=%s new_cols=%s", title, new_cols)
-        else:
+            existing_headers = merged
+
+        # Verifica se há reordenação necessária (mesmas colunas, ordem diferente)
+        cols_match = sorted(existing_headers) == sorted(headers)
+        if cols_match and existing_headers != headers:
+            try:
+                self._reorder_sheet_columns(ws, existing_headers, headers)
+                logger.info("sheet_reordered | title=%s", title)
+            except Exception:
+                logger.warning("sheet_reorder falhou | title=%s", title, exc_info=True)
+        elif not cols_match:
             logger.warning(
                 "sheet_header_mismatch | title=%s existing=%s expected=%s",
                 title, existing_headers, headers,
             )
 
         return ws, False
+
+    def _reorder_sheet_columns(self, ws, old_headers: List[str], new_headers: List[str]) -> None:
+        """Reordena as colunas de uma sheet preservando todos os dados."""
+        all_values = ws.get_all_values()
+        if not all_values:
+            ws.update("A1", [new_headers], value_input_option="RAW")
+            return
+
+        # Mapeia header → índice na ordem antiga
+        old_idx = {h: i for i, h in enumerate(old_headers)}
+
+        # Reconstrói cada linha na nova ordem
+        new_rows = [new_headers]
+        for row in all_values[1:]:
+            new_row = []
+            for h in new_headers:
+                idx = old_idx.get(h)
+                new_row.append(row[idx] if idx is not None and idx < len(row) else "")
+            new_rows.append(new_row)
+
+        ws.clear()
+        ws.update("A1", new_rows, value_input_option="RAW")
+        logger.info("_reorder_sheet_columns OK | rows=%d cols=%d", len(new_rows) - 1, len(new_headers))
 
     def _get_spreadsheet_metadata(self) -> Dict:
         """Busca metadados completos da planilha (inclui conditionalFormats e bandings)."""

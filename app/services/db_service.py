@@ -396,7 +396,7 @@ class DBService:
         status: Optional[str],
         followup_em: Optional[str],
         when: datetime,
-    ) -> str:
+    ) -> Tuple[str, bool, List[Dict[str, Any]]]:
         lead = {k: (v or "") for k, v in lead.items()}
         lead["whatsapp"] = _norm_phone(lead.get("whatsapp"))
         lead["email"] = lead.get("email", "").strip().lower()
@@ -417,16 +417,21 @@ class DBService:
                     match = DBMatchResult(lead_id=None, score=0)
 
         if match.needs_review:
-            return ""
+            return "", True, match.candidates or []
 
         if match.lead_id:
-            return self._update_lead(match.lead_id, lead, status, followup_em, when)
+            lead_id = self._update_lead(match.lead_id, lead, status, followup_em, when)
+            return lead_id, False, []
 
         # Double-check + create
         match2 = self._match(lead)
         if match2.lead_id and not match2.needs_review:
-            return self._update_lead(match2.lead_id, lead, status, followup_em, when)
-        return self._create_lead(lead, status, followup_em, when)
+            lead_id = self._update_lead(match2.lead_id, lead, status, followup_em, when)
+            return lead_id, False, []
+        if match2.needs_review:
+            return "", True, match2.candidates or []
+        lead_id = self._create_lead(lead, status, followup_em, when)
+        return lead_id, False, []
 
     def _get_phone(self, lead_id: str) -> str:
         conn = self._conn()
@@ -610,3 +615,51 @@ class DBService:
                 return row[0] if row else ""
         finally:
             self._put(conn)
+
+    # ------------------------------------------------------------------
+    # Sync Sheets → DB (edições manuais do usuário)
+    # ------------------------------------------------------------------
+
+    def update_lead_from_sheets(self, lead_id: str, fields: Dict[str, Any]) -> bool:
+        """Atualiza campos editáveis pelo usuário vindos do Sheets.
+
+        Só atualiza campos permitidos (não sobrescreve campos automáticos do bot).
+        Recalcula campos derivados (nome_normalizado, cidade_normalizada, lead_key) se necessário.
+        """
+        allowed = {
+            "nome", "cidade", "segmento", "whatsapp", "email",
+            "instagram", "site", "responsavel", "fonte",
+            "status", "prioridade", "observacoes", "proximo_followup_em",
+        }
+        safe_fields: Dict[str, Any] = {
+            k: str(v).strip() for k, v in fields.items()
+            if k in allowed and v is not None and str(v).strip()
+        }
+        if not safe_fields:
+            return False
+
+        if "whatsapp" in safe_fields:
+            safe_fields["whatsapp"] = _norm_phone(safe_fields["whatsapp"])
+        if "email" in safe_fields:
+            safe_fields["email"] = safe_fields["email"].strip().lower()
+        if "nome" in safe_fields:
+            safe_fields["nome_normalizado"] = _normalize_text(safe_fields["nome"])
+        if "cidade" in safe_fields:
+            safe_fields["cidade_normalizada"] = _normalize_text(safe_fields["cidade"])
+        if "nome_normalizado" in safe_fields or "cidade_normalizada" in safe_fields:
+            safe_fields["lead_key"] = (
+                f"{safe_fields.get('cidade_normalizada', '')}:"
+                f"{_canonicalize_name(safe_fields.get('nome', ''))}"
+            )
+
+        set_clause = ", ".join(f"{k} = %s" for k in safe_fields)
+        values = list(safe_fields.values()) + [lead_id]
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"UPDATE leads SET {set_clause} WHERE lead_id = %s", values)
+            conn.commit()
+        finally:
+            self._put(conn)
+        logger.debug("update_lead_from_sheets | lead_id=%s fields=%s", lead_id, list(safe_fields))
+        return True

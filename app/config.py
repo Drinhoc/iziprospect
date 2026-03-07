@@ -32,6 +32,7 @@ class Settings:
     disable_evolution_confirmation: bool
     database_url: Optional[str]
     default_timezone: str = "UTC"
+    sheets_sync_interval_minutes: int = 15
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -53,6 +54,7 @@ class Settings:
             disable_evolution_confirmation=_as_bool(os.getenv("DISABLE_EVOLUTION_CONFIRMATION"), default=False),
             database_url=os.getenv("DATABASE_URL"),
             default_timezone=os.getenv("DEFAULT_TIMEZONE", "UTC"),
+            sheets_sync_interval_minutes=int(os.getenv("SHEETS_SYNC_INTERVAL_MINUTES", "15")),
         )
 
     @staticmethod
