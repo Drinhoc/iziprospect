@@ -13,6 +13,7 @@ class NormalizedEvent(BaseModel):
     media_url: Optional[str] = None
     media_mimetype: Optional[str] = None
     media_base64: Optional[str] = None
+    media_key: Optional[str] = None
     raw_msg_key: Optional[Dict[str, Any]] = None
     raw_message_obj: Optional[Dict[str, Any]] = None
     timestamp: datetime = Field(default_factory=datetime.utcnow)

@@ -106,6 +106,11 @@ def normalize_evolution_payload(payload: Dict[str, Any]) -> NormalizedEvent:
     # "Webhook Based64" do Evolution API: conteúdo do áudio em base64 no payload,
     # evitando a necessidade de baixar o arquivo criptografado do CDN do WhatsApp.
     media_base64 = _first_non_empty(data.get("base64"), payload.get("base64"))
+    # mediaKey vem dentro de audioMessage e é necessária para descriptografar o .enc
+    media_key = _first_non_empty(
+        message.get("audioMessage", {}).get("mediaKey"),
+        message.get("audio", {}).get("mediaKey"),
+    )
     is_audio = bool(
         message.get("audioMessage")
         or message.get("audio")
@@ -132,6 +137,7 @@ def normalize_evolution_payload(payload: Dict[str, Any]) -> NormalizedEvent:
         media_url=media_url,
         media_mimetype=media_mimetype,
         media_base64=media_base64,
+        media_key=media_key if msg_type == "audio" else None,
         raw_msg_key=raw_msg_key if msg_type == "audio" else None,
         raw_message_obj=raw_message_obj if msg_type == "audio" else None,
         timestamp=timestamp,

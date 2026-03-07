@@ -225,14 +225,21 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
                     logger.warning("fetch_audio_base64 falhou, tentará via URL | msg_id=%s", event.msg_id)
 
         if event.msg_type == "audio" and (event.media_url or event.media_base64):
+            if event.media_base64:
+                fonte = "base64"
+            elif event.media_key:
+                fonte = "enc+mediaKey"
+            else:
+                fonte = "url"
             logger.info(
-                "Transcrição iniciada para msg_id=%s | fonte=%s",
+                "Transcrição iniciada para msg_id=%s | fonte=%s | media_key=%s",
                 event.msg_id,
-                "base64" if event.media_base64 else "url",
+                fonte,
+                bool(event.media_key),
             )
             try:
                 event.raw_text = await openai_service.transcribe_audio_from_url(
-                    event.media_url, event.media_mimetype, event.media_base64
+                    event.media_url, event.media_mimetype, event.media_base64, event.media_key
                 )
                 logger.info("Transcrição finalizada para msg_id=%s", event.msg_id)
             except AudioResolveError as exc:

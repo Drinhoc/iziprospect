@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import hmac
 import json
 import logging
 import os
@@ -9,6 +11,10 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.hashes import SHA256
+from cryptography.hazmat.primitives.hmac import HMAC
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from openai import OpenAI
 
 from app.schemas.models import LLMExtraction
@@ -84,12 +90,83 @@ class OpenAIService:
                 return ext
         return None
 
-    async def resolve_whatsapp_audio(self, media_url: str, mimetype: str | None) -> str:
-        # Arquivo .enc = CDN do WhatsApp criptografado. O Evolution API precisa estar
-        # configurado para baixar e servir a mídia descriptografada (mediaUrl no payload).
+    @staticmethod
+    def _decrypt_whatsapp_enc(enc_bytes: bytes, media_key_b64: str) -> bytes:
+        """Descriptografa arquivo .enc do CDN do WhatsApp usando a mediaKey do payload.
+
+        Algoritmo oficial do WhatsApp:
+        1. HKDF-SHA256(media_key, info=b"WhatsApp Audio Keys", length=112)
+        2. iv = key_material[0:16], aes_key = key_material[16:48], mac_key = key_material[48:80]
+        3. ciphertext = enc_bytes[:-10], file_mac = enc_bytes[-10:]
+        4. Verifica HMAC-SHA256(mac_key, iv + ciphertext)[:10] == file_mac
+        5. Decripta AES-256-CBC(aes_key, iv, ciphertext) e remove padding PKCS7
+        """
+        media_key = base64.b64decode(media_key_b64 + "==")  # padding seguro
+
+        key_material = HKDF(
+            algorithm=SHA256(),
+            length=112,
+            salt=None,
+            info=b"WhatsApp Audio Keys",
+        ).derive(media_key)
+
+        iv = key_material[0:16]
+        aes_key = key_material[16:48]
+        mac_key = key_material[48:80]
+
+        ciphertext = enc_bytes[:-10]
+        file_mac = enc_bytes[-10:]
+
+        h = HMAC(mac_key, SHA256())
+        h.update(iv + ciphertext)
+        expected_mac = h.finalize()[:10]
+        if not hmac.compare_digest(expected_mac, file_mac):
+            raise AudioResolveError("mac_invalido")
+
+        cipher = Cipher(algorithms.AES(aes_key), modes.CBC(iv))
+        decryptor = cipher.decryptor()
+        padded = decryptor.update(ciphertext) + decryptor.finalize()
+
+        # Remove padding PKCS7
+        pad_len = padded[-1]
+        return padded[:-pad_len]
+
+    async def _download_and_decrypt_enc(self, media_url: str, media_key_b64: str, mimetype: str | None) -> str:
+        """Baixa o .enc e descriptografa, retorna path de arquivo temporário."""
+        try:
+            async with httpx.AsyncClient(timeout=120) as client:
+                response = await client.get(media_url)
+                response.raise_for_status()
+                enc_bytes = response.content
+        except Exception:
+            logger.exception("falha_download_enc | url=%s", media_url)
+            raise AudioResolveError("falha_download_audio")
+
+        try:
+            audio_bytes = self._decrypt_whatsapp_enc(enc_bytes, media_key_b64)
+        except AudioResolveError:
+            raise
+        except Exception:
+            logger.exception("falha_decriptacao | url=%s", media_url)
+            raise AudioResolveError("falha_decriptacao")
+
+        extension = self._extension_from_mimetype(mimetype) or ".ogg"
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=extension)
+        tmp.write(audio_bytes)
+        tmp.flush()
+        tmp.close()
+        logger.info("audio .enc descriptografado com sucesso | %d bytes | %s", len(audio_bytes), extension)
+        return tmp.name
+
+    async def resolve_whatsapp_audio(
+        self, media_url: str, mimetype: str | None, media_key: str | None = None
+    ) -> str:
         url_path = (media_url or "").lower().split("?")[0]
         if url_path.endswith(".enc"):
-            logger.error("audio_encriptado | Evolution nao descriptografou a midia | url=%s", media_url)
+            if media_key:
+                logger.info("audio_enc_detectado | descriptografando com mediaKey | url=%s", media_url)
+                return await self._download_and_decrypt_enc(media_url, media_key, mimetype)
+            logger.error("audio_encriptado | mediaKey ausente, nao e possivel descriptografar | url=%s", media_url)
             raise AudioResolveError("audio_encriptado")
 
         extension = self._extension_from_mimetype(mimetype) or self._extension_from_url(media_url)
@@ -135,17 +212,19 @@ class OpenAIService:
         media_url: str | None,
         mimetype: str | None = None,
         media_base64: str | None = None,
+        media_key: str | None = None,
     ) -> str:
         if not self.client:
             return ""
 
-        # Prefere base64 (Evolution "Webhook Based64") para evitar baixar arquivo
-        # criptografado do CDN do WhatsApp.
+        # Prioridade: base64 direto > descriptografar .enc com mediaKey > URL já descriptografada
         if media_base64:
             logger.info("transcricao via base64 | tamanho=%d bytes", len(media_base64))
             audio_path = self._save_base64_audio(media_base64, mimetype)
         elif media_url:
-            audio_path = await self.resolve_whatsapp_audio(media_url=media_url, mimetype=mimetype)
+            audio_path = await self.resolve_whatsapp_audio(
+                media_url=media_url, mimetype=mimetype, media_key=media_key
+            )
         else:
             raise AudioResolveError("sem_midia")
 
