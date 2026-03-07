@@ -25,7 +25,11 @@ PHONE_PATTERN = re.compile(r"(?:\+?55\s*)?(?:\(?\d{2}\)?\s*)?\d{4,5}[-\s]?\d{4}"
 app = FastAPI(title="IziClinic Invisible CRM")
 
 openai_service = OpenAIService(settings.openai_api_key)
-evolution_service = EvolutionService(settings.evolution_api_url, settings.evolution_api_key)
+evolution_service = EvolutionService(
+    settings.evolution_api_url,
+    settings.evolution_api_key,
+    settings.evolution_instance_name,
+)
 sheets_service: SheetsService | None = None
 
 # Limita o número de processamentos simultâneos de webhook para evitar
@@ -366,6 +370,9 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
             lead_id,
             extracted.activity.tipo,
             "whatsapp_group" if event.is_group else "whatsapp",
+            interpretation.action_type,
+            interpretation.confidence,
+            event.audio_seconds,
             raw_text,
             extracted.activity.resumo,
             extracted.followup_em,

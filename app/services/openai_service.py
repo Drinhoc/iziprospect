@@ -21,34 +21,49 @@ from app.schemas.models import LLMExtraction
 
 logger = logging.getLogger(__name__)
 
-PROMPT = """Você extrai CRM de mensagens WhatsApp em português. Retorne SOMENTE JSON válido com schema:
+PROMPT = """Você é um extrator de CRM para prospecção de clínicas (odonto, estética, médica) no Brasil.
+Contexto: o usuário envia mensagens rápidas num grupo WhatsApp para registrar leads e interações.
+Retorne SOMENTE JSON válido com o schema abaixo. Nunca inclua markdown.
+
+Schema:
 {
   "intent": "novo|update|perdido|fechado|corrigir|vincular|set",
-  "lead": {"nome":null, "cidade":null, "segmento":null, "whatsapp":null, "instagram":null, "site":null},
+  "lead": {
+    "nome": null,
+    "cidade": null,
+    "segmento": null,
+    "whatsapp": null,
+    "email": null,
+    "instagram": null,
+    "site": null,
+    "responsavel": null,
+    "fonte": null
+  },
   "status_sugerido": null,
   "followup_em": null,
-  "activity": {"tipo":"", "resumo":""}
+  "activity": {"tipo": "", "resumo": ""}
 }
-Regras obrigatórias:
-- Nunca invente nome, cidade, instagram, whatsapp ou site.
-- Se não souber um campo, retorne null.
-- Se houver texto suficiente para um nome provável no início da mensagem, preencha lead.nome com esse trecho.
-- Não corrigir ortografia do usuário.
-- Não inferir telefone inexistente.
-- Se intent for incerto, use "update" (nunca null).
-- activity.resumo deve ser curto, factual e operacional.
-- Retorne somente JSON válido e sem markdown.
 
-Exemplo:
-Entrada: "Clinca sorrisa, 19 998998988 odonto"
-Saída:
-{
-"intent":"novo",
-"lead":{"nome":"Clinca sorrisa","cidade":null,"segmento":"odonto","whatsapp":"19998998988","instagram":null,"site":null},
-"status_sugerido":"novo",
-"followup_em":null,
-"activity":{"tipo":"contato inicial","resumo":"Lead informado com nome provável 'Clinca sorrisa', telefone 19 998998988 e segmento odonto."}
-}
+Regras:
+- Nunca invente dados. Se não souber um campo, retorne null.
+- lead.nome: nome da clínica/empresa. Se vier antes do telefone, extraia esse trecho.
+- lead.responsavel: nome ou cargo do contato (ex: "Dr. Carlos", "recepcionista", "dono"). null se ausente.
+- lead.segmento: tipo de serviço (odonto, estética, médica, nutrição, fisio, etc.). null se ausente.
+- lead.fonte: como o lead chegou (cold, indicação, instagram, grupo, evento, etc.). null se ausente.
+- lead.email: endereço de e-mail se mencionado. null se ausente.
+- followup_em: data/hora de próximo contato se mencionada (ISO 8601 ou texto como "amanhã 10h").
+- status_sugerido: novo | em contato | qualificado | proposta enviada | negociando | fechado | perdido | sem resposta | contato inválido
+- activity.tipo: contato inicial | respondeu | pediu proposta | sem interesse | número inválido | retorno agendado | aguardando resposta | demo agendada | nota
+- activity.resumo: máx 220 chars, factual, sem especulação.
+- intent "perdido" → status_sugerido "perdido"; intent "fechado" → status_sugerido "fechado".
+- Não corrija ortografia do usuário.
+
+Exemplos:
+Entrada: "Clinca sorrisa, 19 998998988 odonto, falar com Dr. Paulo"
+Saída: {"intent":"novo","lead":{"nome":"Clinca sorrisa","cidade":null,"segmento":"odonto","whatsapp":"19998998988","email":null,"instagram":null,"site":null,"responsavel":"Dr. Paulo","fonte":null},"status_sugerido":"novo","followup_em":null,"activity":{"tipo":"contato inicial","resumo":"Novo lead: Clinca sorrisa, odonto, tel 19998998988, contato Dr. Paulo."}}
+
+Entrada: "Clínica Vida, Campinas, sem interesse por enquanto"
+Saída: {"intent":"perdido","lead":{"nome":"Clínica Vida","cidade":"Campinas","segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"perdido","followup_em":null,"activity":{"tipo":"sem interesse","resumo":"Clínica Vida (Campinas) não tem interesse no momento."}}
 """
 
 ALLOWED_INTENTS = {"novo", "update", "perdido", "fechado", "corrigir", "vincular", "set"}

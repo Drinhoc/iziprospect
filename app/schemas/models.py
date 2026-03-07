@@ -14,6 +14,7 @@ class NormalizedEvent(BaseModel):
     media_mimetype: Optional[str] = None
     media_base64: Optional[str] = None
     media_key: Optional[str] = None
+    audio_seconds: Optional[int] = None       # duração do áudio em segundos (do payload)
     raw_msg_key: Optional[Dict[str, Any]] = None
     raw_message_obj: Optional[Dict[str, Any]] = None
     timestamp: datetime = Field(default_factory=datetime.utcnow)
@@ -26,8 +27,11 @@ class LeadData(BaseModel):
     cidade: Optional[str] = None
     segmento: Optional[str] = None
     whatsapp: Optional[str] = None
+    email: Optional[str] = None
     instagram: Optional[str] = None
     site: Optional[str] = None
+    responsavel: Optional[str] = None        # nome/cargo do contato na clínica
+    fonte: Optional[str] = None              # como o lead chegou (cold, indicação, etc.)
 
 
 class ActivityData(BaseModel):

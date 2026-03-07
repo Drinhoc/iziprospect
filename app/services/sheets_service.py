@@ -17,15 +17,24 @@ from rapidfuzz import fuzz
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Schema definition
+# ---------------------------------------------------------------------------
+
 LEADS_HEADERS = [
     "lead_id",
     "nome",
     "cidade",
     "segmento",
     "whatsapp",
+    "email",
     "instagram",
     "site",
+    "responsavel",
+    "fonte",
     "status",
+    "prioridade",
+    "data_criacao",
     "ultima_interacao_em",
     "proximo_followup_em",
     "observacoes",
@@ -40,6 +49,9 @@ ATIV_HEADERS = [
     "lead_id",
     "tipo",
     "canal",
+    "acao_executada",
+    "confianca_ia",
+    "duracao_audio_s",
     "mensagem_bruta",
     "resumo",
     "followup_em",
@@ -66,6 +78,30 @@ GENERIC_NAME_TOKENS = {
     "estética",
 }
 
+# Colunas de LEADS que são copiadas/atualizadas a partir dos dados do lead
+LEAD_UPSERT_FIELDS = [
+    "nome", "cidade", "segmento", "whatsapp", "email",
+    "instagram", "site", "responsavel", "fonte",
+    "nome_normalizado", "cidade_normalizada", "lead_key",
+]
+
+
+def _col_letter(n: int) -> str:
+    """Converte número de coluna 1-indexado para letra(s) Excel (1→A, 27→AA)."""
+    result = ""
+    while n > 0:
+        n, r = divmod(n - 1, 26)
+        result = chr(65 + r) + result
+    return result
+
+
+def _row_range(row_idx: int, headers: List[str]) -> str:
+    return f"A{row_idx}:{_col_letter(len(headers))}{row_idx}"
+
+
+# ---------------------------------------------------------------------------
+# Retry decorator
+# ---------------------------------------------------------------------------
 
 def _gspread_retry(max_retries: int = 3, initial_delay: float = 1.0):
     """Decorator que reprocessa chamadas ao gspread em erros transientes (429, 500, 503)."""
@@ -92,6 +128,10 @@ def _gspread_retry(max_retries: int = 3, initial_delay: float = 1.0):
     return decorator
 
 
+# ---------------------------------------------------------------------------
+# Text helpers
+# ---------------------------------------------------------------------------
+
 def _strip_accents(value: str) -> str:
     return "".join(ch for ch in unicodedata.normalize("NFD", value) if unicodedata.category(ch) != "Mn")
 
@@ -116,7 +156,6 @@ def norm_phone(value: Optional[str]) -> str:
     if value is None:
         return ""
 
-    # Google Sheets pode devolver número como int/float em get_all_records.
     if isinstance(value, (int, float)):
         value = str(int(value))
     else:
@@ -132,6 +171,10 @@ def norm_phone(value: Optional[str]) -> str:
     return f"+{digits}" if digits else ""
 
 
+# ---------------------------------------------------------------------------
+# Match result
+# ---------------------------------------------------------------------------
+
 @dataclass
 class MatchResult:
     matched: Optional[Dict[str, str]]
@@ -140,31 +183,64 @@ class MatchResult:
     candidates: Optional[List[Dict[str, str]]] = None
 
 
+# ---------------------------------------------------------------------------
+# SheetsService
+# ---------------------------------------------------------------------------
+
 class SheetsService:
     def __init__(self, service_account_info: dict, sheet_id: str):
         scopes = ["https://www.googleapis.com/auth/spreadsheets"]
         creds = Credentials.from_service_account_info(service_account_info, scopes=scopes)
         self.gc = gspread.authorize(creds)
         self.sheet = self.gc.open_by_key(sheet_id)
-        self.ws_leads = self._get_or_create("LEADS", LEADS_HEADERS)
-        self.ws_ativ = self._get_or_create("ATIVIDADES", ATIV_HEADERS)
-        self.ws_rev = self._get_or_create("REVISAR", REV_HEADERS)
-        # Lock para evitar race condition na geração de lead_id
+        self.ws_leads = self._get_or_migrate("LEADS", LEADS_HEADERS)
+        self.ws_ativ = self._get_or_migrate("ATIVIDADES", ATIV_HEADERS)
+        self.ws_rev = self._get_or_migrate("REVISAR", REV_HEADERS)
         self._lock = threading.Lock()
 
-    def _get_or_create(self, title: str, headers: List[str]):
+    def _get_or_migrate(self, title: str, headers: List[str]):
+        """Cria a worksheet se não existir; se existir, migra colunas novas sem perder dados."""
         try:
             ws = self.sheet.worksheet(title)
         except gspread.WorksheetNotFound:
-            ws = self.sheet.add_worksheet(title=title, rows=1000, cols=len(headers) + 5)
-            ws.append_row(headers)
+            ws = self.sheet.add_worksheet(title=title, rows=2000, cols=len(headers) + 5)
+            ws.append_row(headers, value_input_option="RAW")
+            logger.info("sheet_created | title=%s cols=%d", title, len(headers))
             return ws
 
-        existing = ws.row_values(1)
-        if existing != headers:
-            ws.clear()
-            ws.append_row(headers)
+        existing_headers = ws.row_values(1)
+
+        if existing_headers == headers:
+            return ws  # já está atualizado
+
+        # Migração aditiva: adiciona colunas novas à direita sem mexer nos dados
+        new_cols = [h for h in headers if h not in existing_headers]
+        if new_cols:
+            # Reordena: constrói novo header completo com colunas existentes + novas
+            # Mantém colunas extras que não estão no schema (robustez)
+            merged = list(existing_headers)
+            for col in headers:
+                if col not in merged:
+                    merged.append(col)
+
+            # Preenche cabeçalhos
+            ws.update("A1", [merged], value_input_option="RAW")
+            logger.info(
+                "sheet_migrated | title=%s new_cols=%s",
+                title, new_cols,
+            )
+        else:
+            # Colunas iguais mas ordem diferente — apenas loga, não reordena (seguro)
+            logger.warning(
+                "sheet_header_mismatch | title=%s existing=%s expected=%s",
+                title, existing_headers, headers,
+            )
+
         return ws
+
+    def _header_map(self, ws) -> Dict[str, int]:
+        """Retorna mapa {nome_coluna: índice_0based} da primeira linha."""
+        return {h: i for i, h in enumerate(ws.row_values(1))}
 
     @_gspread_retry()
     def leads(self) -> List[Dict[str, str]]:
@@ -186,6 +262,7 @@ class SheetsService:
         all_leads = self.leads()
         whatsapp = norm_phone(lead.get("whatsapp"))
         insta = normalize_text(lead.get("instagram") or "")
+        email = (lead.get("email") or "").strip().lower()
 
         canonical_name = canonicalize_name(lead.get("nome") or "")
         lead_key = f"{normalize_text(lead.get('cidade') or '')}:{canonical_name}"
@@ -193,6 +270,9 @@ class SheetsService:
         for row in all_leads:
             if whatsapp and norm_phone(row.get("whatsapp")) == whatsapp:
                 return MatchResult(matched=row, score=1.0)
+        for row in all_leads:
+            if email and (row.get("email") or "").strip().lower() == email:
+                return MatchResult(matched=row, score=0.995)
         for row in all_leads:
             if insta and normalize_text(row.get("instagram") or "") == insta:
                 return MatchResult(matched=row, score=0.99)
@@ -241,9 +321,10 @@ class SheetsService:
     ) -> str:
         """Atualiza os campos de um lead existente pelo seu row index."""
         records = self.ws_leads.get_all_values()
+        headers = records[0]
         row_idx = next(i for i, row in enumerate(records, start=1) if i > 1 and row[0] == lead_id)
-        existing = dict(zip(LEADS_HEADERS, records[row_idx - 1]))
-        for key in ["nome", "cidade", "segmento", "whatsapp", "instagram", "site", "nome_normalizado", "cidade_normalizada", "lead_key"]:
+        existing = dict(zip(headers, records[row_idx - 1]))
+        for key in LEAD_UPSERT_FIELDS:
             if lead.get(key):
                 existing[key] = lead[key]
         existing["ultima_interacao_em"] = when.isoformat()
@@ -251,11 +332,18 @@ class SheetsService:
             existing["status"] = status
         if followup_em:
             existing["proximo_followup_em"] = followup_em
-        self.ws_leads.update(f"A{row_idx}:N{row_idx}", [[existing[h] for h in LEADS_HEADERS]])
+        rng = _row_range(row_idx, headers)
+        self.ws_leads.update(rng, [[existing.get(h, "") for h in headers]])
         return lead_id
 
     @_gspread_retry()
-    def upsert_lead(self, lead: Dict[str, str], status: Optional[str], followup_em: Optional[str], when: datetime) -> str:
+    def upsert_lead(
+        self,
+        lead: Dict[str, str],
+        status: Optional[str],
+        followup_em: Optional[str],
+        when: datetime,
+    ) -> str:
         lead = {k: (v or "") for k, v in lead.items()}
         lead["whatsapp"] = norm_phone(lead.get("whatsapp"))
         lead["nome_normalizado"] = normalize_text(lead.get("nome", ""))
@@ -264,15 +352,10 @@ class SheetsService:
         lead["lead_key"] = f"{lead['cidade_normalizada']}:{canonical_name}"
 
         match = self.match_lead(lead)
-        phone_in_new = lead["whatsapp"]  # já normalizado acima
+        phone_in_new = lead["whatsapp"]
 
-        # Telefone é identificador único. Se o novo lead tem telefone mas o match
-        # foi por similaridade de nome (não por telefone/instagram/lead_key),
-        # verifica se há conflito de telefone com o lead encontrado.
-        # Leads com telefones distintos são entidades distintas → cria novo lead.
         if phone_in_new and match.score < 0.95:
             if match.needs_review:
-                # Candidatos fuzzy têm telefones diferentes → novo lead
                 logger.info(
                     "upsert_lead: telefone único detectado, ignorando revisão fuzzy | phone=%s score=%.2f",
                     phone_in_new, match.score,
@@ -294,71 +377,120 @@ class SheetsService:
         if match.matched:
             return self._update_lead_row(match.matched["lead_id"], lead, status, followup_em, when)
 
-        # Sem match – usa lock para evitar race condition na geração do lead_id
+        # Sem match — usa lock para evitar race condition na geração do lead_id
         with self._lock:
-            # Re-verifica após adquirir o lock: outra thread pode ter criado o lead entre o match acima e o lock
             match2 = self.match_lead(lead)
             if match2.matched:
                 return self._update_lead_row(match2.matched["lead_id"], lead, status, followup_em, when)
 
             lead_id = self.next_lead_id()
-            row = {
+            now_iso = when.isoformat()
+            row_data = {
                 "lead_id": lead_id,
                 "status": status or "novo",
-                "ultima_interacao_em": when.isoformat(),
+                "prioridade": "media",
+                "data_criacao": now_iso,
+                "ultima_interacao_em": now_iso,
                 "proximo_followup_em": followup_em or "",
                 "observacoes": "",
-                **{k: lead.get(k, "") for k in ["nome", "cidade", "segmento", "whatsapp", "instagram", "site", "nome_normalizado", "cidade_normalizada", "lead_key"]},
+                **{k: lead.get(k, "") for k in LEAD_UPSERT_FIELDS},
             }
-            self.ws_leads.append_row([row.get(h, "") for h in LEADS_HEADERS])
+            # Usa os headers reais da sheet para ser resiliente a migração parcial
+            actual_headers = self.ws_leads.row_values(1)
+            self.ws_leads.append_row(
+                [row_data.get(h, "") for h in actual_headers],
+                value_input_option="RAW",
+            )
+            logger.info("novo_lead_criado | lead_id=%s nome=%s", lead_id, lead.get("nome"))
             return lead_id
 
     @_gspread_retry()
-    def add_activity(self, when: datetime, msg_id: str, lead_id: str, tipo: str, canal: str, mensagem_bruta: str, resumo: str, followup_em: Optional[str]):
-        self.ws_ativ.append_row([
-            when.isoformat(),
-            msg_id,
-            lead_id,
-            tipo,
-            canal,
-            mensagem_bruta,
-            resumo,
-            followup_em or "",
-        ])
+    def add_activity(
+        self,
+        when: datetime,
+        msg_id: str,
+        lead_id: str,
+        tipo: str,
+        canal: str,
+        acao_executada: str,
+        confianca_ia: float,
+        duracao_audio_s: Optional[int],
+        mensagem_bruta: str,
+        resumo: str,
+        followup_em: Optional[str],
+    ):
+        actual_headers = self.ws_ativ.row_values(1)
+        row_data = {
+            "data_hora": when.isoformat(),
+            "msg_id": msg_id,
+            "lead_id": lead_id,
+            "tipo": tipo,
+            "canal": canal,
+            "acao_executada": acao_executada,
+            "confianca_ia": f"{confianca_ia:.2f}" if confianca_ia is not None else "",
+            "duracao_audio_s": str(duracao_audio_s) if duracao_audio_s is not None else "",
+            "mensagem_bruta": mensagem_bruta,
+            "resumo": resumo,
+            "followup_em": followup_em or "",
+        }
+        self.ws_ativ.append_row(
+            [row_data.get(h, "") for h in actual_headers],
+            value_input_option="RAW",
+        )
 
     @_gspread_retry()
-    def add_review(self, when: datetime, mensagem_bruta: str, cidade_detectada: Optional[str], nome_detectado: Optional[str], candidatos: List[Dict[str, str]], acao: str):
+    def add_review(
+        self,
+        when: datetime,
+        mensagem_bruta: str,
+        cidade_detectada: Optional[str],
+        nome_detectado: Optional[str],
+        candidatos: List[Dict[str, str]],
+        acao: str,
+    ):
         cand = "; ".join(f"{c.get('lead_id')}:{c.get('nome')}" for c in candidatos)
-        self.ws_rev.append_row([when.isoformat(), mensagem_bruta, cidade_detectada or "", nome_detectado or "", cand, acao, ""])
+        self.ws_rev.append_row(
+            [when.isoformat(), mensagem_bruta, cidade_detectada or "", nome_detectado or "", cand, acao, ""],
+            value_input_option="RAW",
+        )
 
     @_gspread_retry()
     def update_lead_fields(self, lead_id: str, fields: Dict[str, str]) -> bool:
         records = self.ws_leads.get_all_values()
+        if not records:
+            return False
+        headers = records[0]
         for idx, row in enumerate(records[1:], start=2):
             if row[0] == lead_id:
-                current = dict(zip(LEADS_HEADERS, row))
+                current = dict(zip(headers, row))
                 current.update(fields)
                 if "nome" in fields:
                     current["nome_normalizado"] = normalize_text(current["nome"])
                 if "cidade" in fields:
                     current["cidade_normalizada"] = normalize_text(current["cidade"])
-                current["lead_key"] = f"{current['cidade_normalizada']}:{canonicalize_name(current['nome'])}"
-                self.ws_leads.update(f"A{idx}:N{idx}", [[current[h] for h in LEADS_HEADERS]])
+                current["lead_key"] = f"{current.get('cidade_normalizada', '')}:{canonicalize_name(current.get('nome', ''))}"
+                rng = _row_range(idx, headers)
+                self.ws_leads.update(rng, [[current.get(h, "") for h in headers]])
                 return True
         return False
 
     @_gspread_retry()
     def bind_latest_activity_to_lead(self, lead_id: str) -> bool:
-        # MVP: vincula na atividade mais recente que ainda não possui lead_id.
         records = self.ws_ativ.get_all_values()
         if len(records) < 2:
             return False
 
+        headers = records[0]
+        try:
+            lead_id_col = headers.index("lead_id") + 1  # 1-indexed
+        except ValueError:
+            lead_id_col = 3  # fallback
+
         for row_idx in range(len(records), 1, -1):
             row = records[row_idx - 1]
-            current_lead = row[2] if len(row) > 2 else ""
+            current_lead = row[lead_id_col - 1] if len(row) >= lead_id_col else ""
             if not str(current_lead).strip():
-                self.ws_ativ.update(f"C{row_idx}", [[lead_id]])
+                self.ws_ativ.update(f"{_col_letter(lead_id_col)}{row_idx}", [[lead_id]])
                 return True
         return False
 
@@ -367,9 +499,14 @@ class SheetsService:
         records = self.ws_ativ.get_all_values()
         if len(records) < 2:
             return ""
-        for row_idx in range(len(records), 1, -1):
-            row = records[row_idx - 1]
-            lead_id = row[2] if len(row) > 2 else ""
+        headers = records[0]
+        try:
+            lead_id_col = headers.index("lead_id")
+        except ValueError:
+            lead_id_col = 2  # fallback 0-indexed
+        for row_idx in range(len(records) - 1, 0, -1):
+            row = records[row_idx]
+            lead_id = row[lead_id_col] if len(row) > lead_id_col else ""
             if str(lead_id).strip():
                 return str(lead_id).strip()
         return ""

@@ -9,18 +9,28 @@ logger = logging.getLogger(__name__)
 
 
 class EvolutionService:
-    def __init__(self, base_url: str | None, api_key: str | None):
+    def __init__(self, base_url: str | None, api_key: str | None, instance_name: str | None = None):
         self.base_url = base_url
         self.api_key = api_key
+        self.instance_name = instance_name
 
     async def send_confirmation(self, chat_id: str, text: str) -> bool:
-        if not self.base_url or not self.api_key:
+        if not self.base_url or not self.api_key or not self.instance_name:
+            logger.debug("send_confirmation ignorado: base_url/api_key/instance_name ausente")
             return False
-        url = f"{self.base_url.rstrip('/')}/message/sendText"
-        headers = {"apikey": self.api_key}
-        payload = {"number": chat_id, "textMessage": {"text": text}}
+        # Evolution API v1/v2: POST /message/sendText/{instance}
+        url = f"{self.base_url.rstrip('/')}/message/sendText/{self.instance_name}"
+        headers = {"apikey": self.api_key, "Content-Type": "application/json"}
+        # v1 usa textMessage.text; v2 usa text direto — tenta v2 primeiro
+        payload = {"number": chat_id, "text": text}
         async with httpx.AsyncClient(timeout=20) as client:
             resp = await client.post(url, json=payload, headers=headers)
+            if resp.status_code == 404:
+                # Fallback para formato v1
+                payload_v1 = {"number": chat_id, "textMessage": {"text": text}}
+                resp = await client.post(url, json=payload_v1, headers=headers)
+        if not resp.is_success:
+            logger.warning("send_confirmation falhou | status=%s url=%s", resp.status_code, url)
         return resp.is_success
 
     async def fetch_audio_base64(
@@ -33,8 +43,6 @@ class EvolutionService:
 
         Fallback necessário quando o toggle 'Webhook Based64' do Evolution tem bug
         e não envia o base64 no payload do webhook.
-
-        Retorna a string base64 do áudio ou None em caso de falha.
         """
         if not self.base_url or not self.api_key:
             logger.warning("fetch_audio_base64 ignorado: base_url ou api_key ausente")
@@ -43,7 +51,6 @@ class EvolutionService:
         headers = {"apikey": self.api_key, "Content-Type": "application/json"}
         body = {"message": {"key": msg_key, "message": message_obj}, "convertToMp4": False}
 
-        # Tenta múltiplos paths pois o endpoint varia por versão do Evolution API
         candidate_paths = [
             f"/chat/getBase64FromMedia/{instance_name}",
             f"/message/getBase64FromMediaMessage/{instance_name}",

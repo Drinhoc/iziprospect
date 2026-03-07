@@ -123,6 +123,15 @@ def normalize_evolution_payload(payload: Dict[str, Any]) -> NormalizedEvent:
             media_key = _b64.b64encode(raw_bytes).decode()
         except Exception:
             pass
+    # Duração do áudio em segundos (presente no audioMessage do WhatsApp)
+    audio_seconds: Optional[int] = None
+    try:
+        raw_seconds = audio_msg.get("seconds") or audio_msg.get("duration")
+        if raw_seconds is not None:
+            audio_seconds = int(raw_seconds)
+    except (ValueError, TypeError):
+        pass
+
     is_audio = bool(
         message.get("audioMessage")
         or message.get("audio")
@@ -150,6 +159,7 @@ def normalize_evolution_payload(payload: Dict[str, Any]) -> NormalizedEvent:
         media_mimetype=media_mimetype,
         media_base64=media_base64,
         media_key=media_key if msg_type == "audio" else None,
+        audio_seconds=audio_seconds if msg_type == "audio" else None,
         raw_msg_key=raw_msg_key if msg_type == "audio" else None,
         raw_message_obj=raw_message_obj if msg_type == "audio" else None,
         timestamp=timestamp,
