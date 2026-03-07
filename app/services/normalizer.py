@@ -108,17 +108,24 @@ def normalize_evolution_payload(payload: Dict[str, Any]) -> NormalizedEvent:
     media_base64 = _first_non_empty(data.get("base64"), payload.get("base64"))
     # mediaKey vem dentro de audioMessage e é necessária para descriptografar o .enc
     audio_msg = message.get("audioMessage", {}) or message.get("audio", {}) or {}
+    raw_media_key = audio_msg.get("mediaKey") or data.get("mediaKey")
     if audio_msg:
         import logging as _logging
         _logging.getLogger(__name__).info(
-            "audioMessage_keys=%s | mediaKey_present=%s",
+            "audioMessage_keys=%s | mediaKey_present=%s | mediaKey_type=%s | mediaKey_val=%s",
             list(audio_msg.keys()),
             "mediaKey" in audio_msg,
+            type(raw_media_key).__name__,
+            str(raw_media_key)[:30] if raw_media_key is not None else "None",
         )
-    media_key = _first_non_empty(
-        audio_msg.get("mediaKey"),
-        data.get("mediaKey"),
-    )
+    # mediaKey pode vir como str (base64) ou bytes — normaliza para str
+    if isinstance(raw_media_key, bytes):
+        import base64 as _b64
+        media_key: Optional[str] = _b64.b64encode(raw_media_key).decode()
+    elif isinstance(raw_media_key, str) and raw_media_key.strip():
+        media_key = raw_media_key.strip()
+    else:
+        media_key = None
     is_audio = bool(
         message.get("audioMessage")
         or message.get("audio")
