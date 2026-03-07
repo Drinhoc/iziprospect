@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Any, Dict, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -13,6 +13,8 @@ class NormalizedEvent(BaseModel):
     media_url: Optional[str] = None
     media_mimetype: Optional[str] = None
     media_base64: Optional[str] = None
+    raw_msg_key: Optional[Dict[str, Any]] = None
+    raw_message_obj: Optional[Dict[str, Any]] = None
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     chat_id: str = ""
     is_group: bool = False

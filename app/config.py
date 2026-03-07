@@ -27,6 +27,7 @@ class Settings:
     evolution_webhook_secret: Optional[str]
     evolution_api_url: Optional[str]
     evolution_api_key: Optional[str]
+    evolution_instance_name: Optional[str]
     crm_target_group_id: Optional[str]
     disable_evolution_confirmation: bool
     default_timezone: str = "UTC"
@@ -41,6 +42,7 @@ class Settings:
             evolution_webhook_secret=os.getenv("EVOLUTION_WEBHOOK_SECRET"),
             evolution_api_url=os.getenv("EVOLUTION_API_URL"),
             evolution_api_key=os.getenv("EVOLUTION_API_KEY"),
+            evolution_instance_name=os.getenv("EVOLUTION_INSTANCE_NAME"),
             crm_target_group_id=(
                 os.getenv("CRM_TARGET_GROUP_ID")
                 or os.getenv("GROUP_ID_CRM_CONFIGURADO")
