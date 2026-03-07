@@ -20,6 +20,7 @@ class NormalizedEvent(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     chat_id: str = ""
     is_group: bool = False
+    from_me: bool = False  # True quando a mensagem foi enviada pelo próprio bot
 
 
 class LeadData(BaseModel):

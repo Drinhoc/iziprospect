@@ -151,6 +151,13 @@ def normalize_evolution_payload(payload: Dict[str, Any]) -> NormalizedEvent:
         or payload.get("timestamp")
     )
 
+    from_me = bool(
+        data_key.get("fromMe")
+        or payload_key.get("fromMe")
+        or data.get("fromMe")
+        or payload.get("fromMe")
+    )
+
     return NormalizedEvent(
         msg_id=msg_id,
         msg_type=msg_type,
@@ -165,4 +172,5 @@ def normalize_evolution_payload(payload: Dict[str, Any]) -> NormalizedEvent:
         timestamp=timestamp,
         chat_id=remote_jid or "",
         is_group=bool((remote_jid or "").endswith("@g.us") or participant),
+        from_me=from_me,
     )
