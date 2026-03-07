@@ -379,7 +379,7 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
         )
         extracted.activity.resumo = summary
 
-        # --- 1. DB: upsert lead (matching em SQLite) ---
+        # --- 1. DB: upsert lead (matching em PostgreSQL) ---
         lead_id = await asyncio.to_thread(
             db.upsert_lead,
             extracted.lead.model_dump(),
@@ -423,6 +423,13 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
                 extracted.lead.segmento,
                 extracted.status_sugerido,
                 recent_summaries,
+            )
+            # Fallback: se OpenAI falhou, usa o resumo da atividade mais recente
+            if not lead_resumo and recent_summaries:
+                lead_resumo = recent_summaries[0]
+            logger.info(
+                "lead_resumo | lead_id=%s resumo=%r pendencia=%r",
+                lead_id, lead_resumo[:60] if lead_resumo else "", extracted.pendencia,
             )
             await asyncio.to_thread(
                 db.update_lead_resumo_pendencia,

@@ -828,7 +828,7 @@ class SheetsService:
         logger.info("_apply_formatting OK | requests=%d", len(requests))
 
     # ------------------------------------------------------------------
-    # Seeding data — exporta dados existentes para o DB SQLite
+    # Seeding data — exporta dados existentes para o DB PostgreSQL
     # ------------------------------------------------------------------
 
     @_gspread_retry()
@@ -864,9 +864,11 @@ class SheetsService:
             if row and row[0] == lead_id:
                 existing = dict(zip(headers, row))
                 # Atualiza apenas os campos gerenciados pelo bot; preserva manuais
+                # Não sobrescreve com string vazia — preserva valor existente no Sheets
                 for field in LEAD_SYNC_FIELDS:
-                    if field in lead_dict and lead_dict[field] is not None:
-                        existing[field] = str(lead_dict[field])
+                    val = lead_dict.get(field)
+                    if val is not None and str(val).strip():
+                        existing[field] = str(val)
                 rng = _row_range(row_idx, headers)
                 self.ws_leads.update(rng, [[existing.get(h, "") for h in headers]])
                 return
