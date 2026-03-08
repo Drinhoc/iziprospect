@@ -798,6 +798,116 @@ class DBService:
         logger.info("update_lead_from_dashboard | lead_id=%s", lead_id)
         return True
 
+    def get_daily_summary(self, timezone_name: str = "UTC") -> Optional[Dict[str, Any]]:
+        """Returns data for the daily summary message.
+
+        Uses the given timezone to calculate 'today' and 'tomorrow'.
+        Returns None if there was no activity today (nothing to report).
+        """
+        from datetime import date, timedelta
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        try:
+            tz = ZoneInfo(timezone_name)
+        except (ZoneInfoNotFoundError, Exception):
+            tz = ZoneInfo("UTC")
+
+        from datetime import datetime as _dt
+        today = _dt.now(tz).date()
+        tomorrow = today + timedelta(days=1)
+        today_str = today.isoformat()
+        tomorrow_str = tomorrow.isoformat()
+
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                # Interactions today (real activities, not bot noise)
+                cur.execute(
+                    "SELECT COUNT(*) FROM atividades WHERE LEFT(data_hora, 10) = %s AND lead_id != ''",
+                    (today_str,),
+                )
+                interacoes = cur.fetchone()[0]
+
+                # If nothing happened today, don't send summary
+                if interacoes == 0:
+                    return None
+
+                # New leads today
+                cur.execute(
+                    "SELECT COUNT(*) FROM leads WHERE LEFT(data_criacao, 10) = %s",
+                    (today_str,),
+                )
+                leads_novos = cur.fetchone()[0]
+
+                # Follow-ups scheduled for today
+                cur.execute(
+                    """SELECT COUNT(*) FROM leads
+                       WHERE LEFT(proximo_followup_em, 10) = %s
+                         AND status NOT IN ('fechado', 'perdido', 'arquivado')""",
+                    (today_str,),
+                )
+                followups_hoje = cur.fetchone()[0]
+
+                # Last activities today (up to 5), with lead name
+                cur.execute(
+                    """SELECT a.resumo, a.acao_executada, l.nome
+                       FROM atividades a
+                       LEFT JOIN leads l ON a.lead_id = l.lead_id
+                       WHERE LEFT(a.data_hora, 10) = %s AND a.lead_id != ''
+                       ORDER BY a.data_hora DESC LIMIT 5""",
+                    (today_str,),
+                )
+                ultimas = [
+                    {"nome": r[2] or "?", "acao": r[1] or r[0] or ""}
+                    for r in cur.fetchall()
+                ]
+                # Total activities today (for "+N more" display)
+                total_atividades_hoje = interacoes
+
+                # Follow-ups for tomorrow
+                cur.execute(
+                    """SELECT COUNT(*) FROM leads
+                       WHERE LEFT(proximo_followup_em, 10) = %s
+                         AND status NOT IN ('fechado', 'perdido', 'arquivado')""",
+                    (tomorrow_str,),
+                )
+                followups_amanha = cur.fetchone()[0]
+
+                # Streak: consecutive days with at least 1 activity
+                cur.execute(
+                    """SELECT DISTINCT LEFT(data_hora, 10) as dia FROM atividades
+                       WHERE lead_id != '' ORDER BY dia DESC LIMIT 90"""
+                )
+                active_days = sorted(
+                    {r[0] for r in cur.fetchall()},
+                    reverse=True,
+                )
+                streak = 0
+                expected = today
+                for day_str in active_days:
+                    try:
+                        d = date.fromisoformat(day_str)
+                    except ValueError:
+                        continue
+                    if d == expected:
+                        streak += 1
+                        from datetime import timedelta as _td
+                        expected = expected - _td(days=1)
+                    elif d < expected:
+                        break
+
+                return {
+                    "leads_novos": leads_novos,
+                    "interacoes": interacoes,
+                    "followups_hoje": followups_hoje,
+                    "ultimas_atividades": ultimas,
+                    "total_atividades_hoje": total_atividades_hoje,
+                    "followups_amanha": followups_amanha,
+                    "streak_dias": streak,
+                }
+        finally:
+            self._put(conn)
+
     def delete_lead(self, lead_id: str) -> bool:
         """Hard-deletes a lead and its activities from the database."""
         conn = self._conn()

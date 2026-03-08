@@ -33,6 +33,9 @@ class Settings:
     database_url: Optional[str]
     default_timezone: str = "UTC"
     sheets_sync_interval_minutes: int = 15
+    daily_summary_hour: int = 18
+    daily_summary_minute: int = 30
+    disable_daily_summary: bool = False
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -55,6 +58,9 @@ class Settings:
             database_url=os.getenv("DATABASE_URL"),
             default_timezone=os.getenv("DEFAULT_TIMEZONE", "UTC"),
             sheets_sync_interval_minutes=int(os.getenv("SHEETS_SYNC_INTERVAL_MINUTES", "15")),
+            daily_summary_hour=int(os.getenv("DAILY_SUMMARY_HOUR", "18")),
+            daily_summary_minute=int(os.getenv("DAILY_SUMMARY_MINUTE", "30")),
+            disable_daily_summary=_as_bool(os.getenv("DISABLE_DAILY_SUMMARY"), default=False),
         )
 
     @staticmethod

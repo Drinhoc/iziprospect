@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from typing import Dict
+from typing import Any, Dict
 
 import pathlib
 
@@ -118,6 +118,103 @@ async def _start_sheets_sync_loop() -> None:
                 logger.warning("sheets_sync_loop falhou", exc_info=True)
 
     asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
+async def _start_daily_summary_loop() -> None:
+    asyncio.create_task(_daily_summary_loop())
+
+
+def _build_daily_summary_message(data: Dict[str, Any]) -> str:
+    """Formats the daily summary WhatsApp message.
+
+    RULE: must start with '.' to avoid the bot's own anti-loop filter.
+    """
+    lines = [". 📊 *Resumo do dia*", ""]
+
+    if data["leads_novos"]:
+        lines.append(f"Leads novos: {data['leads_novos']}")
+    lines.append(f"Interações: {data['interacoes']}")
+    if data["followups_hoje"]:
+        lines.append(f"Follow-ups agendados: {data['followups_hoje']}")
+
+    atividades = data["ultimas_atividades"]
+    total = data["total_atividades_hoje"]
+    if atividades:
+        lines.append("")
+        lines.append("Últimas atividades:")
+        for a in atividades:
+            nome = (a["nome"] or "").strip()
+            acao = (a["acao"] or "").strip()
+            item = f"• {nome}" + (f" — {acao}" if acao else "")
+            lines.append(item)
+        extra = total - len(atividades)
+        if extra > 0:
+            lines.append(f"+{extra} atividade{'s' if extra > 1 else ''}")
+
+    if data["followups_amanha"]:
+        lines.append("")
+        lines.append(f"📅 Follow-ups amanhã: {data['followups_amanha']}")
+
+    if data["streak_dias"] >= 2:
+        lines.append("")
+        lines.append(f"📈 Sequência ativa: {data['streak_dias']} dias")
+
+    return "\n".join(lines)
+
+
+async def _daily_summary_loop() -> None:
+    """Sends a daily WhatsApp summary at the configured time.
+
+    Checks once per minute. Skips silently if no activity happened today.
+    """
+    if settings.disable_daily_summary:
+        logger.info("daily_summary: desabilitado via DISABLE_DAILY_SUMMARY")
+        return
+
+    if not settings.crm_target_group_id:
+        logger.warning("daily_summary: CRM_TARGET_GROUP_ID não configurado, loop não iniciado")
+        return
+
+    last_sent_date: str = ""
+    logger.info(
+        "daily_summary_loop iniciado | hora=%02d:%02d tz=%s",
+        settings.daily_summary_hour,
+        settings.daily_summary_minute,
+        settings.default_timezone,
+    )
+
+    while True:
+        await asyncio.sleep(60)
+        try:
+            from zoneinfo import ZoneInfo
+            from datetime import datetime as _dt
+            now = _dt.now(ZoneInfo(settings.default_timezone))
+
+            if now.hour != settings.daily_summary_hour or now.minute != settings.daily_summary_minute:
+                continue
+
+            today_str = now.date().isoformat()
+            if last_sent_date == today_str:
+                continue  # already sent today
+
+            last_sent_date = today_str  # mark before to avoid retry on error
+
+            db = get_db_service()
+            data = await asyncio.to_thread(db.get_daily_summary, settings.default_timezone)
+            if data is None:
+                logger.info("daily_summary: sem atividade hoje, resumo não enviado")
+                continue
+
+            msg = _build_daily_summary_message(data)
+            group_id = _normalize_group_id(settings.crm_target_group_id)
+            await evolution_service.send_confirmation(group_id, msg)
+            logger.info(
+                "daily_summary enviado | leads_novos=%d interacoes=%d streak=%d",
+                data["leads_novos"], data["interacoes"], data["streak_dias"],
+            )
+        except Exception:
+            logger.warning("daily_summary_loop falhou", exc_info=True)
 
 
 def parse_kv_pairs(raw: str) -> Dict[str, str]:
