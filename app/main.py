@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from openai import APIError, RateLimitError
 
 from app.config import settings
-from app.services.crm_interpreter import extract_phone, interpret_crm_message
+from app.services.crm_interpreter import extract_phone, extract_status_override, interpret_crm_message
 from app.services.db_service import DBService
 from app.services.evolution_service import EvolutionService
 from app.services.normalizer import normalize_evolution_payload
@@ -655,6 +655,13 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
             extracted.status_sugerido = interpretation.status_sugerido
         if not extracted.activity.tipo or extracted.activity.tipo == "nota":
             extracted.activity.tipo = interpretation.activity_type
+
+        # Status override: usuário pode forçar status entre colchetes, ex: [qualificado]
+        # Tem precedência máxima — sobrescreve LLM e interpretador.
+        status_override = extract_status_override(raw_text)
+        if status_override:
+            extracted.status_sugerido = status_override
+            logger.info("status_override | lead=%s status=%s", extracted.lead.nome or "?", status_override)
 
         # Resultado de venda: sobrescreve status e tipo de atividade
         if interpretation.resultado_venda:

@@ -58,11 +58,22 @@ Regras:
   "qualificado"→"Enviar proposta", "proposta enviada"→"Aguardar retorno",
   "negociando"→"Fechar contrato", "fechado"→"Emitir contrato/NF".
   null APENAS para mensagens de nota pura sem ação decorrente.
-- status_sugerido: novo | em contato | qualificado | proposta enviada | negociando | fechado | perdido | sem resposta | contato inválido
 - activity.tipo: contato inicial | respondeu | pediu proposta | sem interesse | número inválido | retorno agendado | aguardando resposta | demo agendada | nota
 - activity.resumo: máx 220 chars, factual, sem especulação.
 - intent "perdido" → status_sugerido "perdido"; intent "fechado" → status_sugerido "fechado".
 - Não corrija ortografia do usuário.
+- STATUS OVERRIDE: se o usuário escrever explicitamente um status entre colchetes (ex: [qualificado], [negociando], [sem resposta]), use exatamente esse valor em status_sugerido, sem questionar.
+
+Guia de status_sugerido — escolha o que melhor descreve o ESTÁGIO ATUAL do lead:
+- "novo": nunca houve contato real. Lead recém identificado.
+- "em contato": já houve contato (ligação, mensagem, email), mas sem resposta ou ainda muito cedo. Prospect ciente mas não engajado.
+- "qualificado": prospect respondeu e demonstrou algum interesse genuíno (fez perguntas, pediu mais info, quer conhecer, achou interessante). Ainda não tem proposta.
+- "proposta enviada": proposta formal já foi enviada. Aguardando feedback/aprovação.
+- "negociando": prospect está discutindo detalhes de preço, condições, prazo, ajustes. Proposta em aberto com negociação ativa.
+- "fechado": venda confirmada, contrato assinado, cliente pagou.
+- "perdido": definitivamente não vai fechar. Sem interesse, rejeitou, caiu fora, sumiu definitivamente.
+- "sem resposta": múltiplas tentativas sem nenhuma resposta. Prospect ignorando ou inativo.
+- "contato inválido": número errado, email inválido, pessoa não existe nesse contato.
 
 Exemplos:
 Entrada: "Clinca sorrisa, 19 998998988 odonto, falar com Dr. Paulo"
@@ -76,6 +87,18 @@ Saída: {"intent":"update","lead":{"nome":"Clínica Sorrir","cidade":null,"segme
 
 Entrada: "Odonto Sul SP, liguei hoje, vai pensar e me liga semana que vem"
 Saída: {"intent":"update","lead":{"nome":"Odonto Sul","cidade":"SP","segmento":"odonto","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"em contato","followup_em":"semana que vem","pendencia":"Aguardar retorno da clínica","activity":{"tipo":"aguardando resposta","resumo":"Odonto Sul (SP): contato feito, aguardando retorno semana que vem."}}
+
+Entrada: "Studio Beleza BH, falei com a dona hoje, achou interessante, quer saber mais sobre os resultados, vou marcar uma demo"
+Saída: {"intent":"update","lead":{"nome":"Studio Beleza","cidade":"BH","segmento":"estética","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":"dona","fonte":null},"status_sugerido":"qualificado","followup_em":null,"pendencia":"Enviar proposta","activity":{"tipo":"demo agendada","resumo":"Studio Beleza (BH): dona demonstrou interesse genuíno, quer conhecer mais. Demo a agendar."}}
+
+Entrada: "Clínica Premium SP, tô negociando com o Dr. Ricardo, ele quer ajustar o prazo de pagamento pra 3x"
+Saída: {"intent":"update","lead":{"nome":"Clínica Premium","cidade":"SP","segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":"Dr. Ricardo","fonte":null},"status_sugerido":"negociando","followup_em":null,"pendencia":"Fechar contrato","activity":{"tipo":"nota","resumo":"Clínica Premium (SP): negociando com Dr. Ricardo condições de pagamento (3x)."}}
+
+Entrada: "OdontoVida RJ, tentei 3x essa semana, nenhuma resposta, nem viu as mensagens"
+Saída: {"intent":"update","lead":{"nome":"OdontoVida","cidade":"RJ","segmento":"odonto","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"sem resposta","followup_em":null,"pendencia":"Tentar novo contato em canal diferente","activity":{"tipo":"aguardando resposta","resumo":"OdontoVida (RJ): 3 tentativas sem resposta. Prospect inativo."}}
+
+Entrada: "Fisio Ativa SP [negociando], tô ajustando proposta com ela, quer desconto de 10%"
+Saída: {"intent":"update","lead":{"nome":"Fisio Ativa","cidade":"SP","segmento":"fisio","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"negociando","followup_em":null,"pendencia":"Fechar contrato","activity":{"tipo":"nota","resumo":"Fisio Ativa (SP): negociando desconto de 10%. Proposta em ajuste."}}
 """
 
 LEAD_SUMMARY_PROMPT = """Você é um assistente de CRM para prospecção de clínicas no Brasil.

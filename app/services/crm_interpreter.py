@@ -79,33 +79,84 @@ def parse_followup_from_text(raw_text: str, now: Optional[datetime] = None) -> O
 
 def infer_activity_type(raw_text: str) -> str:
     text = normalize_text(raw_text)
-    if "contato inicial" in text or "novo" in text:
+    if "contato inicial" in text or "novo lead" in text:
         return "contato inicial"
-    if "respondeu" in text:
-        return "respondeu"
-    if "proposta" in text:
-        return "pediu proposta"
-    if "sem interesse" in text:
+    if any(k in text for k in ["sem interesse", "nao quer", "nao tem interesse", "descartei"]):
         return "sem interesse"
-    if "numero errado" in text or "numero invalido" in text:
+    if any(k in text for k in ["numero errado", "numero invalido", "numero incorreto"]):
         return "número inválido"
-    if any(k in text for k in ["retornar", "retorno", "semana que vem", "amanha", "ligar"]):
+    if any(k in text for k in ["demo agendada", "agendei demo", "apresentacao marcada"]):
+        return "demo agendada"
+    if any(k in text for k in ["proposta enviada", "mandei proposta", "enviei proposta"]):
+        return "pediu proposta"
+    if "proposta" in text and any(k in text for k in ["vou mandar", "vou enviar", "mandar amanha", "enviar amanha"]):
+        return "pediu proposta"
+    if any(k in text for k in ["negociando", "ajustando proposta", "quer desconto", "pediu desconto", "parcelamento"]):
+        return "nota"
+    if "respondeu" in text or "me respondeu" in text:
+        return "respondeu"
+    if any(k in text for k in ["retornar", "retorno", "semana que vem", "amanha", "ligar depois", "follow"]):
         return "retorno agendado"
-    if "falei com" in text:
+    if any(k in text for k in ["falei", "liguei", "mandei mensagem", "tentei contato"]):
         return "aguardando resposta"
     return "registrar atividade"
 
 
+# Override explícito: usuário pode forçar status entre colchetes, ex: [qualificado]
+_STATUS_OVERRIDE_RE = re.compile(
+    r"\[\s*(novo|em contato|qualificado|proposta enviada|negociando|fechado|perdido|sem resposta|contato inv[aá]lido)\s*\]",
+    re.IGNORECASE,
+)
+
+_STATUS_NORMALIZE = {
+    "contato invalido": "contato inválido",
+    "contato inválido": "contato inválido",
+}
+
+
+def extract_status_override(raw_text: str) -> Optional[str]:
+    """Retorna o status explicitamente escrito pelo usuário entre colchetes, se houver.
+
+    Exemplo: "Clínica X [qualificado] - tá interessada" → "qualificado"
+    """
+    m = _STATUS_OVERRIDE_RE.search(raw_text or "")
+    if not m:
+        return None
+    val = m.group(1).lower().strip()
+    return _STATUS_NORMALIZE.get(val, val)
+
+
 def infer_status(raw_text: str) -> Optional[str]:
     text = normalize_text(raw_text)
-    if "sem interesse" in text:
-        return "perdido"
-    if "numero errado" in text or "numero invalido" in text:
+
+    # Contato inválido
+    if any(k in text for k in ["numero errado", "numero invalido", "numero incorreto", "nao existe", "nao tem whatsapp"]):
         return "contato inválido"
-    if "respondeu" in text:
+
+    # Perdido (verificar antes de genérico)
+    if any(k in text for k in ["sem interesse", "nao tem interesse", "nao quer", "descartei", "descartado", "caiu fora", "rejeitou"]):
+        return "perdido"
+
+    # Sem resposta
+    if any(k in text for k in ["sem resposta", "nao respondeu", "nao responde", "nenhuma resposta", "ignorando", "sumiu", "ghosting"]):
+        return "sem resposta"
+
+    # Negociando (verificar antes de proposta)
+    if any(k in text for k in ["negociando", "negociacao", "ajustando proposta", "quer desconto", "pediu desconto", "condicao de pagamento", "parcelamento"]):
+        return "negociando"
+
+    # Proposta enviada
+    if any(k in text for k in ["proposta enviada", "mandei proposta", "enviei proposta", "proposta mandada"]):
+        return "proposta enviada"
+
+    # Qualificado
+    if any(k in text for k in ["achou interessante", "quer saber mais", "pediu mais info", "quer conhecer", "demonstrou interesse", "interessou", "gostou bastante", "quer ver demo", "pediu demo"]):
+        return "qualificado"
+
+    # Em contato
+    if any(k in text for k in ["respondeu", "me respondeu", "retornou", "falei com", "liguei", "atendeu"]):
         return "em contato"
-    if "proposta" in text:
-        return "proposta"
+
     return None
 
 
