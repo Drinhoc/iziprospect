@@ -1,15 +1,16 @@
 /* estatisticas.js — Página /estatisticas */
 
-const FUNIL_ORDER = ['novo','em contato','sem resposta','qualificado','negociando','fechado'];
+const FUNIL_ORDER = ['novo','em contato','sem resposta','qualificado','em espera','negociando','fechado'];
 const FUNIL_COLORS = {
   'novo':             '#9ca3af',
   'em contato':       '#3b82f6',
+  'sem resposta':     '#6b7280',
   'qualificado':      '#8b5cf6',
+  'em espera':        '#d97706',
   'proposta enviada': '#f59e0b',
   'negociando':       '#f97316',
   'fechado':          '#10b981',
   'perdido':          '#ef4444',
-  'sem resposta':     '#6b7280',
   'contato inválido': '#d1d5db',
 };
 
@@ -270,6 +271,7 @@ function renderSegmentoDetalhado(data) {
     'em contato':       '#3b82f6',
     'sem resposta':     '#6b7280',
     'qualificado':      '#8b5cf6',
+    'em espera':        '#d97706',
     'negociando':       '#f97316',
     'fechado':          '#10b981',
     'perdido':          '#ef4444',

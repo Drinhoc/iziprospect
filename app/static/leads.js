@@ -30,6 +30,7 @@ function statusBadge(s) {
     'novo':             'badge-novo',
     'em contato':       'badge-em-contato',
     'qualificado':      'badge-qualificado',
+    'em espera':        'badge-em-espera',
     'proposta enviada': 'badge-proposta',
     'negociando':       'badge-negociando',
     'fechado':          'badge-fechado',

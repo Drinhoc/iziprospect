@@ -1058,3 +1058,6 @@ label {
   .seg-bar-row { grid-template-columns: 100px 1fr 32px; }
   .seg-bar-label { font-size: .72rem; }
 }
+
+/* em espera badge — amber */
+.badge-em-espera { background: #fef3c7; color: #92400e; }

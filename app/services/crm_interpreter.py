@@ -104,7 +104,7 @@ def infer_activity_type(raw_text: str) -> str:
 
 # Override explícito: usuário pode forçar status entre colchetes, ex: [qualificado]
 _STATUS_OVERRIDE_RE = re.compile(
-    r"\[\s*(novo|em contato|qualificado|negociando|fechado|perdido|sem resposta|contato inv[aá]lido)\s*\]",
+    r"\[\s*(novo|em contato|qualificado|em espera|negociando|fechado|perdido|sem resposta|contato inv[aá]lido)\s*\]",
     re.IGNORECASE,
 )
 
@@ -133,8 +133,13 @@ def infer_status(raw_text: str) -> Optional[str]:
     if any(k in text for k in ["numero errado", "numero invalido", "numero incorreto", "nao existe", "nao tem whatsapp"]):
         return "contato inválido"
 
+    # Em espera — você enviou proposta/avançou e aguarda retorno (lead estava engajado)
+    if any(k in text for k in ["enviei proposta", "mandei proposta", "proposta enviada", "proposta mandada",
+                                "aguardando retorno da proposta", "nao respondeu a proposta",
+                                "proposta sem resposta", "sem retorno da proposta"]):
+        return "em espera"
+
     # Sem resposta — verificar ANTES de perdido para evitar falso positivo
-    # "sumiu", "não retornou", "nenhuma resposta" → sem resposta (não perdido)
     if any(k in text for k in ["sem resposta", "nao respondeu", "nao responde", "nenhuma resposta",
                                 "ignorando", "sumiu", "ghosting", "nao retornou", "nunca mais",
                                 "nao deu retorno", "sem retorno", "ficou de retornar", "nao viu"]):
@@ -143,15 +148,11 @@ def infer_status(raw_text: str) -> Optional[str]:
     # Perdido — apenas rejeição explícita e ativa
     if any(k in text for k in ["sem interesse", "nao tem interesse", "nao quer", "descartei", "descartado",
                                 "caiu fora", "rejeitou", "pode tirar", "nao vai comprar", "nao precisa"]):
-        return "sem resposta"
+        return "perdido"
 
-    # Negociando (verificar antes de proposta)
+    # Negociando
     if any(k in text for k in ["negociando", "negociacao", "ajustando proposta", "quer desconto", "pediu desconto", "condicao de pagamento", "parcelamento"]):
         return "negociando"
-
-    # Proposta enviada
-    if any(k in text for k in ["proposta enviada", "mandei proposta", "enviei proposta", "proposta mandada"]):
-        return "proposta enviada"
 
     # Qualificado
     if any(k in text for k in ["achou interessante", "quer saber mais", "pediu mais info", "quer conhecer", "demonstrou interesse", "interessou", "gostou bastante", "quer ver demo", "pediu demo"]):

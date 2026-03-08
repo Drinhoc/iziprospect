@@ -71,14 +71,15 @@ Regras:
 
 Guia de status_sugerido — escolha o que melhor descreve o ESTÁGIO ATUAL do lead:
 - "novo": nunca houve contato real. Lead recém identificado.
-- "em contato": primeiro contato realizado, prospect pode ter respondido ou não, mas está dentro dos 5 primeiros dias desde o contato. Sem avanço definido ainda.
-- "sem resposta": passou mais de 5 dias sem retorno do prospect, ou o prospect claramente não respondeu após tentativas. Lead frio mas retomável.
+- "em contato": primeiro contato realizado, dentro dos 5 primeiros dias. Prospect pode ter respondido superficialmente, sem avanço definido.
+- "sem resposta": passou 5+ dias sem retorno após primeiro contato, ou prospect nunca respondeu. Lead frio mas retomável em ~60 dias.
 - "qualificado": prospect demonstrou interesse genuíno (fez perguntas, pediu mais info, quer conhecer, achou interessante). Alta prioridade.
-- "negociando": prospect gostou e está na fase de fechar negócio — discutindo preço, condições, prazo, ajustes.
+- "em espera": você enviou proposta / avançou na negociação e está AGUARDANDO retorno do prospect. Ele estava engajado antes. Use quando há proposta enviada ou reunião feita e o prospect sumiu temporariamente. Diferente de "sem resposta" que é lead que nunca engajou de verdade.
+- "negociando": prospect gostou e está ativamente discutindo fechar — preço, condições, prazo, ajustes.
 - "fechado": venda confirmada, contrato assinado, cliente pagou.
-- "perdido": APENAS quando o prospect disse explicitamente que NÃO quer ("não tenho interesse", "não vou comprar", "prefiro outro", "pode tirar meu contato"). NÃO use perdido só porque não respondeu.
+- "perdido": APENAS quando o prospect disse explicitamente que NÃO quer. NÃO use só porque não respondeu.
 - "contato inválido": número errado, email inválido, pessoa não existe nesse contato.
-Na dúvida entre "perdido" e "sem resposta", use SEMPRE "sem resposta".
+Na dúvida entre "perdido" e qualquer outro status, use SEMPRE o outro status.
 
 Exemplos:
 Entrada: "Clínica Sorriso, 19 998998988 odontologia, falar com Dr. Paulo"
@@ -110,6 +111,12 @@ Saída: {"intent":"update","lead":{"nome":"Fisio Ativa","cidade":"SP","segmento"
 
 Entrada: "Derma Estética Curitiba, falei com a Dra. Ana, ela faz procedimentos estéticos com laser médico"
 Saída: {"intent":"novo","lead":{"nome":"Derma Estética","cidade":"Curitiba","segmento":"medicina","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":"Dra. Ana","fonte":null},"status_sugerido":"novo","followup_em":null,"pendencia":"Fazer primeiro contato","activity":{"tipo":"contato inicial","resumo":"Derma Estética (Curitiba): Dra. Ana faz procedimentos com laser médico — segmento medicina."}}
+
+Entrada: "Clínica Sorrir SP, enviei a proposta semana passada, ainda não retornou"
+Saída: {"intent":"update","lead":{"nome":"Clínica Sorrir","cidade":"SP","segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"em espera","followup_em":null,"pendencia":"Fazer follow-up da proposta","activity":{"tipo":"aguardando resposta","resumo":"Clínica Sorrir (SP): proposta enviada, aguardando retorno do cliente."}}
+
+Entrada: "Odonto Norte BH, tivemos uma ótima reunião, mandei a proposta, ele achou caro mas ficou de ver com o sócio"
+Saída: {"intent":"update","lead":{"nome":"Odonto Norte","cidade":"BH","segmento":"odontologia","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"em espera","followup_em":null,"pendencia":"Aguardar retorno sobre proposta após análise com sócio","activity":{"tipo":"aguardando resposta","resumo":"Odonto Norte (BH): reunião feita, proposta enviada, prospect vai consultar sócio sobre o preço."}}
 """
 
 LEAD_SUMMARY_PROMPT = """Você é um assistente de CRM para prospecção de clínicas no Brasil.
@@ -137,7 +144,7 @@ Schema:
     "responsavel": null,
     "fonte": null
   },
-  "status_sugerido": "novo|em contato|sem resposta|qualificado|negociando|fechado|perdido|contato inválido",
+  "status_sugerido": "novo|em contato|sem resposta|qualificado|em espera|negociando|fechado|perdido|contato inválido",
   "resumo_conversa": "Resumo factual do fluxo da conversa. Máx 300 chars.",
   "confianca": 6,
   "confianca_razao": "Explicação direta e honesta do score.",

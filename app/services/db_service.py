@@ -118,7 +118,7 @@ def _title_case(value: str) -> str:
 
 def _priority_from_status(status: str) -> str:
     """Auto-calculate lead priority based on current status."""
-    if status in ("negociando", "qualificado"):
+    if status in ("negociando", "qualificado", "em espera"):
         return "alta"
     if status in ("em contato", "novo"):
         return "media"
@@ -1000,10 +1000,14 @@ class DBService:
             self._put(conn)
 
     def _auto_transition_em_contato(self) -> None:
-        """Automatically transitions 'em contato' leads to 'sem resposta' after 5 days without activity."""
+        """Auto-transitions stale leads based on inactivity:
+        - 'em contato' 5+ days → 'sem resposta' (never really engaged)
+        - 'qualificado' or 'negociando' 7+ days → 'em espera' (engaged but went silent)
+        """
         conn = self._conn()
         try:
             with conn.cursor() as cur:
+                # em contato → sem resposta (5 days, lead never really engaged)
                 cur.execute("""
                     UPDATE leads SET status = 'sem resposta', prioridade = 'baixa'
                     WHERE status = 'em contato'
@@ -1013,13 +1017,28 @@ class DBService:
                         OR LEFT(ultima_interacao_em, 10) < (CURRENT_DATE - INTERVAL '5 days')::text
                       )
                 """)
-                count = cur.rowcount
+                count_frio = cur.rowcount
+
+                # qualificado / negociando → em espera (7 days, was engaged but went silent)
+                cur.execute("""
+                    UPDATE leads SET status = 'em espera', prioridade = 'alta'
+                    WHERE status IN ('qualificado', 'negociando')
+                      AND (
+                        ultima_interacao_em IS NULL
+                        OR ultima_interacao_em = ''
+                        OR LEFT(ultima_interacao_em, 10) < (CURRENT_DATE - INTERVAL '7 days')::text
+                      )
+                """)
+                count_espera = cur.rowcount
+
             conn.commit()
-            if count > 0:
-                logger.info("auto_transition_em_contato | %d leads → sem resposta", count)
+            if count_frio > 0:
+                logger.info("auto_transition | %d leads em contato → sem resposta", count_frio)
+            if count_espera > 0:
+                logger.info("auto_transition | %d leads qualificado/negociando → em espera", count_espera)
         except Exception:
             conn.rollback()
-            logger.warning("auto_transition_em_contato falhou", exc_info=True)
+            logger.warning("auto_transition_leads falhou", exc_info=True)
         finally:
             self._put(conn)
 
@@ -1123,6 +1142,14 @@ class DBService:
         # Auto-calculate priority from status
         if "status" in safe_fields:
             safe_fields["prioridade"] = _priority_from_status(safe_fields["status"])
+
+        # Convert valor_venda: empty string is invalid for NUMERIC column
+        if "valor_venda" in safe_fields:
+            v = safe_fields["valor_venda"]
+            try:
+                safe_fields["valor_venda"] = float(v) if v != "" else 0
+            except (ValueError, TypeError):
+                safe_fields["valor_venda"] = 0
 
         set_clause = ", ".join(f"{k} = %s" for k in safe_fields)
         values = list(safe_fields.values()) + [lead_id]
