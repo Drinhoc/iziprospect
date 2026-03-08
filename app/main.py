@@ -534,6 +534,19 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
         if not extracted.activity.tipo or extracted.activity.tipo == "nota":
             extracted.activity.tipo = interpretation.activity_type
 
+        # Resultado de venda: sobrescreve status e tipo de atividade
+        if interpretation.resultado_venda:
+            extracted.status_sugerido = "fechado" if interpretation.resultado_venda == "ganho" else "perdido"
+            extracted.activity.tipo = (
+                "venda fechada" if interpretation.resultado_venda == "ganho"
+                else "oportunidade perdida"
+            )
+            logger.info(
+                "sales_result_detected | lead=%s resultado=%s",
+                extracted.lead.nome or "?",
+                interpretation.resultado_venda,
+            )
+
         # Fallback de pendência: se OpenAI retornou null mas status implica ação, infere
         if not extracted.pendencia and extracted.status_sugerido in _STATUS_PENDENCIA:
             extracted.pendencia = _STATUS_PENDENCIA[extracted.status_sugerido]

@@ -42,6 +42,7 @@ class CRMInterpretation:
     activity_type: str
     status_sugerido: Optional[str] = None
     followup_em: Optional[str] = None
+    resultado_venda: Optional[str] = None  # "ganho", "perdido", ou None
     confidence: float = 0.7
 
 
@@ -108,19 +109,56 @@ def infer_status(raw_text: str) -> Optional[str]:
     return None
 
 
+def detect_sales_result(raw_text: str) -> Optional[str]:
+    """Detecta resultado de venda na mensagem.
+
+    Retorna: "ganho", "perdido", ou None
+    """
+    text = normalize_text(raw_text)
+
+    ganho_indicators = {
+        "fechou", "venda fechada", "cliente fechou",
+        "negocio fechado", "contrato assinado", "virou cliente",
+        "fechamos", "assinado", "aprovado", "confirmou",
+        "ganhou", "conseguiu", "bateu",
+    }
+
+    perdido_indicators = {
+        "nao fechou", "perdemos", "cliente desistiu",
+        "nao avancou", "nao deu negocio", "descartado",
+        "parou", "nao vai dar", "rejeitou", "rejeitada",
+        "perdeu", "nao conseguiu", "caiu fora",
+    }
+
+    if any(ind in text for ind in ganho_indicators):
+        return "ganho"
+    if any(ind in text for ind in perdido_indicators):
+        return "perdido"
+    return None
+
+
 def interpret_crm_message(raw_text: str, has_name: bool, has_phone: bool) -> CRMInterpretation:
     followup = parse_followup_from_text(raw_text)
     activity_type = infer_activity_type(raw_text)
     status = infer_status(raw_text)
+    resultado = detect_sales_result(raw_text)
+
+    # Se detectado resultado de venda, sobrescreve o status sugerido
+    if resultado == "ganho":
+        status = "fechado"
+        activity_type = "venda fechada"
+    elif resultado == "perdido":
+        status = "perdido"
+        activity_type = "oportunidade perdida"
 
     if has_name and has_phone:
-        return CRMInterpretation("novo_lead", activity_type or "contato inicial", status or "novo", followup, confidence=0.93)
+        return CRMInterpretation("novo_lead", activity_type or "contato inicial", status or "novo", followup, resultado, confidence=0.93)
     if has_phone or has_name:
         action = "registrar_followup" if followup else "atualizar_lead"
-        return CRMInterpretation(action, activity_type, status, followup, confidence=0.86)
+        return CRMInterpretation(action, activity_type, status, followup, resultado, confidence=0.86)
 
     if followup or activity_type != "registrar atividade":
         action = "registrar_followup" if followup else "registrar_atividade"
-        return CRMInterpretation(action, activity_type, status, followup, confidence=0.72)
+        return CRMInterpretation(action, activity_type, status, followup, resultado, confidence=0.72)
 
-    return CRMInterpretation("revisao_manual", "registrar atividade", status, followup, confidence=0.45)
+    return CRMInterpretation("revisao_manual", "registrar atividade", status, followup, resultado, confidence=0.45)
