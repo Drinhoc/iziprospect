@@ -152,6 +152,10 @@ class DBService:
         try:
             with conn.cursor() as cur:
                 cur.execute(CREATE_TABLES_SQL)
+                # Migrações idempotentes: ADD COLUMN IF NOT EXISTS é seguro
+                cur.execute(
+                    "ALTER TABLE atividades ADD COLUMN IF NOT EXISTS confianca_analise INTEGER"
+                )
             conn.commit()
         finally:
             self._put(conn)
@@ -531,6 +535,7 @@ class DBService:
         mensagem_bruta: str,
         resumo: str,
         followup_em: Optional[str],
+        confianca_analise: Optional[int] = None,
     ) -> None:
         conn = self._conn()
         try:
@@ -538,12 +543,14 @@ class DBService:
                 cur.execute(
                     """INSERT INTO atividades (
                         data_hora, msg_id, lead_id, tipo, canal, acao_executada,
-                        confianca_ia, duracao_audio_s, mensagem_bruta, resumo, followup_em
-                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                        confianca_ia, duracao_audio_s, mensagem_bruta, resumo, followup_em,
+                        confianca_analise
+                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     ON CONFLICT (msg_id) DO NOTHING""",
                     (
                         when.isoformat(), msg_id, lead_id, tipo, canal, acao_executada,
                         confianca_ia, duracao_audio_s, mensagem_bruta, resumo, followup_em or "",
+                        confianca_analise,
                     ),
                 )
             conn.commit()
@@ -693,6 +700,51 @@ class DBService:
                 "criados_semana": criados_semana,
                 "recentes": recentes,
                 "proximos_followups": proximos_followups,
+            }
+        finally:
+            self._put(conn)
+
+    def get_analysis_stats(self) -> Dict[str, Any]:
+        """Agrega estatísticas das análises de conversa (ANALISAR:)."""
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT
+                        COUNT(*) as total,
+                        ROUND(AVG(confianca_analise)::numeric, 1) as avg_confianca,
+                        COUNT(CASE WHEN confianca_analise BETWEEN 1 AND 3 THEN 1 END) as baixa,
+                        COUNT(CASE WHEN confianca_analise BETWEEN 4 AND 6 THEN 1 END) as incerta,
+                        COUNT(CASE WHEN confianca_analise BETWEEN 7 AND 8 THEN 1 END) as promissora,
+                        COUNT(CASE WHEN confianca_analise BETWEEN 9 AND 10 THEN 1 END) as quase_certa
+                    FROM atividades
+                    WHERE tipo = 'análise de conversa' AND confianca_analise IS NOT NULL"""
+                )
+                row = cur.fetchone()
+                total = row[0] or 0
+                avg_confianca = float(row[1]) if row[1] is not None else None
+                distribuicao = {
+                    "baixa": row[2] or 0,
+                    "incerta": row[3] or 0,
+                    "promissora": row[4] or 0,
+                    "quase_certa": row[5] or 0,
+                }
+
+                cur.execute(
+                    """SELECT a.data_hora, a.lead_id, l.nome, a.confianca_analise, a.resumo
+                    FROM atividades a
+                    LEFT JOIN leads l ON a.lead_id = l.lead_id
+                    WHERE a.tipo = 'análise de conversa' AND a.confianca_analise IS NOT NULL
+                    ORDER BY a.data_hora DESC LIMIT 5"""
+                )
+                cols = [d[0] for d in cur.description]
+                recentes = [dict(zip(cols, r)) for r in cur.fetchall()]
+
+            return {
+                "total": total,
+                "avg_confianca": avg_confianca,
+                "distribuicao": distribuicao,
+                "recentes": recentes,
             }
         finally:
             self._put(conn)

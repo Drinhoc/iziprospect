@@ -120,6 +120,75 @@ async function loadDashboard() {
   }
 }
 
+// ===== Análises de Conversa =====
+
+function confEmoji(score) {
+  if (score >= 9) return '💚';
+  if (score >= 7) return '🟢';
+  if (score >= 4) return '🟡';
+  return '🔴';
+}
+
+function confLabel(score) {
+  if (score >= 9) return 'Quase certa';
+  if (score >= 7) return 'Promissora';
+  if (score >= 4) return 'Incerta';
+  return 'Baixa';
+}
+
+async function loadAnalises() {
+  try {
+    const res = await fetch('/api/analises/stats');
+    if (!res.ok) return;
+    const d = await res.json();
+
+    if (!d.total) return;  // Sem análises ainda — mantém seção oculta
+
+    document.getElementById('analises-section').style.display = '';
+
+    document.getElementById('analise-total').textContent = d.total;
+    document.getElementById('analise-avg').textContent =
+      d.avg_confianca !== null ? `${d.avg_confianca}/10` : '—';
+
+    // Distribuição
+    const dist = d.distribuicao || {};
+    const buckets = [
+      { key: 'baixa',       label: 'Baixa',       emoji: '🔴', color: '#ef4444' },
+      { key: 'incerta',     label: 'Incerta',      emoji: '🟡', color: '#f59e0b' },
+      { key: 'promissora',  label: 'Promissora',   emoji: '🟢', color: '#10b981' },
+      { key: 'quase_certa', label: 'Quase certa',  emoji: '💚', color: '#059669' },
+    ];
+    const distEl = document.getElementById('analise-dist');
+    distEl.innerHTML = '';
+    buckets.forEach(b => {
+      const n = dist[b.key] || 0;
+      const chip = document.createElement('div');
+      chip.className = 'analise-chip';
+      chip.style.borderColor = b.color;
+      chip.innerHTML = `<span class="analise-chip-emoji">${b.emoji}</span><span class="analise-chip-label">${b.label}</span><span class="analise-chip-count" style="color:${b.color}">${n}</span>`;
+      distEl.appendChild(chip);
+    });
+
+    // Últimas análises
+    const list = document.getElementById('analises-recentes');
+    list.innerHTML = '';
+    (d.recentes || []).forEach(a => {
+      const score = a.confianca_analise;
+      const li = document.createElement('li');
+      li.className = 'analise-item';
+      li.innerHTML = `
+        <span class="analise-score">${confEmoji(score)} ${score}/10</span>
+        <span class="analise-nome">${a.nome || a.lead_id || '—'}</span>
+        <span class="analise-resumo">${(a.resumo || '').slice(0, 80)}${(a.resumo || '').length > 80 ? '…' : ''}</span>
+        <span class="analise-data">${fmtDate(a.data_hora)}</span>`;
+      list.appendChild(li);
+    });
+  } catch (e) {
+    console.error('loadAnalises error:', e);
+  }
+}
+
 loadDashboard();
+loadAnalises();
 // Auto-refresh every 2 minutes
-setInterval(loadDashboard, 120_000);
+setInterval(() => { loadDashboard(); loadAnalises(); }, 120_000);

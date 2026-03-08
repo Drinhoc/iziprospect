@@ -530,7 +530,7 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
                     event.timestamp,
                 )
 
-            # Registra atividade
+            # Registra atividade com confianca_analise persistida para o dashboard
             await asyncio.to_thread(
                 db.add_activity,
                 event.timestamp,
@@ -544,7 +544,17 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
                 f"[ANALISAR] {conv_text[:500]}",
                 analysis.resumo_conversa,
                 analysis.followup_em,
+                analysis.confianca,  # confianca_analise (1-10)
             )
+
+            # Atualiza resumo e pendência do lead com os dados da análise
+            if conv_lead_id:
+                await asyncio.to_thread(
+                    db.update_lead_resumo_pendencia,
+                    conv_lead_id,
+                    analysis.resumo_conversa or None,
+                    analysis.proximo_passo or None,
+                )
 
             # Sync Sheets
             if conv_lead_id:

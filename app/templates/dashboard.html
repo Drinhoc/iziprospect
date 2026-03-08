@@ -68,6 +68,32 @@
     <ul class="mini-list" id="list-recentes"></ul>
   </div>
 </div>
+
+<!-- Análises de conversa -->
+<div class="analises-section" id="analises-section" style="display:none">
+  <h2 class="section-title">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    Análises de Conversa
+  </h2>
+
+  <!-- KPIs -->
+  <div class="analises-kpis">
+    <div class="analise-kpi">
+      <span class="analise-kpi-value" id="analise-total">—</span>
+      <span class="analise-kpi-label">análises</span>
+    </div>
+    <div class="analise-kpi">
+      <span class="analise-kpi-value" id="analise-avg">—</span>
+      <span class="analise-kpi-label">confiança média</span>
+    </div>
+  </div>
+
+  <!-- Distribuição -->
+  <div class="analise-dist" id="analise-dist"></div>
+
+  <!-- Últimas análises -->
+  <ul class="mini-list analises-list" id="analises-recentes"></ul>
+</div>
 {% endblock %}
 
 {% block scripts %}

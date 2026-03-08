@@ -762,5 +762,61 @@ label {
 .btn-cancel { background: var(--bg); color: var(--text); }
 .btn-archive { background: #fef2f2; color: #b91c1c; }
 
+/* ---------- Análises de Conversa ---------- */
+.analises-section {
+  margin: 28px 0 0;
+  padding: 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 16px;
+}
+.section-title svg { width: 18px; height: 18px; color: var(--primary); }
+.analises-kpis { display: flex; gap: 24px; margin-bottom: 16px; }
+.analise-kpi { display: flex; flex-direction: column; }
+.analise-kpi-value { font-size: 1.6rem; font-weight: 800; color: var(--primary); line-height: 1; }
+.analise-kpi-label { font-size: .75rem; color: var(--text-muted); margin-top: 2px; }
+.analise-dist { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+.analise-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border: 1.5px solid;
+  border-radius: 999px;
+  background: var(--bg);
+  font-size: .82rem;
+}
+.analise-chip-emoji { font-size: .9rem; }
+.analise-chip-label { color: var(--text-muted); }
+.analise-chip-count { font-weight: 700; font-size: .9rem; }
+.analises-list { list-style: none; padding: 0; margin: 0; }
+.analise-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: baseline;
+  gap: 8px 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: .85rem;
+}
+.analise-item:last-child { border-bottom: none; }
+.analise-score { font-weight: 700; white-space: nowrap; }
+.analise-nome { font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.analise-resumo { color: var(--text-muted); font-size: .8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.analise-data { color: var(--text-muted); font-size: .78rem; white-space: nowrap; }
+@media (max-width: 767px) {
+  .analise-item { grid-template-columns: auto 1fr auto; grid-template-rows: auto auto; }
+  .analise-resumo { grid-column: 1 / -1; }
+}
+
 /* ---------- Utilities ---------- */
 .hidden { display: none !important; }
