@@ -1418,3 +1418,88 @@ label {
   }
   .btn-aprovar, .btn-descartar { width: 100%; text-align: center; }
 }
+
+/* ===================================================
+   Dark Mode
+   =================================================== */
+
+/* Theme toggle — sidebar (desktop) */
+.sidebar-footer {
+  padding: 12px 10px 20px;
+  border-top: 1px solid var(--border);
+}
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: .88rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .12s, color .12s;
+  text-align: left;
+}
+.theme-toggle:hover { background: var(--bg); color: var(--text); }
+.theme-icon-sun { display: none; }
+.theme-label-light { display: none; }
+
+/* Theme toggle — topbar (mobile) */
+.theme-toggle-mobile {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.2rem;
+  padding: 4px 6px;
+  margin-left: auto;
+  line-height: 1;
+}
+.theme-toggle-mobile .theme-icon-sun { display: none; }
+
+/* Dark mode variables */
+:root.dark {
+  --bg: #0f172a;
+  --card: #1e293b;
+  --border: #334155;
+  --text: #f1f5f9;
+  --text-muted: #94a3b8;
+  --text-light: #64748b;
+  --shadow: 0 1px 3px rgba(0,0,0,.4), 0 1px 2px rgba(0,0,0,.3);
+  --shadow-md: 0 4px 6px rgba(0,0,0,.35), 0 2px 4px rgba(0,0,0,.25);
+}
+
+/* Dark mode: swap moon/sun icons */
+:root.dark .theme-icon-moon { display: none; }
+:root.dark .theme-icon-sun { display: inline; }
+:root.dark .theme-label-dark { display: none; }
+:root.dark .theme-label-light { display: inline; }
+:root.dark .theme-toggle-mobile .theme-icon-moon { display: none; }
+:root.dark .theme-toggle-mobile .theme-icon-sun { display: inline; }
+
+/* Dark mode: hardcoded white surfaces */
+:root.dark .sidebar { background: #1e293b; border-right-color: var(--border); }
+:root.dark .bottom-nav { background: #1e293b; border-top-color: var(--border); }
+:root.dark .topbar { background: #1e293b; box-shadow: 0 1px 0 var(--border); }
+:root.dark input,
+:root.dark select,
+:root.dark textarea { background: #0f172a; border-color: var(--border); color: var(--text); }
+:root.dark input::placeholder,
+:root.dark textarea::placeholder { color: var(--text-light); }
+
+/* Dark mode: active nav */
+:root.dark .nav-item.active { background: #1e3a5f; color: #60a5fa; }
+:root.dark .nav-item:hover { background: #0f172a; }
+
+/* Dark mode: status/priority badges that use hardcoded light bg */
+:root.dark .badge-wa { background: #064e3b; color: #6ee7b7; }
+:root.dark .badge-phone { background: #451a03; color: #fbbf24; }
+:root.dark .badge-no-contact { background: #1e293b; color: var(--text-muted); }
+:root.dark .badge-enriching { background: #0c4a6e; color: #7dd3fc; }
+:root.dark .badge-fonte { background: #2e1065; color: #c4b5fd; }
+:root.dark .badge-aprovado { background: #064e3b; color: #6ee7b7; }
+:root.dark .badge-descartado { background: #450a0a; color: #fca5a5; }
+:root.dark .badge-em-espera { background: #451a03; color: #fbbf24; }

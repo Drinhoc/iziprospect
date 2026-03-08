@@ -6,6 +6,10 @@
   <meta name="theme-color" content="#1a56db" />
   <title>{% block title %}IziProspect{% endblock %} — CRM</title>
   <link rel="stylesheet" href="/static/style.css" />
+  <script>
+    // Apply dark mode before paint to avoid flash
+    if (localStorage.getItem('theme') === 'dark') document.documentElement.classList.add('dark');
+  </script>
 </head>
 <body>
 
@@ -33,11 +37,23 @@
         Prospecção
       </a>
     </nav>
+    <div class="sidebar-footer">
+      <button class="theme-toggle" onclick="toggleTheme()" title="Alternar modo escuro">
+        <span class="theme-icon-moon">🌙</span>
+        <span class="theme-icon-sun">☀️</span>
+        <span class="theme-label-dark">Modo escuro</span>
+        <span class="theme-label-light">Modo claro</span>
+      </button>
+    </div>
   </aside>
 
   <!-- Mobile top bar -->
   <header class="topbar">
     <span class="topbar-logo">⚡ IziProspect</span>
+    <button class="theme-toggle-mobile" onclick="toggleTheme()" title="Alternar tema">
+      <span class="theme-icon-moon">🌙</span>
+      <span class="theme-icon-sun">☀️</span>
+    </button>
   </header>
 
   <!-- Main content -->
@@ -66,5 +82,12 @@
   </nav>
 
   {% block scripts %}{% endblock %}
+
+  <script>
+    function toggleTheme() {
+      const isDark = document.documentElement.classList.toggle('dark');
+      localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    }
+  </script>
 </body>
 </html>
