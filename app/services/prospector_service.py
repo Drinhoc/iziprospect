@@ -5,8 +5,11 @@ Sources (all free, no API key required):
   2. Telelistas.net              — Brazilian yellow-pages (HTML scraping)
   3. Apontador.com.br            — Brazilian business directory (HTML scraping)
 
-Enrichment:
-  - Visits each found website and looks for wa.me / WhatsApp links / cell numbers.
+Enrichment pipeline (in order):
+  1. If source phone is already mobile (9-digit after DDD) → mark as WhatsApp directly
+  2. Visit website homepage → look for wa.me links / cell numbers
+  3. Visit contact subpages → /contato, /fale-conosco, /contact
+  4. DuckDuckGo organic search → "{nome} {cidade} whatsapp" → wa.me in snippets
 """
 from __future__ import annotations
 
@@ -16,6 +19,7 @@ import re
 import unicodedata
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from urllib.parse import quote_plus
 from uuid import uuid4
 
 import httpx
@@ -62,13 +66,22 @@ _OSM_TAGS: Dict[str, Tuple[str, str]] = {
 _DEFAULT_OSM_TAG = ("amenity", "clinic")
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+DDG_URL = "https://html.duckduckgo.com/html/"
 
-_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-_HEADERS = {"User-Agent": _UA}
+_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+_HEADERS = {
+    "User-Agent": _UA,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.5",
+}
 
-# Regex: Brazilian mobile number with DDD (starts with 9, 8 digits, with optional DDD)
+# Contact subpages to try during enrichment
+_CONTACT_PATHS = ["/contato", "/fale-conosco", "/contact", "/contatos", "/fale-com-a-gente", "/atendimento"]
+
+# Regex patterns
 _CELL_RE = re.compile(r"\(?\d{2}\)?\s*9\d{4}[-\s]?\d{4}")
 _WAME_RE = re.compile(r"wa\.me/(?:55)?(\d{10,11})")
+_WA_API_RE = re.compile(r"api\.whatsapp\.com/send\?phone=(?:55)?(\d{10,11})")
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +107,17 @@ def _norm_phone(raw: str) -> str:
     return f"+{digits}"
 
 
+def _is_mobile_br(phone: str) -> bool:
+    """Brazilian mobile: 2-digit DDD + 9-digit subscriber starting with '9'.
+    Examples: +55 19 9xxxx-xxxx (13 digits total with country code).
+    """
+    digits = "".join(c for c in (phone or "") if c.isdigit())
+    if digits.startswith("55"):
+        digits = digits[2:]
+    # Must be exactly 11 digits and 3rd digit (first of subscriber) == '9'
+    return len(digits) == 11 and digits[2] == "9"
+
+
 def _parse_cidade_estado(cidade: str) -> Tuple[str, str]:
     """'Limeira SP' → ('Limeira', 'SP'); 'São Paulo' → ('São Paulo', '')"""
     parts = cidade.strip().rsplit(None, 1)
@@ -103,14 +127,22 @@ def _parse_cidade_estado(cidade: str) -> Tuple[str, str]:
 
 
 def _extract_wame_phone(href: str) -> str:
+    """Extract and normalize phone number from wa.me or api.whatsapp.com link."""
+    # Try wa.me pattern
     m = _WAME_RE.search(href)
     if m:
         digits = m.group(1)
-        if len(digits) == 10:
-            digits = f"55{digits}"
-        elif len(digits) == 11:
+        if not digits.startswith("55"):
             digits = f"55{digits}"
         return f"+{digits}"
+    # Try api.whatsapp.com pattern
+    m = _WA_API_RE.search(href)
+    if m:
+        digits = m.group(1)
+        if not digits.startswith("55"):
+            digits = f"55{digits}"
+        return f"+{digits}"
+    # Fallback: extract all digits
     digits = "".join(c for c in href if c.isdigit())
     if len(digits) >= 10:
         if not digits.startswith("55"):
@@ -147,12 +179,16 @@ class ProspectorService:
         fonte_busca = f"{segmento} em {cidade}"
 
         tasks = []
+        fonte_names = []
         if "osm" in fontes:
             tasks.append(self._search_osm(segmento, cidade, limit, busca_id, fonte_busca))
+            fonte_names.append("osm")
         if "telelistas" in fontes:
             tasks.append(self._search_telelistas(segmento, cidade, limit, busca_id, fonte_busca))
+            fonte_names.append("telelistas")
         if "apontador" in fontes:
             tasks.append(self._search_apontador(segmento, cidade, limit, busca_id, fonte_busca))
+            fonte_names.append("apontador")
 
         if not tasks:
             return {"busca_id": busca_id, "total": 0, "por_fonte": {}}
@@ -161,7 +197,6 @@ class ProspectorService:
 
         por_fonte: Dict[str, int] = {}
         total = 0
-        fonte_names = [f for f in ["osm", "telelistas", "apontador"] if f in fontes]
         for fonte_name, result in zip(fonte_names, results):
             if isinstance(result, int):
                 por_fonte[fonte_name] = result
@@ -173,17 +208,42 @@ class ProspectorService:
         return {"busca_id": busca_id, "total": total, "por_fonte": por_fonte}
 
     async def enrich_batch(self, busca_id: str) -> None:
-        """Background task: visit each prospect website and look for WhatsApp."""
+        """Background task: enrich ALL unenriched prospects from a busca.
+
+        Pipeline per prospect:
+          1. If source phone is already mobile → already stored as whatsapp (done in search)
+          2. Visit website (homepage + contact subpages)
+          3. DuckDuckGo search as last resort
+        """
         prospects = await asyncio.to_thread(self.db.get_prospects_to_enrich, busca_id)
         logger.info("enrich_batch | busca_id=%s count=%d", busca_id, len(prospects))
+
         for p in prospects:
+            # Skip enrichment if already has WhatsApp (from mobile source phone)
+            if p.get("whatsapp"):
+                await asyncio.to_thread(
+                    self.db.update_prospect, p["id"], {"enriquecido": 1}
+                )
+                continue
+
             enriched: Dict[str, Any] = {"enriquecido": 1}
-            if p.get("website"):
-                try:
+            try:
+                if p.get("website"):
                     found = await self._enrich_website(p["website"])
-                    enriched.update(found)
-                except Exception as exc:
-                    logger.debug("enrich_website failed url=%s: %s", p["website"], exc)
+                    if found:
+                        enriched.update(found)
+
+                # DuckDuckGo fallback if still no WhatsApp
+                if not enriched.get("whatsapp") and p.get("nome"):
+                    found_wa = await self._ddg_search_whatsapp(p["nome"], p.get("cidade", ""))
+                    if found_wa:
+                        enriched["whatsapp"] = found_wa
+                        logger.info(
+                            "ddg_found_wa | nome=%s wa=%s", p["nome"], found_wa
+                        )
+            except Exception as exc:
+                logger.debug("enrich failed id=%d: %s", p["id"], exc)
+
             await asyncio.to_thread(self.db.update_prospect, p["id"], enriched)
 
     # ------------------------------------------------------------------
@@ -198,7 +258,6 @@ class ProspectorService:
 
         cidade_nome, estado = _parse_cidade_estado(cidade)
 
-        # Build Overpass query
         query = (
             f'[out:json][timeout:25];'
             f'area[name="{cidade_nome}"]->.a;'
@@ -211,11 +270,7 @@ class ProspectorService:
 
         try:
             async with httpx.AsyncClient(timeout=30) as client:
-                r = await client.post(
-                    OVERPASS_URL,
-                    data={"data": query},
-                    headers=_HEADERS,
-                )
+                r = await client.post(OVERPASS_URL, data={"data": query}, headers=_HEADERS)
             r.raise_for_status()
             elements = r.json().get("elements", [])
         except Exception as exc:
@@ -229,23 +284,24 @@ class ProspectorService:
             if not nome:
                 continue
 
-            tags_addr = (
-                tags.get("addr:street", "")
-                + " " + tags.get("addr:housenumber", "")
+            phone_raw = (
+                tags.get("phone", "")
+                or tags.get("contact:phone", "")
+                or tags.get("contact:mobile", "")
             ).strip()
-            endereco = tags_addr or tags.get("addr:full", "")
+            phone = _norm_phone(phone_raw)
+            # If OSM has a mobile number, it's likely WhatsApp already
+            whatsapp = phone if _is_mobile_br(phone) else ""
 
-            phone_raw = tags.get("phone", "") or tags.get("contact:phone", "")
             website = (
                 tags.get("website", "")
                 or tags.get("contact:website", "")
                 or tags.get("url", "")
             ).strip()
 
-            # Build Maps link from coordinates
             lat = el.get("lat") or (el.get("center") or {}).get("lat")
             lon = el.get("lon") or (el.get("center") or {}).get("lon")
-            link_maps = f"https://www.openstreetmap.org/node/{el['id']}" if el.get("type") == "node" else ""
+            link_maps = ""
             if lat and lon:
                 link_maps = f"https://maps.google.com/?q={lat},{lon}"
 
@@ -255,7 +311,8 @@ class ProspectorService:
                     "nome": nome,
                     "cidade": cidade_nome,
                     "segmento": segmento,
-                    "telefone": _norm_phone(phone_raw),
+                    "telefone": phone,
+                    "whatsapp": whatsapp,
                     "website": website,
                     "link_maps": link_maps,
                     "fonte": "OpenStreetMap",
@@ -285,7 +342,7 @@ class ProspectorService:
         url = f"https://www.telelistas.net/{seg_slug}/{estado_lower}/{cid_slug}/"
         try:
             async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
-                r = await client.get(url, headers={**_HEADERS, "Accept-Language": "pt-BR,pt;q=0.9"})
+                r = await client.get(url, headers=_HEADERS)
         except Exception as exc:
             logger.debug("telelistas_fetch falhou url=%s: %s", url, exc)
             return 0
@@ -297,7 +354,6 @@ class ProspectorService:
         soup = BeautifulSoup(r.text, "html.parser")
         inserted = 0
 
-        # Try to find listing blocks — Telelistas uses various class names
         items = (
             soup.select(".listing-item")
             or soup.select(".tel-result-item")
@@ -318,7 +374,6 @@ class ProspectorService:
             if not nome or len(nome) < 3:
                 continue
 
-            # Phone: look for tel: links or spans with phone-like text
             phone = ""
             tel_link = item.find("a", href=re.compile(r"^tel:"))
             if tel_link:
@@ -330,7 +385,8 @@ class ProspectorService:
                     if m:
                         phone = _norm_phone(m.group(0))
 
-            # Website
+            whatsapp = phone if _is_mobile_br(phone) else ""
+
             website = ""
             for a in item.find_all("a", href=True):
                 href = a["href"]
@@ -345,6 +401,7 @@ class ProspectorService:
                     "cidade": cidade_nome,
                     "segmento": segmento,
                     "telefone": phone,
+                    "whatsapp": whatsapp,
                     "website": website,
                     "fonte": "Telelistas",
                     "fonte_busca": fonte_busca,
@@ -373,7 +430,7 @@ class ProspectorService:
         url = f"https://www.apontador.com.br/local/{estado_lower}/{cid_slug}/{seg_slug}/"
         try:
             async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
-                r = await client.get(url, headers={**_HEADERS, "Accept-Language": "pt-BR,pt;q=0.9"})
+                r = await client.get(url, headers=_HEADERS)
         except Exception as exc:
             logger.debug("apontador_fetch falhou url=%s: %s", url, exc)
             return 0
@@ -385,7 +442,6 @@ class ProspectorService:
         soup = BeautifulSoup(r.text, "html.parser")
         inserted = 0
 
-        # Apontador results — look for result cards
         items = (
             soup.select(".place-item")
             or soup.select(".result-item")
@@ -411,6 +467,8 @@ class ProspectorService:
             if tel_link:
                 phone = _norm_phone(tel_link["href"].replace("tel:", ""))
 
+            whatsapp = phone if _is_mobile_br(phone) else ""
+
             website = ""
             for a in item.find_all("a", href=True):
                 href = a["href"]
@@ -428,6 +486,7 @@ class ProspectorService:
                     "cidade": cidade_nome,
                     "segmento": segmento,
                     "telefone": phone,
+                    "whatsapp": whatsapp,
                     "website": website,
                     "fonte": "Apontador",
                     "fonte_busca": fonte_busca,
@@ -443,58 +502,121 @@ class ProspectorService:
         return inserted
 
     # ------------------------------------------------------------------
-    # Enrichment: visit website, find WhatsApp
+    # Enrichment: website scraping (multi-page) + DuckDuckGo fallback
     # ------------------------------------------------------------------
 
     async def _enrich_website(self, url: str) -> Dict[str, Any]:
-        """Returns dict with keys: whatsapp, instagram (both optional)."""
+        """Try homepage + contact subpages. Return first WhatsApp found."""
         if not url.startswith("http"):
             url = f"https://{url}"
 
-        async with httpx.AsyncClient(timeout=12, follow_redirects=True) as client:
+        # Step 1: homepage
+        result = await self._scrape_page_for_wa(url)
+        if result.get("whatsapp"):
+            return result
+
+        # Step 2: try contact subpages
+        base = url.rstrip("/")
+        for path in _CONTACT_PATHS:
+            try:
+                page_result = await self._scrape_page_for_wa(base + path)
+                if page_result.get("whatsapp"):
+                    return page_result
+            except Exception:
+                continue  # subpage may 404, that's fine
+
+        # Return whatever we have (may have instagram even without WhatsApp)
+        return result
+
+    async def _scrape_page_for_wa(self, url: str) -> Dict[str, Any]:
+        """Scrape a single URL for WhatsApp links / mobile numbers."""
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
             r = await client.get(url, headers=_HEADERS)
+        if r.status_code >= 400:
+            return {}
 
         soup = BeautifulSoup(r.text, "html.parser")
         result: Dict[str, Any] = {}
 
-        # 1. wa.me links (highest priority)
+        # 1. wa.me or api.whatsapp.com links in <a href>
         for a in soup.find_all("a", href=True):
             href = a["href"]
-            if "wa.me" in href or "api.whatsapp.com/send" in href:
+            if "wa.me" in href or "api.whatsapp.com" in href:
                 phone = _extract_wame_phone(href)
                 if phone:
-                    result["whatsapp"] = phone
-                    return result
+                    return {"whatsapp": phone}
 
-        # 2. WhatsApp button / text with phone number nearby
-        text = soup.get_text(separator=" ")
-        wa_idx = text.lower().find("whatsapp")
+        # 2. wa.me anywhere in raw HTML (sometimes in JS variables or data attributes)
+        raw_html = r.text
+        for m in _WAME_RE.finditer(raw_html):
+            digits = m.group(1)
+            if not digits.startswith("55"):
+                digits = f"55{digits}"
+            return {"whatsapp": f"+{digits}"}
+
+        # 3. WhatsApp button/text: look for "whatsapp" text near a phone number
+        page_text = soup.get_text(separator=" ")
+        wa_idx = page_text.lower().find("whatsapp")
         if wa_idx >= 0:
-            snippet = text[max(0, wa_idx - 20): wa_idx + 80]
+            snippet = page_text[max(0, wa_idx - 30): wa_idx + 100]
             m = _CELL_RE.search(snippet)
             if m:
-                result["whatsapp"] = _norm_phone(m.group(0))
-                return result
+                return {"whatsapp": _norm_phone(m.group(0))}
 
-        # 3. tel: links — look for mobile numbers (starts with 9)
+        # 4. tel: links matching mobile pattern
         for a in soup.find_all("a", href=re.compile(r"^tel:")):
-            raw = a["href"].replace("tel:", "").replace("+", "")
-            digits = "".join(c for c in raw if c.isdigit())
-            # Mobile: last 9 digits start with 9, and total >= 10 digits
-            if len(digits) >= 10 and (digits[-9] == "9" if len(digits) >= 9 else False):
-                result["whatsapp"] = _norm_phone(raw)
-                return result
+            raw = a["href"].replace("tel:", "").replace("+", "").replace(" ", "")
+            normalized = _norm_phone(raw)
+            if _is_mobile_br(normalized):
+                return {"whatsapp": normalized}
 
-        # 4. Any cell number in page text
-        m = _CELL_RE.search(text)
+        # 5. Any cell number in page text (last resort — less reliable)
+        m = _CELL_RE.search(page_text)
         if m:
             result["whatsapp"] = _norm_phone(m.group(0))
             return result
 
-        # 5. Instagram link (as a fallback, useful for future enrichment)
+        # 6. Instagram link (useful for future enrichment)
         for a in soup.find_all("a", href=True):
-            if "instagram.com/" in a["href"] and "instagram.com/p/" not in a["href"]:
-                result["instagram"] = a["href"].split("?")[0].rstrip("/")
+            href = a["href"]
+            if "instagram.com/" in href and "/p/" not in href and "/reel" not in href:
+                result["instagram"] = href.split("?")[0].rstrip("/")
                 break
 
         return result
+
+    async def _ddg_search_whatsapp(self, nome: str, cidade: str) -> str:
+        """Search DuckDuckGo HTML for '{nome} {cidade} whatsapp' → extract wa.me number.
+
+        DuckDuckGo HTML version is scraper-friendly and often shows wa.me links
+        directly in result snippets for Brazilian businesses.
+        """
+        query = f"{nome} {cidade} whatsapp".strip()
+        try:
+            async with httpx.AsyncClient(timeout=12, follow_redirects=True) as client:
+                r = await client.get(
+                    DDG_URL,
+                    params={"q": query, "kl": "br-pt"},
+                    headers={**_HEADERS, "Referer": "https://duckduckgo.com/"},
+                )
+            if r.status_code != 200:
+                return ""
+
+            # Look for wa.me links in results
+            for m in _WAME_RE.finditer(r.text):
+                digits = m.group(1)
+                if not digits.startswith("55"):
+                    digits = f"55{digits}"
+                return f"+{digits}"
+
+            # Also look for api.whatsapp.com links
+            for m in _WA_API_RE.finditer(r.text):
+                digits = m.group(1)
+                if not digits.startswith("55"):
+                    digits = f"55{digits}"
+                return f"+{digits}"
+
+        except Exception as exc:
+            logger.debug("ddg_search falhou nome=%s: %s", nome, exc)
+
+        return ""

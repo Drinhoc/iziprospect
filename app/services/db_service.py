@@ -1463,7 +1463,7 @@ class DBService:
             with conn.cursor() as cur:
                 cur.execute(
                     """SELECT * FROM lead_prospects
-                       WHERE busca_id = %s AND enriquecido = 0 AND website != ''
+                       WHERE busca_id = %s AND enriquecido = 0
                        ORDER BY id""",
                     (busca_id,),
                 )
