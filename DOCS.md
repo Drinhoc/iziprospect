@@ -62,6 +62,12 @@ Guia rápido para encontrar o que você precisa.
 #### ...entender o que foi detectado de venda?
 → Leia [SALES_RESULT_DETECTION.md](./SALES_RESULT_DETECTION.md)
 
+#### ...ver análises de conversa?
+→ Vá para `/dashboard`, role down para "Análises de Conversa" (mostra distribuição de confiança).
+
+#### ...importar 30 leads antigos via CSV?
+→ Vá para `/leads`, clique em "Importar", cole seu CSV (separado por tab/semicolon/vírgula), e clique enviar.
+
 ---
 
 ## 🔧 Para desenvolvedores
@@ -118,6 +124,16 @@ Resumo dos endpoints:
 ```
 GET /api/stats
 → { by_status, by_segmento, by_prioridade, total_ativos, ... }
+
+GET /api/analises/stats
+→ { total, avg_confianca, distribuicao: {baixa, incerta, promissora, quase_certa}, recentes: [...] }
+```
+
+### Bulk import
+```
+POST /api/leads/bulk
+Body: { leads: [{nome*, cidade, email, ...}, ...] }
+→ { ok, total, imported, needs_review, errors, leads, review, failed }
 ```
 
 ### Leads CRUD
@@ -195,11 +211,17 @@ Veja [DASHBOARD.md — Configuração](./DASHBOARD.md#-configuração) para a li
 - Daily summary
 - Detecção de venda
 
+### ✅ Completo (Fase 1.5)
+- Análises de conversa com persistência (score 1-10)
+- Dashboard analytics com distribuição de confiança
+- Bulk import de leads via CSV
+- Bug fixes: word boundaries, JSON error handling
+
 ### 🔄 Planejado (Fase 2)
 - Follow-up automático
-- Lead score
+- Lead score por lead
 - Tags customizadas
-- Bulk actions
+- Bulk actions (update múltiplos leads)
 
 ### 🚀 Futuro (Fase 3+)
 - Analytics avançado

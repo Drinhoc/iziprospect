@@ -204,7 +204,43 @@ Atualiza um lead. Apenas campos fornecidos são atualizados (merge).
 Deleta permanentemente o lead e suas atividades do banco.
 Retorna: `{ "ok": true }`
 
-### 4. **Daily Summary — Resumo automático via WhatsApp**
+### 4. **Análises de Conversa — Dashboard Analytics** (NEW)
+
+**O que é:**
+- Persistência e agregação de análises de conversa geradas pelo comando `ANALISAR:`
+- Dashboard section com estatísticas em tempo real
+- Distribuição de confiança em 4 tiers com emoji
+- Histórico das últimas análises
+
+**Dados coletados:**
+- `confianca_analise`: score 1-10 da conversa (salvo em `atividades.confianca_analise`)
+- `proximo_passo`: recomendação do bot (salvo em `leads.pendencia`)
+- Resumo da conversa e contexto do lead
+
+**Estatísticas no dashboard:**
+```
+Total de análises: 12
+Confiança média: 6.4/10
+
+Distribuição:
+🔴 Baixa (1-3): 2 análises
+🟡 Incerta (4-6): 4 análises
+🟢 Promissora (7-8): 5 análises
+💚 Quase certa (9-10): 1 análise
+
+Últimas análises:
+💚 9/10 - Clínica Sorriso — "Cliente confirmou interesse"
+🟢 7/10 - OdontoVida — "Pediu proposta..."
+🟡 5/10 - Studio Estética — "Conversação ok mas indeciso"
+```
+
+**API:** `GET /api/analises/stats`
+- Retorna: total, avg_confianca, distribuicao (4 buckets), recentes (últimas 5)
+- Endpoint integrado ao dashboard.js para refresh automático
+
+---
+
+### 5. **Daily Summary — Resumo automático via WhatsApp**
 
 **O que é:**
 - Loop em background que envia um resumo automático do dia no grupo CRM

@@ -5,10 +5,15 @@
 Uma plataforma completa de CRM para prospecção conectada ao WhatsApp, com:
 
 ### 1️⃣ **Dashboard web mobile-first**
-- Estatísticas em tempo real
+- Estatísticas em tempo real (leads, follow-ups, conversões)
 - Gráficos de pipeline, segmento, prioridade
+- **Analytics de Análises de Conversa** (novo)
+  - Distribuição de confiança (4 tiers: baixa/incerta/promissora/quase_certa)
+  - Histórico das últimas análises com emoji
+  - Média de confiança em tempo real
 - CRUD completo de leads
 - Busca e filtros avançados
+- Bulk import CSV de leads (novo)
 - Totalmente responsivo (mobile → desktop)
 
 ### 2️⃣ **Resumo diário automático via WhatsApp**
@@ -16,10 +21,11 @@ Uma plataforma completa de CRM para prospecção conectada ao WhatsApp, com:
 - Mostra: leads novos, interações, follow-ups, sequência ativa
 - Só envia se houver atividade (zero spam)
 
-### 3️⃣ **Detecção automática de resultado de venda**
+### 3️⃣ **Detecção automática de resultado de venda** (Hardened)
 - Detecta quando vendedor fecha ou perde oportunidade
 - Atualiza status do lead automaticamente
 - Registra para análise futura
+- **Melhorias:** Regex word boundaries (`\bfechou\b`) para evitar falsos positivos
 
 ---
 
@@ -60,29 +66,58 @@ Deployment:
 ```
 app/
 ├── routers/                    # NOVO
-│   ├── api_leads.py           # 77 linhas — REST API CRUD
+│   ├── api_leads.py           # 87 linhas — REST API CRUD + bulk + analytics
 │   └── dashboard_ui.py        # 22 linhas — HTML routes
 ├── templates/                  # NOVO
 │   ├── base.html              # 68 linhas — layout base
-│   ├── dashboard.html         # 55 linhas — stats page
-│   └── leads.html             # 247 linhas — CRUD page
+│   ├── dashboard.html         # 102 linhas — stats page + analytics section
+│   └── leads.html             # 280 linhas — CRUD page + import modal
 ├── static/                     # NOVO
-│   ├── style.css              # 920 linhas — mobile-first CSS
-│   ├── dashboard.js           # 110 linhas — stats + charts
-│   └── leads.js               # 400 linhas — CRUD + filtering
+│   ├── style.css              # 970 linhas — mobile-first CSS + analytics styles
+│   ├── dashboard.js           # 195 linhas — stats + charts + analytics
+│   └── leads.js               # 480 linhas — CRUD + filtering + CSV import
 ├── services/
-│   ├── crm_interpreter.py     # +35 linhas — detecção de venda
-│   └── db_service.py          # +175 linhas — 6 novos métodos
+│   ├── crm_interpreter.py     # +55 linhas — detecção de venda (hardened)
+│   ├── openai_service.py      # +45 linhas — error handling em extraction
+│   └── db_service.py          # +220 linhas — analytics + bulk import methods
 ├── config.py                  # +5 linhas — 3 env vars
-└── main.py                    # +150 linhas — loops + API mount
+└── main.py                    # +165 linhas — loops + API mount + ANALISAR update
 
 docs/
-├── DASHBOARD.md               # 400+ linhas — doc completa
+├── DASHBOARD.md               # 470+ linhas — doc com analytics section
 ├── SALES_RESULT_DETECTION.md # 200+ linhas — guia de venda
-└── BUILD_SUMMARY.md          # este arquivo
+├── BUILD_SUMMARY.md          # este arquivo (atualizado)
+└── MELHORIAS.md              # 200+ linhas — roadmap
 
-Total: ~2.500 linhas de código novo + documentação
+Total: ~3.100 linhas de código novo + documentação
 ```
+
+---
+
+## 🔧 Melhorias & Bug Fixes (Sessão 2026-03-08)
+
+### **Conversation Analysis Persistence**
+- ✅ Novo campo `confianca_analise` (INTEGER) em `atividades` table
+- ✅ Método `get_analysis_stats()` para agregação de análises
+- ✅ Endpoint `GET /api/analises/stats` para dashboard analytics
+- ✅ Dashboard section "Análises de Conversa" com distribuição em 4 tiers
+- ✅ Scores 1-10 agora persistem (antes: desapareciam após WhatsApp)
+- ✅ Próximo passo (recomendação do bot) salvo em `lead.pendencia`
+
+### **Code Robustness**
+- ✅ Bug fix: `detect_sales_result()` agora usa regex com word boundaries (`\bfechou\b`)
+  - Antes: "não fechou" era classificado como "ganho" (falso positivo)
+  - Depois: Apenas palavras completas são detectadas
+- ✅ Error handling: `extract_structured_data()` com try/except para JSON inválido
+  - Antes: JSONDecodeError → crash
+  - Depois: Retorna fallback seguro, registra erro
+
+### **Bulk Import Feature**
+- ✅ Novo endpoint `POST /api/leads/bulk` com deduplicação
+- ✅ CSV parsing com auto-detect de separador (tab/semicolon/comma)
+- ✅ UI modal em `/leads` para upload de CSV
+- ✅ Feedback detalhado: imported/needs_review/errors por linha
+- ✅ Usa `db.upsert_lead()` para smart deduplication
 
 ---
 
@@ -96,6 +131,13 @@ Total: ~2.500 linhas de código novo + documentação
 - [x] API REST para integração
 - [x] Daily summary automático via WhatsApp
 - [x] Detecção de resultado de venda (ganho/perdido)
+
+### ✅ Implementado — Fase 1.5 (Análises + Bulk Import)
+- [x] Análises de conversa com persistência (score 1-10)
+- [x] Dashboard analytics com distribuição de confiança
+- [x] Bulk import de leads via CSV
+- [x] Detecção automática de separador (CSV parsing robusto)
+- [x] Bug fixes: word boundaries, JSON error handling
 
 ### 🔄 Planejado — Fase 2
 - [ ] Follow-up automático (sugestões de ação)
