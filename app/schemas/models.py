@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -47,3 +47,15 @@ class LLMExtraction(BaseModel):
     followup_em: Optional[str] = None
     activity: ActivityData = Field(default_factory=ActivityData)
     pendencia: Optional[str] = None          # ação pendente extraída da mensagem
+
+
+class ConversationAnalysis(BaseModel):
+    lead: LeadData = Field(default_factory=LeadData)
+    status_sugerido: Optional[str] = None
+    resumo_conversa: str = ""
+    confianca: int = 5                       # 1-10
+    confianca_razao: str = ""
+    sinais_positivos: List[str] = Field(default_factory=list)
+    sinais_preocupantes: List[str] = Field(default_factory=list)
+    proximo_passo: str = ""
+    followup_em: Optional[str] = None

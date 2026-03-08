@@ -494,6 +494,118 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
             ok = await asyncio.to_thread(sheets.update_lead_fields, lead_id, fields)
             return {"ok": ok, "action": "update_fields", "lead_id": lead_id, "fields": fields}
 
+        if upper.startswith("ANALISAR:") or upper.startswith("ANALISAR "):
+            # Extrai o texto da conversa (tudo após "ANALISAR:" ou "ANALISAR ")
+            sep_idx = raw_text.index(":") if ":" in raw_text[:10] else raw_text.index(" ")
+            conv_text = raw_text[sep_idx + 1:].strip()
+            if not conv_text:
+                await evolution_service.send_confirmation(
+                    event.chat_id,
+                    ". Cole a conversa logo após ANALISAR: e tente novamente."
+                )
+                return {"ok": True, "ignored": True, "reason": "analisar_sem_conversa"}
+
+            logger.info("analisar_conversa | msg_id=%s | conv_len=%d", event.msg_id, len(conv_text))
+            try:
+                analysis = await asyncio.to_thread(openai_service.analyze_conversation, conv_text)
+            except Exception:
+                logger.exception("analyze_conversation falhou | msg_id=%s", event.msg_id)
+                await evolution_service.send_confirmation(
+                    event.chat_id, ". Erro ao analisar conversa. Tente novamente."
+                )
+                return {"ok": False, "reason": "analyze_error"}
+
+            # Upsert do lead se identificado
+            conv_lead_id = ""
+            has_identity = bool(
+                analysis.lead.nome or analysis.lead.whatsapp
+                or analysis.lead.email or analysis.lead.instagram
+            )
+            if has_identity:
+                conv_lead_id, _, _ = await asyncio.to_thread(
+                    db.upsert_lead,
+                    analysis.lead.model_dump(),
+                    analysis.status_sugerido,
+                    analysis.followup_em,
+                    event.timestamp,
+                )
+
+            # Registra atividade
+            await asyncio.to_thread(
+                db.add_activity,
+                event.timestamp,
+                event.msg_id or "",
+                conv_lead_id,
+                "análise de conversa",
+                "whatsapp_group",
+                "registrar_atividade",
+                0.9,
+                None,
+                f"[ANALISAR] {conv_text[:500]}",
+                analysis.resumo_conversa,
+                analysis.followup_em,
+            )
+
+            # Sync Sheets
+            if conv_lead_id:
+                lead_dict = await asyncio.to_thread(db.get_lead, conv_lead_id)
+                if lead_dict:
+                    await asyncio.to_thread(sheets.sync_lead, lead_dict)
+            await asyncio.to_thread(
+                sheets.sync_activity,
+                event.timestamp,
+                event.msg_id or "",
+                conv_lead_id,
+                "análise de conversa",
+                "whatsapp_group",
+                "registrar_atividade",
+                0.9,
+                None,
+                f"[ANALISAR] {conv_text[:500]}",
+                analysis.resumo_conversa,
+                analysis.followup_em,
+            )
+
+            # Monta resposta formatada para o WhatsApp
+            conf = analysis.confianca
+            conf_emoji = "🟢" if conf >= 7 else ("🟡" if conf >= 4 else "🔴")
+            lead_label = ""
+            if analysis.lead.nome:
+                lead_label = f" — {analysis.lead.nome}"
+                if conv_lead_id:
+                    lead_label += f" ({conv_lead_id})"
+
+            lines = [f". 📊 *Análise de conversa{lead_label}*"]
+            if analysis.status_sugerido:
+                lines.append(f"📋 Status: {analysis.status_sugerido}")
+            lines.append(f"{conf_emoji} Confiança: {conf}/10 — {analysis.confianca_razao}")
+            if analysis.resumo_conversa:
+                lines.append(f"\n📝 {analysis.resumo_conversa}")
+            if analysis.sinais_positivos:
+                lines.append("\n✅ *Positivos:*")
+                lines.extend(f"• {s}" for s in analysis.sinais_positivos)
+            if analysis.sinais_preocupantes:
+                lines.append("\n⚠️ *Atenção:*")
+                lines.extend(f"• {s}" for s in analysis.sinais_preocupantes)
+            if analysis.proximo_passo:
+                lines.append(f"\n🚀 *Próximo passo:* {analysis.proximo_passo}")
+            if not conv_lead_id:
+                lines.append("\n_Lead não identificado — envie nome/telefone para cadastrar._")
+
+            reply = "\n".join(lines)
+            try:
+                await evolution_service.send_confirmation(event.chat_id, reply)
+            except Exception:
+                logger.warning("analisar_reply failed | msg_id=%s", event.msg_id, exc_info=True)
+
+            return {
+                "ok": True,
+                "action": "analisar_conversa",
+                "lead_id": conv_lead_id or None,
+                "confianca": conf,
+                "status_sugerido": analysis.status_sugerido,
+            }
+
         try:
             extracted = await asyncio.to_thread(openai_service.extract_structured_data, raw_text)
         except RateLimitError:

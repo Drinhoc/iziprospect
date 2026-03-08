@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives.hmac import HMAC
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from openai import OpenAI
 
-from app.schemas.models import LLMExtraction
+from app.schemas.models import ConversationAnalysis, LLMExtraction
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +86,57 @@ Exemplos:
 - "Studio Estética em BH — qualificado, alta prioridade — enviar proposta esta semana."
 - "OdontoVida (odonto) em Campinas — sem interesse no momento — sem ação pendente."
 Seja factual, direto e orientado a ação. Não use markdown."""
+
+CONVERSATION_ANALYSIS_PROMPT = """Você é um analista de vendas especializado em prospecção de clínicas no Brasil (odonto, estética, médica, etc).
+Recebe uma conversa de WhatsApp (copiada do app) entre o vendedor e o prospect.
+Analise com olhar comercial honesto e retorne SOMENTE JSON válido com o schema abaixo.
+
+Schema:
+{
+  "lead": {
+    "nome": null,
+    "cidade": null,
+    "segmento": null,
+    "whatsapp": null,
+    "email": null,
+    "instagram": null,
+    "responsavel": null,
+    "fonte": null
+  },
+  "status_sugerido": "novo|em contato|qualificado|proposta enviada|negociando|fechado|perdido|sem resposta|contato inválido",
+  "resumo_conversa": "Resumo factual do fluxo da conversa. Máx 300 chars.",
+  "confianca": 6,
+  "confianca_razao": "Explicação direta e honesta do score.",
+  "sinais_positivos": ["sinal concreto 1", "sinal concreto 2"],
+  "sinais_preocupantes": ["risco 1", "risco 2"],
+  "proximo_passo": "Ação concreta e específica que o vendedor deve tomar.",
+  "followup_em": null
+}
+
+Regras:
+- lead.nome: nome da clínica/empresa. null se não identificado.
+- lead.whatsapp: telefone do prospect se aparecer na conversa. null se não.
+- lead.responsavel: nome/cargo do contato (ex: "Dr. João", "recepcionista"). null se ausente.
+- status_sugerido: baseado no estágio real da conversa, não no que o vendedor gostaria.
+- resumo_conversa: descreve o fluxo — o que foi dito, como evoluiu, onde parou.
+- confianca: inteiro de 1 a 10.
+  1-3 = baixa (sem resposta, sem interesse, objeções fortes sem resolução)
+  4-6 = incerto (engajou mas sem compromisso, resposta fria ou evasiva)
+  7-8 = promissor (interesse genuíno, pediu proposta, fez perguntas de qualificação)
+  9-10 = quase certo (negociando detalhes, pediu contrato, prazo definido)
+- confianca_razao: explicação honesta do score. Use linguagem que reconhece incerteza:
+  "Pelo tom...", "Parece que...", "Sinal de que...", "Difícil concluir sem mais contexto...".
+  Mencione os principais fatores a favor E os que geraram dúvida.
+- sinais_positivos: 1 a 4 comportamentos concretos do prospect que indicam interesse
+  (ex: "Perguntou sobre prazo de implementação", "Disse que tem verba aprovada").
+  Lista vazia [] se realmente não houver.
+- sinais_preocupantes: 0 a 4 riscos reais
+  (ex: "Mencionou que está avaliando concorrente", "Deu desculpas vagas para não avançar").
+  Lista vazia [] se não houver preocupações.
+- proximo_passo: ação concreta e específica (ex: "Enviar proposta com comparativo de preço até sexta").
+- followup_em: data se mencionada explicitamente na conversa (ISO 8601 ou "amanhã"), ou null.
+- Nunca invente dados. Se a conversa for curta ou ambígua, reflita isso no score e na razão.
+"""
 
 ALLOWED_INTENTS = {"novo", "update", "perdido", "fechado", "corrigir", "vincular", "set"}
 MIMETYPE_EXTENSION = {
@@ -311,6 +362,42 @@ class OpenAIService:
         except Exception:
             logger.warning("generate_lead_summary falhou", exc_info=True)
             return ""
+
+    def analyze_conversation(self, conv_text: str) -> ConversationAnalysis:
+        """Analisa uma conversa de WhatsApp colada e retorna parecer comercial estruturado."""
+        if not self.client:
+            return ConversationAnalysis(resumo_conversa="OpenAI não configurado.", confianca_razao="Indisponível.")
+
+        # Trunca para evitar exceder contexto (gpt-4o-mini suporta ~128k tokens, mas 15k chars já é suficiente)
+        truncated = conv_text[:15000]
+
+        resp = self.client.chat.completions.create(
+            model="gpt-4o-mini",
+            temperature=0,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": CONVERSATION_ANALYSIS_PROMPT},
+                {"role": "user", "content": truncated},
+            ],
+        )
+        content: Any = resp.choices[0].message.content or "{}"
+        try:
+            data = json.loads(content)
+        except json.JSONDecodeError:
+            logger.warning("analyze_conversation: JSON inválido do LLM | content=%r", content[:200])
+            return ConversationAnalysis(resumo_conversa="Erro ao processar análise.", confianca_razao="Falha na leitura do JSON.")
+
+        # Garante que confianca é int no intervalo [1, 10]
+        try:
+            data["confianca"] = max(1, min(10, int(data.get("confianca", 5))))
+        except (TypeError, ValueError):
+            data["confianca"] = 5
+
+        try:
+            return ConversationAnalysis.model_validate(data)
+        except Exception:
+            logger.warning("analyze_conversation: model_validate falhou", exc_info=True)
+            return ConversationAnalysis(resumo_conversa="Erro ao validar análise.", confianca_razao="Falha na validação.")
 
     def extract_structured_data(self, raw_text: str) -> LLMExtraction:
         if not self.client:
