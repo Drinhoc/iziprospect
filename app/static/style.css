@@ -479,6 +479,12 @@ label {
   margin-bottom: 8px;
 }
 .lc-meta-item { display: flex; align-items: center; gap: 4px; }
+.copy-phone-btn {
+  background: none; border: none; cursor: pointer;
+  font-size: .8rem; padding: 0 3px; color: var(--primary);
+  line-height: 1; vertical-align: middle; opacity: .7;
+}
+.copy-phone-btn:hover { opacity: 1; }
 .lc-pendencia {
   font-size: .82rem;
   color: var(--text);

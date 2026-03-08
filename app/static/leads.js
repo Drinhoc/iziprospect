@@ -113,10 +113,13 @@ function renderCards(leads) {
     const card = document.createElement('div');
     card.className = 'lead-card';
     const phone = fmtPhone(l.whatsapp);
+    const phoneHtml = phone
+      ? `📱 ${phone} <button class="copy-phone-btn" data-phone="${l.whatsapp}" title="Copiar número">⎘</button>`
+      : null;
     const meta = [
       l.cidade ? `📍 ${l.cidade}` : null,
       l.segmento ? `🏥 ${l.segmento}` : null,
-      phone ? `📱 ${phone}` : null,
+      phoneHtml,
       l.proximo_followup_em ? `📅 ${fmtDate(l.proximo_followup_em)}` : null,
     ].filter(Boolean);
 
@@ -128,6 +131,18 @@ function renderCards(leads) {
       ${meta.length ? `<div class="lc-meta">${meta.map(m => `<span class="lc-meta-item">${m}</span>`).join('')}</div>` : ''}
       ${l.pendencia ? `<div class="lc-pendencia">${esc(l.pendencia)}</div>` : ''}`;
     card.onclick = () => openLeadModal(l.lead_id);
+    // Botão copiar telefone: para propagação para não abrir modal
+    card.querySelectorAll('.copy-phone-btn').forEach(btn => {
+      btn.onclick = e => {
+        e.stopPropagation();
+        const num = btn.dataset.phone || '';
+        navigator.clipboard.writeText(num).then(() => {
+          const orig = btn.textContent;
+          btn.textContent = '✓';
+          setTimeout(() => { btn.textContent = orig; }, 1200);
+        });
+      };
+    });
     container.appendChild(card);
   });
 }

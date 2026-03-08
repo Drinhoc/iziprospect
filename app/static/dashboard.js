@@ -29,7 +29,7 @@ function buildBars(container, data, colorMap, maxVal) {
     container.innerHTML = '<span style="color:#9ca3af;font-size:.82rem">Sem dados</span>';
     return;
   }
-  const max = maxVal || Math.max(...Object.values(data));
+  const max = maxVal || Math.max(...data.map(([, v]) => v));
   data.forEach(([key, val], i) => {
     const pct = max > 0 ? Math.round((val / max) * 100) : 0;
     const color = colorMap[key] || SEGMENTO_COLORS[i % SEGMENTO_COLORS.length];
