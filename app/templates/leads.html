@@ -13,6 +13,10 @@
     <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
     <input type="search" id="search-input" class="search-input" placeholder="Buscar por nome, cidade…" />
   </div>
+  <button class="btn-import" onclick="openImportModal()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    Importar
+  </button>
   <button class="btn-filter" id="btn-filter" onclick="openFilters()">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
     Filtrar
@@ -67,6 +71,7 @@
 <button class="fab" onclick="openLeadModal(null)" title="Novo lead">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
 </button>
+
 
 <!-- Lead modal / bottom sheet -->
 <div class="modal-overlay hidden" id="modal-overlay" onclick="closeModal()"></div>
@@ -217,6 +222,35 @@
         </div>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- Import modal -->
+<div class="modal-overlay hidden" id="import-overlay" onclick="closeImportModal()"></div>
+<div class="modal-sheet hidden" id="import-sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-header">
+    <h2 class="sheet-title">Importar Leads</h2>
+    <button class="btn-close" onclick="closeImportModal()">✕</button>
+  </div>
+  <div class="sheet-body">
+    <p class="import-hint">
+      Cole aqui uma tabela do Excel / Google Sheets (ou CSV). A primeira linha deve ter os cabeçalhos.<br>
+      <strong>Colunas aceitas:</strong> <code>nome</code> (obrigatório), <code>cidade</code>, <code>segmento</code>, <code>whatsapp</code>, <code>email</code>, <code>instagram</code>, <code>site</code>, <code>responsavel</code>, <code>fonte</code>, <code>status</code>, <code>prioridade</code>, <code>observacoes</code>, <code>proximo_followup_em</code>
+    </p>
+    <div class="import-example">
+      <strong>Exemplo:</strong><br>
+      <code>nome	cidade	segmento	whatsapp	status</code><br>
+      <code>Clínica Sorrir	SP	odonto	11999998888	em contato</code>
+    </div>
+    <textarea id="import-textarea" class="import-textarea" rows="10"
+      placeholder="Cole aqui os dados (tab-separado do Excel, ou CSV com vírgula/ponto-e-vírgula)…"></textarea>
+    <div id="import-preview" class="import-preview hidden"></div>
+    <div id="import-result" class="import-result hidden"></div>
+    <div class="sheet-actions">
+      <button type="button" class="btn-cancel" onclick="closeImportModal()">Cancelar</button>
+      <button type="button" class="btn-save" id="btn-import-run" onclick="runImport()">Importar</button>
+    </div>
   </div>
 </div>
 

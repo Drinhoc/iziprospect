@@ -411,7 +411,159 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     closeModal();
     closeFilters();
+    closeImportModal();
   }
 });
+
+// ===== Import =====
+
+const IMPORT_COLUMNS = [
+  'nome','cidade','segmento','whatsapp','email',
+  'instagram','site','responsavel','fonte',
+  'status','prioridade','observacoes','proximo_followup_em',
+];
+
+function openImportModal() {
+  document.getElementById('import-textarea').value = '';
+  document.getElementById('import-preview').classList.add('hidden');
+  document.getElementById('import-result').classList.add('hidden');
+  document.getElementById('btn-import-run').textContent = 'Importar';
+  document.getElementById('btn-import-run').disabled = false;
+
+  const overlay = document.getElementById('import-overlay');
+  const sheet = document.getElementById('import-sheet');
+  overlay.classList.remove('hidden');
+  sheet.classList.remove('hidden');
+  requestAnimationFrame(() => {
+    overlay.classList.add('visible');
+    sheet.classList.add('visible');
+  });
+}
+
+function closeImportModal() {
+  const overlay = document.getElementById('import-overlay');
+  const sheet = document.getElementById('import-sheet');
+  overlay.classList.remove('visible');
+  sheet.classList.remove('visible');
+  setTimeout(() => {
+    overlay.classList.add('hidden');
+    sheet.classList.add('hidden');
+  }, 280);
+}
+
+/** Detecta separador: tab (Excel/Sheets), ponto-e-vírgula ou vírgula */
+function detectSep(firstLine) {
+  if (firstLine.includes('\t')) return '\t';
+  if (firstLine.includes(';')) return ';';
+  return ',';
+}
+
+/** Parse CSV/TSV respeitando aspas */
+function parseLine(line, sep) {
+  if (sep !== ',') return line.split(sep).map(c => c.trim());
+  // Para vírgula: respeita campos com aspas
+  const cells = [];
+  let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') { inQ = !inQ; continue; }
+    if (ch === ',' && !inQ) { cells.push(cur.trim()); cur = ''; continue; }
+    cur += ch;
+  }
+  cells.push(cur.trim());
+  return cells;
+}
+
+function parseImportText(raw) {
+  const lines = raw.split('\n').map(l => l.trimEnd()).filter(l => l.trim());
+  if (lines.length < 2) throw new Error('Precisa de pelo menos 1 linha de cabeçalho + 1 linha de dados.');
+
+  const sep = detectSep(lines[0]);
+  const headers = parseLine(lines[0], sep).map(h => h.toLowerCase().trim().replace(/\s+/g, '_'));
+
+  // Valida que 'nome' existe
+  if (!headers.includes('nome')) throw new Error("A planilha deve ter uma coluna chamada 'nome'.");
+
+  // Filtra só colunas reconhecidas
+  const validIdx = headers.map((h, i) => IMPORT_COLUMNS.includes(h) ? i : -1);
+
+  return lines.slice(1).map(line => {
+    const cells = parseLine(line, sep);
+    const obj = {};
+    headers.forEach((h, i) => {
+      if (validIdx[i] === -1) return;
+      const val = (cells[i] || '').trim();
+      if (val) obj[h] = val;
+    });
+    return obj;
+  }).filter(o => o.nome);
+}
+
+async function runImport() {
+  const raw = document.getElementById('import-textarea').value.trim();
+  if (!raw) { alert('Cole os dados antes de importar.'); return; }
+
+  let leads;
+  try {
+    leads = parseImportText(raw);
+  } catch (err) {
+    alert('Erro ao ler dados: ' + err.message);
+    return;
+  }
+
+  if (leads.length === 0) {
+    alert('Nenhum lead válido encontrado. Verifique se há uma coluna "nome".');
+    return;
+  }
+
+  const btn = document.getElementById('btn-import-run');
+  btn.textContent = `Importando ${leads.length} leads…`;
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/leads/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ leads }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Erro na API');
+
+    const resultEl = document.getElementById('import-result');
+    resultEl.classList.remove('hidden');
+
+    let html = `<div class="import-summary">`;
+    html += `<span class="import-ok">✓ ${data.imported} importados</span>`;
+    if (data.needs_review > 0)
+      html += ` &nbsp; <span class="import-warn">⚠ ${data.needs_review} para revisar</span>`;
+    if (data.errors > 0)
+      html += ` &nbsp; <span class="import-err">✗ ${data.errors} com erro</span>`;
+    html += `</div>`;
+
+    if (data.review && data.review.length > 0) {
+      html += `<p class="import-warn-msg">Leads com nome semelhante já existem (precisam de revisão manual):</p><ul>`;
+      data.review.forEach(r => {
+        html += `<li><strong>${esc(r.nome)}</strong> — possíveis duplicatas: ${r.candidates.map(esc).join(', ')}</li>`;
+      });
+      html += `</ul>`;
+    }
+
+    if (data.failed && data.failed.length > 0) {
+      html += `<p class="import-err-msg">Falhas:</p><ul>`;
+      data.failed.forEach(f => {
+        html += `<li>${esc(f.nome || `linha ${f.index + 2}`)}: ${esc(f.reason)}</li>`;
+      });
+      html += `</ul>`;
+    }
+
+    resultEl.innerHTML = html;
+    loadLeads();
+  } catch (err) {
+    alert('Erro: ' + err.message);
+  } finally {
+    btn.textContent = 'Importar';
+    btn.disabled = false;
+  }
+}
 
 loadLeads();

@@ -75,3 +75,60 @@ def delete_lead(lead_id: str):
         raise HTTPException(status_code=404, detail="Lead not found")
     db.delete_lead(lead_id)
     return {"ok": True}
+
+
+@router.post("/leads/bulk", status_code=200)
+def bulk_create_leads(body: dict):
+    """Importa múltiplos leads de uma vez.
+
+    Body: {"leads": [{"nome": "...", "cidade": "...", ...}, ...]}
+    Cada lead deve ter pelo menos 'nome'.
+    Usa upsert com deduplicação — safe para rodar mais de uma vez.
+    """
+    from datetime import datetime, timezone
+
+    leads_data = body.get("leads")
+    if not isinstance(leads_data, list) or not leads_data:
+        raise HTTPException(status_code=422, detail="'leads' deve ser uma lista não vazia")
+
+    db = _get_db()
+    now = datetime.now(timezone.utc)
+
+    created, updated, needs_review, errors = [], [], [], []
+
+    for i, lead in enumerate(leads_data):
+        if not isinstance(lead, dict):
+            errors.append({"index": i, "reason": "item não é um objeto"})
+            continue
+        if not (lead.get("nome") or "").strip():
+            errors.append({"index": i, "reason": "campo 'nome' é obrigatório", "data": lead})
+            continue
+        try:
+            lead_id, review_needed, candidates = db.upsert_lead(
+                lead=lead,
+                status=lead.get("status") or "novo",
+                followup_em=lead.get("proximo_followup_em") or None,
+                when=now,
+            )
+            if review_needed:
+                needs_review.append({
+                    "index": i,
+                    "nome": lead.get("nome"),
+                    "candidates": [c.get("nome") for c in (candidates or [])],
+                })
+            elif lead_id:
+                created.append({"lead_id": lead_id, "nome": lead.get("nome")})
+        except Exception as exc:
+            logger.exception("bulk_create_leads error | index=%d nome=%s", i, lead.get("nome"))
+            errors.append({"index": i, "nome": lead.get("nome"), "reason": str(exc)})
+
+    return {
+        "ok": True,
+        "total": len(leads_data),
+        "imported": len(created),
+        "needs_review": len(needs_review),
+        "errors": len(errors),
+        "leads": created,
+        "review": needs_review,
+        "failed": errors,
+    }

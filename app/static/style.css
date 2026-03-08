@@ -563,6 +563,68 @@ label {
   .fab { bottom: 28px; right: 32px; }
 }
 
+/* Import button */
+.btn-import {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color .15s, color .15s;
+  white-space: nowrap;
+}
+.btn-import:hover { border-color: var(--primary); color: var(--primary); }
+.btn-import svg { width: 15px; height: 15px; }
+
+/* Import modal content */
+.import-hint {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+.import-hint code { background: var(--bg-card); padding: 1px 4px; border-radius: 4px; font-size: 12px; }
+.import-example {
+  font-size: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  line-height: 1.7;
+}
+.import-example code { font-size: 12px; }
+.import-textarea {
+  width: 100%;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  font-family: monospace;
+  font-size: 12px;
+  resize: vertical;
+  background: var(--bg-card);
+  color: var(--text);
+  box-sizing: border-box;
+}
+.import-textarea:focus { outline: none; border-color: var(--primary); }
+.import-summary {
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.import-ok   { color: var(--success, #16a34a); }
+.import-warn { color: #d97706; }
+.import-err  { color: var(--danger, #dc2626); }
+.import-warn-msg { color: #d97706; font-size: 13px; margin: 6px 0 4px; }
+.import-err-msg  { color: var(--danger, #dc2626); font-size: 13px; margin: 6px 0 4px; }
+.import-result ul { margin: 4px 0; padding-left: 18px; font-size: 13px; }
+.import-result   { margin-top: 12px; }
+
 /* ---------- Modal / bottom sheet ---------- */
 .modal-overlay {
   position: fixed;
