@@ -30,3 +30,8 @@ def leads_page(request: Request):
 @router.get("/estatisticas", response_class=HTMLResponse)
 def estatisticas_page(request: Request):
     return templates.TemplateResponse("estatisticas.html", {"request": request})
+
+
+@router.get("/prospeccao", response_class=HTMLResponse)
+def prospeccao_page(request: Request):
+    return templates.TemplateResponse("prospeccao.html", {"request": request})

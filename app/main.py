@@ -32,8 +32,9 @@ app = FastAPI(title="IziClinic Invisible CRM")
 _STATIC_DIR = pathlib.Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
-from app.routers import api_leads, dashboard_ui  # noqa: E402
+from app.routers import api_leads, api_prospeccao, dashboard_ui  # noqa: E402
 app.include_router(api_leads.router)
+app.include_router(api_prospeccao.router)
 app.include_router(dashboard_ui.router)
 
 openai_service = OpenAIService(settings.openai_api_key)

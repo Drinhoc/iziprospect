@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Prospecção{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Prospecção de Leads</h1>
+  <span class="total-label" id="prosp-total-label"></span>
+</div>
+
+<!-- Search card -->
+<div class="prosp-search-card">
+  <div class="prosp-form-row">
+    <div class="prosp-form-group">
+      <label>Tipo de negócio</label>
+      <input type="text" id="prosp-segmento" placeholder="ex: clínica odontológica" value="clínica odontológica" />
+    </div>
+    <div class="prosp-form-group">
+      <label>Cidade / Região</label>
+      <input type="text" id="prosp-cidade" placeholder="ex: Limeira SP" value="" />
+    </div>
+    <div class="prosp-form-group prosp-form-group--sm">
+      <label>Qtd máx.</label>
+      <select id="prosp-limit">
+        <option value="10">10</option>
+        <option value="20" selected>20</option>
+        <option value="30">30</option>
+        <option value="50">50</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="prosp-fontes">
+    <span class="prosp-fontes-label">Fontes:</span>
+    <label class="prosp-fonte-check">
+      <input type="checkbox" value="osm" checked /> OpenStreetMap
+    </label>
+    <label class="prosp-fonte-check">
+      <input type="checkbox" value="telelistas" checked /> Telelistas
+    </label>
+    <label class="prosp-fonte-check">
+      <input type="checkbox" value="apontador" checked /> Apontador
+    </label>
+  </div>
+
+  <div class="prosp-actions">
+    <button class="btn-buscar" id="btn-buscar" onclick="iniciarBusca()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      Buscar Leads
+    </button>
+    <span class="prosp-enrich-status hidden" id="prosp-enrich-status">
+      <span class="prosp-spinner"></span>
+      <span id="prosp-enrich-text">Enriquecendo…</span>
+    </span>
+  </div>
+
+  <div class="prosp-busca-info hidden" id="prosp-busca-info"></div>
+</div>
+
+<!-- Tabs -->
+<div class="prosp-tabs-wrap">
+  <div class="prosp-tabs">
+    <button class="prosp-tab active" data-tab="pendente" onclick="switchTab('pendente', this)">
+      Pendentes <span class="prosp-tab-count" id="count-pendente">0</span>
+    </button>
+    <button class="prosp-tab" data-tab="aprovado" onclick="switchTab('aprovado', this)">
+      Aprovados <span class="prosp-tab-count" id="count-aprovado">0</span>
+    </button>
+    <button class="prosp-tab" data-tab="descartado" onclick="switchTab('descartado', this)">
+      Descartados <span class="prosp-tab-count" id="count-descartado">0</span>
+    </button>
+  </div>
+  <div class="prosp-tab-actions">
+    <button class="btn-aprovar-lote hidden" id="btn-aprovar-lote" onclick="aprovarComWhatsApp()">
+      Aprovar c/ WhatsApp
+    </button>
+    <button class="btn-limpar-desc hidden" id="btn-limpar-desc" onclick="limparDescartados()">
+      Limpar descartados
+    </button>
+  </div>
+</div>
+
+<!-- List -->
+<div class="prosp-list" id="prosp-list"></div>
+
+<!-- Empty state -->
+<div class="prosp-empty hidden" id="prosp-empty">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+  </svg>
+  <p id="prosp-empty-text">Nenhum prospect encontrado. Faça uma busca acima.</p>
+</div>
+
+<!-- Loading -->
+<div class="prosp-loading hidden" id="prosp-loading">
+  <div class="spinner"></div>
+</div>
+
+<!-- Pagination -->
+<div class="pagination hidden" id="prosp-pagination">
+  <button class="btn-page" id="prosp-btn-prev" onclick="prospChangePage(-1)">← Anterior</button>
+  <span class="page-info" id="prosp-page-info"></span>
+  <button class="btn-page" id="prosp-btn-next" onclick="prospChangePage(1)">Próxima →</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/prospeccao.js"></script>
+{% endblock %}

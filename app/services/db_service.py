@@ -63,6 +63,30 @@ CREATE INDEX IF NOT EXISTS idx_atividades_lead_id     ON atividades(lead_id);
 CREATE INDEX IF NOT EXISTS idx_atividades_msg_id      ON atividades(msg_id);
 """
 
+CREATE_PROSPECTS_SQL = """
+CREATE TABLE IF NOT EXISTS lead_prospects (
+    id               SERIAL PRIMARY KEY,
+    nome             TEXT DEFAULT '',
+    cidade           TEXT DEFAULT '',
+    segmento         TEXT DEFAULT '',
+    telefone         TEXT DEFAULT '',
+    whatsapp         TEXT DEFAULT '',
+    website          TEXT DEFAULT '',
+    instagram        TEXT DEFAULT '',
+    link_maps        TEXT DEFAULT '',
+    fonte            TEXT DEFAULT '',
+    fonte_busca      TEXT DEFAULT '',
+    status_revisao   TEXT DEFAULT 'pendente',
+    data_coleta      TEXT DEFAULT '',
+    enriquecido      INTEGER DEFAULT 0,
+    lead_id_aprovado TEXT DEFAULT '',
+    busca_id         TEXT DEFAULT '',
+    rating           TEXT DEFAULT ''
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_prospects_nome_cidade
+ON lead_prospects (lower(nome), lower(cidade));
+"""
+
 GENERIC_NAME_TOKENS = {
     "clinica", "clínica", "consultorio", "consultório",
     "odontologia", "odonto", "estetica", "estética",
@@ -168,6 +192,7 @@ class DBService:
         try:
             with conn.cursor() as cur:
                 cur.execute(CREATE_TABLES_SQL)
+                cur.execute(CREATE_PROSPECTS_SQL)
                 # Migrações idempotentes: ADD COLUMN IF NOT EXISTS é seguro
                 cur.execute(
                     "ALTER TABLE atividades ADD COLUMN IF NOT EXISTS confianca_analise INTEGER"
@@ -1338,4 +1363,175 @@ class DBService:
         finally:
             self._put(conn)
         logger.debug("update_lead_from_sheets | lead_id=%s fields=%s", lead_id, list(safe_fields))
+
+    # ------------------------------------------------------------------
+    # Prospecção — lead_prospects (fila de revisão)
+    # ------------------------------------------------------------------
+
+    def insert_prospect(self, data: Dict[str, Any]) -> bool:
+        """Insert a prospect. Returns True if inserted, False if duplicate (nome+cidade)."""
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO lead_prospects
+                        (nome, cidade, segmento, telefone, whatsapp, website, instagram,
+                         link_maps, fonte, fonte_busca, data_coleta, busca_id, rating)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                       ON CONFLICT (lower(nome), lower(cidade)) DO NOTHING
+                       RETURNING id""",
+                    (
+                        (data.get("nome") or "").strip(),
+                        (data.get("cidade") or "").strip(),
+                        (data.get("segmento") or "").strip(),
+                        (data.get("telefone") or "").strip(),
+                        (data.get("whatsapp") or "").strip(),
+                        (data.get("website") or "").strip(),
+                        (data.get("instagram") or "").strip(),
+                        (data.get("link_maps") or "").strip(),
+                        (data.get("fonte") or "").strip(),
+                        (data.get("fonte_busca") or "").strip(),
+                        (data.get("data_coleta") or "").strip(),
+                        (data.get("busca_id") or "").strip(),
+                        (data.get("rating") or "").strip(),
+                    ),
+                )
+                inserted = cur.fetchone() is not None
+            conn.commit()
+        finally:
+            self._put(conn)
+        return inserted
+
+    def list_prospects(
+        self,
+        status_revisao: Optional[str] = None,
+        busca_id: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> Dict[str, Any]:
+        conditions: List[str] = []
+        params: List[Any] = []
+        if status_revisao:
+            conditions.append("status_revisao = %s")
+            params.append(status_revisao)
+        if busca_id:
+            conditions.append("busca_id = %s")
+            params.append(busca_id)
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        offset = (page - 1) * page_size
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT COUNT(*) FROM lead_prospects {where}", params)
+                total = cur.fetchone()[0]
+                cur.execute(
+                    f"SELECT * FROM lead_prospects {where} ORDER BY id DESC LIMIT %s OFFSET %s",
+                    params + [page_size, offset],
+                )
+                prospects = self._fetchall_dict(cur)
+            return {"prospects": prospects, "total": total, "page": page, "page_size": page_size}
+        finally:
+            self._put(conn)
+
+    def get_prospect(self, prospect_id: int) -> Optional[Dict[str, Any]]:
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM lead_prospects WHERE id = %s", (prospect_id,))
+                return self._fetchone_dict(cur)
+        finally:
+            self._put(conn)
+
+    def update_prospect(self, prospect_id: int, fields: Dict[str, Any]) -> None:
+        allowed = {"status_revisao", "whatsapp", "instagram", "enriquecido", "lead_id_aprovado", "website"}
+        safe = {k: v for k, v in fields.items() if k in allowed}
+        if not safe:
+            return
+        set_clause = ", ".join(f"{k} = %s" for k in safe)
+        values = list(safe.values()) + [prospect_id]
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"UPDATE lead_prospects SET {set_clause} WHERE id = %s", values)
+            conn.commit()
+        finally:
+            self._put(conn)
+
+    def get_prospects_to_enrich(self, busca_id: str) -> List[Dict[str, Any]]:
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT * FROM lead_prospects
+                       WHERE busca_id = %s AND enriquecido = 0 AND website != ''
+                       ORDER BY id""",
+                    (busca_id,),
+                )
+                return self._fetchall_dict(cur)
+        finally:
+            self._put(conn)
+
+    def get_prospect_enrich_status(self, busca_id: str) -> Dict[str, int]:
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT COUNT(*) FROM lead_prospects WHERE busca_id = %s", (busca_id,)
+                )
+                total = cur.fetchone()[0]
+                cur.execute(
+                    "SELECT COUNT(*) FROM lead_prospects WHERE busca_id = %s AND enriquecido = 1",
+                    (busca_id,),
+                )
+                done = cur.fetchone()[0]
+            return {"total": total, "enriquecidos": done, "pendentes": total - done}
+        finally:
+            self._put(conn)
+
+    def approve_prospect(self, prospect_id: int) -> str:
+        """Creates a lead from prospect, updates prospect status. Returns lead_id."""
+        p = self.get_prospect(prospect_id)
+        if not p:
+            raise ValueError(f"Prospect {prospect_id} not found")
+        lead_data = {
+            "nome": p["nome"],
+            "cidade": p["cidade"],
+            "segmento": p["segmento"],
+            "whatsapp": p["whatsapp"] or p["telefone"],
+            "site": p["website"],
+            "instagram": p["instagram"],
+            "fonte": p["fonte_busca"] or p["fonte"],
+            "status": "novo",
+        }
+        lead_id = self.create_lead_from_dashboard(lead_data)
+        self.update_prospect(prospect_id, {"status_revisao": "aprovado", "lead_id_aprovado": lead_id})
+        return lead_id
+
+    def delete_discarded_prospects(self) -> int:
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM lead_prospects WHERE status_revisao = 'descartado'")
+                count = cur.rowcount
+            conn.commit()
+        finally:
+            self._put(conn)
+        return count
+
+    def get_prospect_counts(self) -> Dict[str, int]:
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT status_revisao, COUNT(*) FROM lead_prospects
+                       GROUP BY status_revisao"""
+                )
+                rows = cur.fetchall()
+            counts = {"pendente": 0, "aprovado": 0, "descartado": 0}
+            for status, cnt in rows:
+                if status in counts:
+                    counts[status] = cnt
+            return counts
+        finally:
+            self._put(conn)
         return True
