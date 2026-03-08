@@ -326,8 +326,16 @@ class OpenAIService:
             ],
         )
         content: Any = resp.choices[0].message.content or "{}"
-        data = json.loads(content)
+        try:
+            data = json.loads(content)
+        except json.JSONDecodeError:
+            logger.warning("extract_structured_data: JSON inválido do LLM | content=%r", content[:200])
+            return LLMExtraction(activity={"tipo": "nota", "resumo": raw_text[:200]})
         intent = str(data.get("intent") or "").strip().lower()
         if intent not in ALLOWED_INTENTS:
             data["intent"] = "update"
-        return LLMExtraction.model_validate(data)
+        try:
+            return LLMExtraction.model_validate(data)
+        except Exception:
+            logger.warning("extract_structured_data: model_validate falhou", exc_info=True)
+            return LLMExtraction(activity={"tipo": "nota", "resumo": raw_text[:200]})

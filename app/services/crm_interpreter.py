@@ -109,31 +109,38 @@ def infer_status(raw_text: str) -> Optional[str]:
     return None
 
 
+# Pré-compilados para eficiência e uso de word boundaries.
+# Perdido é verificado PRIMEIRO para evitar que "nao fechou" (que contém "fechou")
+# seja classificado incorretamente como ganho.
+_PERDIDO_RE = [
+    re.compile(r"\b" + re.escape(p) + r"\b")
+    for p in [
+        "nao fechou", "nao avancou", "nao deu negocio", "nao vai dar", "nao conseguiu",
+        "perdemos", "cliente desistiu", "descartado", "rejeitou", "rejeitada", "caiu fora",
+    ]
+]
+
+_GANHO_RE = [
+    re.compile(r"\b" + re.escape(p) + r"\b")
+    for p in [
+        "venda fechada", "cliente fechou", "negocio fechado", "contrato assinado",
+        "virou cliente", "fechamos", "fechou", "assinado",
+    ]
+]
+
+
 def detect_sales_result(raw_text: str) -> Optional[str]:
     """Detecta resultado de venda na mensagem.
 
-    Retorna: "ganho", "perdido", ou None
+    Retorna: "ganho", "perdido", ou None.
+    Usa word boundaries para evitar matches parciais e verifica perdido antes
+    de ganho para que "nao fechou" não seja classificado como ganho.
     """
     text = normalize_text(raw_text)
-
-    ganho_indicators = {
-        "fechou", "venda fechada", "cliente fechou",
-        "negocio fechado", "contrato assinado", "virou cliente",
-        "fechamos", "assinado", "aprovado", "confirmou",
-        "ganhou", "conseguiu", "bateu",
-    }
-
-    perdido_indicators = {
-        "nao fechou", "perdemos", "cliente desistiu",
-        "nao avancou", "nao deu negocio", "descartado",
-        "parou", "nao vai dar", "rejeitou", "rejeitada",
-        "perdeu", "nao conseguiu", "caiu fora",
-    }
-
-    if any(ind in text for ind in ganho_indicators):
-        return "ganho"
-    if any(ind in text for ind in perdido_indicators):
+    if any(p.search(text) for p in _PERDIDO_RE):
         return "perdido"
+    if any(p.search(text) for p in _GANHO_RE):
+        return "ganho"
     return None
 
 
