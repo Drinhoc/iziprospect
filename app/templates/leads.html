@@ -27,16 +27,17 @@
 <!-- Active filter chips -->
 <div class="filter-chips hidden" id="filter-chips"></div>
 
-<!-- Desktop table -->
+<!-- Desktop table — columns: Clínica | Segmento | Cidade | WhatsApp | Responsável | Status | Pendência | Última interação | Follow-up -->
 <div class="table-wrap desktop-only">
   <table class="leads-table">
     <thead>
       <tr>
-        <th>Nome</th>
-        <th>Cidade</th>
+        <th>Clínica</th>
         <th>Segmento</th>
+        <th>Cidade</th>
+        <th>WhatsApp</th>
+        <th>Responsável</th>
         <th>Status</th>
-        <th>Prioridade</th>
         <th>Pendência</th>
         <th>Última interação</th>
         <th>Follow-up</th>
@@ -99,12 +100,11 @@
             <label>Segmento</label>
             <select id="f-segmento">
               <option value="">— selecione —</option>
-              <option>odonto</option>
-              <option>estética</option>
-              <option>médica</option>
-              <option>nutrição</option>
-              <option>fisio</option>
-              <option>outro</option>
+              <option value="odontologia">Odontologia</option>
+              <option value="medicina">Medicina</option>
+              <option value="estetica">Estética</option>
+              <option value="psicologia">Psicologia</option>
+              <option value="outros">Outros</option>
             </select>
           </div>
         </div>
@@ -117,22 +117,17 @@
             <select id="f-status">
               <option value="novo">Novo</option>
               <option value="em contato">Em contato</option>
+              <option value="sem resposta">Sem resposta</option>
               <option value="qualificado">Qualificado</option>
-              <option value="proposta enviada">Proposta enviada</option>
               <option value="negociando">Negociando</option>
               <option value="fechado">Fechado</option>
               <option value="perdido">Perdido</option>
-              <option value="sem resposta">Sem resposta</option>
               <option value="contato inválido">Contato inválido</option>
             </select>
           </div>
           <div class="form-group">
-            <label>Prioridade</label>
-            <select id="f-prioridade">
-              <option value="alta">Alta</option>
-              <option value="media" selected>Média</option>
-              <option value="baixa">Baixa</option>
-            </select>
+            <label>Próximo follow-up</label>
+            <input type="date" id="f-followup" />
           </div>
         </div>
       </div>
@@ -168,7 +163,7 @@
             <select id="f-fonte">
               <option value="">— selecione —</option>
               <option value="cold">Cold</option>
-              <option value="referral">Referral</option>
+              <option value="referral">Indicação</option>
               <option value="instagram">Instagram</option>
               <option value="event">Evento</option>
               <option value="outro">Outro</option>
@@ -178,10 +173,6 @@
       </div>
 
       <div class="form-section">
-        <div class="form-group">
-          <label>Próximo follow-up</label>
-          <input type="date" id="f-followup" />
-        </div>
         <div class="form-group">
           <label>Pendência</label>
           <input type="text" id="f-pendencia" placeholder="Ex: Enviar proposta" />
@@ -206,7 +197,7 @@
         </div>
       </div>
 
-      <!-- Read-only info (only visible on edit) -->
+      <!-- Read-only + editable meta info (only visible on edit) -->
       <div class="form-section readonly-section hidden" id="readonly-section">
         <div class="readonly-field">
           <span class="readonly-label">Lead ID</span>
@@ -216,9 +207,9 @@
           <span class="readonly-label">Resumo IA</span>
           <span class="readonly-value" id="ro-resumo"></span>
         </div>
-        <div class="readonly-field">
-          <span class="readonly-label">Criado em</span>
-          <span class="readonly-value" id="ro-criado"></span>
+        <div class="form-group" style="margin-top:8px">
+          <label>Data de criação <span class="label-hint">(editável)</span></label>
+          <input type="date" id="f-data-criacao" />
         </div>
         <div class="readonly-field">
           <span class="readonly-label">Última interação</span>
@@ -250,12 +241,12 @@
   <div class="sheet-body">
     <p class="import-hint">
       Cole aqui uma tabela do Excel / Google Sheets (ou CSV). A primeira linha deve ter os cabeçalhos.<br>
-      <strong>Colunas aceitas:</strong> <code>nome</code> (obrigatório), <code>cidade</code>, <code>segmento</code>, <code>whatsapp</code>, <code>email</code>, <code>instagram</code>, <code>site</code>, <code>responsavel</code>, <code>fonte</code>, <code>status</code>, <code>prioridade</code>, <code>observacoes</code>, <code>proximo_followup_em</code>
+      <strong>Colunas aceitas:</strong> <code>nome</code> (obrigatório), <code>cidade</code>, <code>segmento</code>, <code>whatsapp</code>, <code>email</code>, <code>instagram</code>, <code>site</code>, <code>responsavel</code>, <code>fonte</code>, <code>status</code>, <code>observacoes</code>, <code>proximo_followup_em</code>
     </p>
     <div class="import-example">
       <strong>Exemplo:</strong><br>
       <code>nome	cidade	segmento	whatsapp	status</code><br>
-      <code>Clínica Sorrir	SP	odonto	11999998888	em contato</code>
+      <code>Clínica Sorrir	São Paulo	odontologia	11999998888	em contato</code>
     </div>
     <textarea id="import-textarea" class="import-textarea" rows="10"
       placeholder="Cole aqui os dados (tab-separado do Excel, ou CSV com vírgula/ponto-e-vírgula)…"></textarea>
@@ -283,12 +274,11 @@
         <option value="">Todos</option>
         <option value="novo">Novo</option>
         <option value="em contato">Em contato</option>
+        <option value="sem resposta">Sem resposta</option>
         <option value="qualificado">Qualificado</option>
-        <option value="proposta enviada">Proposta enviada</option>
         <option value="negociando">Negociando</option>
         <option value="fechado">Fechado</option>
         <option value="perdido">Perdido</option>
-        <option value="sem resposta">Sem resposta</option>
         <option value="contato inválido">Contato inválido</option>
       </select>
     </div>
@@ -296,21 +286,11 @@
       <label>Segmento</label>
       <select id="filter-segmento" onchange="applyFilters()">
         <option value="">Todos</option>
-        <option>odonto</option>
-        <option>estética</option>
-        <option>médica</option>
-        <option>nutrição</option>
-        <option>fisio</option>
-        <option>outro</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label>Prioridade</label>
-      <select id="filter-prioridade" onchange="applyFilters()">
-        <option value="">Todas</option>
-        <option value="alta">Alta</option>
-        <option value="media">Média</option>
-        <option value="baixa">Baixa</option>
+        <option value="odontologia">Odontologia</option>
+        <option value="medicina">Medicina</option>
+        <option value="estetica">Estética</option>
+        <option value="psicologia">Psicologia</option>
+        <option value="outros">Outros</option>
       </select>
     </div>
     <div class="sheet-actions">

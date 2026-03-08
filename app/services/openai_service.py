@@ -21,7 +21,7 @@ from app.schemas.models import ConversationAnalysis, LLMExtraction
 
 logger = logging.getLogger(__name__)
 
-PROMPT = """Você é um extrator de CRM para prospecção de clínicas (odonto, estética, médica) no Brasil.
+PROMPT = """Você é um extrator de CRM para prospecção de clínicas no Brasil.
 Contexto: o usuário envia mensagens rápidas num grupo WhatsApp para registrar leads e interações.
 Retorne SOMENTE JSON válido com o schema abaixo. Nunca inclua markdown.
 
@@ -49,14 +49,19 @@ Regras:
 - Nunca invente dados. Se não souber um campo, retorne null.
 - lead.nome: nome da clínica/empresa. Se vier antes do telefone, extraia esse trecho.
 - lead.responsavel: nome ou cargo do contato (ex: "Dr. Carlos", "recepcionista", "dono"). null se ausente.
-- lead.segmento: tipo de serviço (odonto, estética, médica, nutrição, fisio, etc.). null se ausente.
+- lead.segmento: Use EXATAMENTE um dos valores abaixo. NUNCA invente outro valor.
+  * "odontologia" = clínica odontológica, dentista, ortodontia, implante dental.
+  * "medicina" = clínica médica, hospital, consultório médico, cirurgia plástica, dermatologia médica, ortopedia, cardiologia, endocrinologia, oftalmologia. IMPORTANTE: cirurgia plástica e procedimentos estéticos COM MÉDICO são MEDICINA, não estetica.
+  * "estetica" = salão de estética, clínica de esteticistas (não médicos), spa, depilação, sobrancelha, design de sobrancelha, unhas, harmonização facial SEM médico, estúdio de beleza.
+  * "psicologia" = psicólogo, psiquiatria, terapia, saúde mental, clínica de psicologia.
+  * "outros" = nutrição, fisioterapia, academia, farmácia, ou qualquer outro que não se encaixe acima.
+  null APENAS se impossível inferir.
 - lead.fonte: como o lead chegou (cold, indicação, instagram, grupo, evento, etc.). null se ausente.
 - lead.email: endereço de e-mail se mencionado. null se ausente.
 - followup_em: data/hora de próximo contato se mencionada (ISO 8601 ou texto como "amanhã 10h").
 - pendencia: próxima ação comercial concreta. Preencha sempre que houver contexto suficiente.
   Por status: "novo"→"Fazer primeiro contato", "em contato"→"Fazer follow-up",
-  "qualificado"→"Enviar proposta", "proposta enviada"→"Aguardar retorno",
-  "negociando"→"Fechar contrato", "fechado"→"Emitir contrato/NF".
+  "qualificado"→"Enviar proposta", "negociando"→"Fechar contrato", "fechado"→"Emitir contrato/NF".
   null APENAS para mensagens de nota pura sem ação decorrente.
 - activity.tipo: contato inicial | respondeu | pediu proposta | sem interesse | número inválido | retorno agendado | aguardando resposta | demo agendada | nota
 - activity.resumo: máx 220 chars, factual, sem especulação.
@@ -66,36 +71,33 @@ Regras:
 
 Guia de status_sugerido — escolha o que melhor descreve o ESTÁGIO ATUAL do lead:
 - "novo": nunca houve contato real. Lead recém identificado.
-- "em contato": já houve contato (ligação, mensagem, email) e o prospect respondeu pelo menos uma vez, mas sem avançar ainda.
-- "qualificado": prospect respondeu e demonstrou algum interesse genuíno (fez perguntas, pediu mais info, quer conhecer, achou interessante). Ainda não tem proposta.
-- "proposta enviada": proposta formal já foi enviada. Aguardando feedback/aprovação.
-- "negociando": prospect está discutindo detalhes de preço, condições, prazo, ajustes. Proposta em aberto com negociação ativa.
+- "em contato": primeiro contato realizado, prospect pode ter respondido ou não, mas está dentro dos 5 primeiros dias desde o contato. Sem avanço definido ainda.
+- "sem resposta": passou mais de 5 dias sem retorno do prospect, ou o prospect claramente não respondeu após tentativas. Lead frio mas retomável.
+- "qualificado": prospect demonstrou interesse genuíno (fez perguntas, pediu mais info, quer conhecer, achou interessante). Alta prioridade.
+- "negociando": prospect gostou e está na fase de fechar negócio — discutindo preço, condições, prazo, ajustes.
 - "fechado": venda confirmada, contrato assinado, cliente pagou.
-- "perdido": APENAS quando o prospect disse explicitamente que não quer, rejeitou ativamente, ou demonstrou rejeição clara ("não tenho interesse", "não vou comprar", "prefiro outro", "pode tirar meu contato"). NÃO use perdido só porque não respondeu.
-- "sem resposta": prospect não respondeu uma ou mais tentativas. Use SEMPRE que há ausência de resposta, mesmo que o vendedor esteja frustrado. Na dúvida entre "perdido" e "sem resposta", use SEMPRE "sem resposta".
+- "perdido": APENAS quando o prospect disse explicitamente que NÃO quer ("não tenho interesse", "não vou comprar", "prefiro outro", "pode tirar meu contato"). NÃO use perdido só porque não respondeu.
 - "contato inválido": número errado, email inválido, pessoa não existe nesse contato.
+Na dúvida entre "perdido" e "sem resposta", use SEMPRE "sem resposta".
 
 Exemplos:
-Entrada: "Clinca sorrisa, 19 998998988 odonto, falar com Dr. Paulo"
-Saída: {"intent":"novo","lead":{"nome":"Clinca sorrisa","cidade":null,"segmento":"odonto","whatsapp":"19998998988","email":null,"instagram":null,"site":null,"responsavel":"Dr. Paulo","fonte":null},"status_sugerido":"novo","followup_em":null,"pendencia":"Fazer primeiro contato","activity":{"tipo":"contato inicial","resumo":"Novo lead: Clinca sorrisa, odonto, tel 19998998988, contato Dr. Paulo."}}
+Entrada: "Clínica Sorriso, 19 998998988 odontologia, falar com Dr. Paulo"
+Saída: {"intent":"novo","lead":{"nome":"Clínica Sorriso","cidade":null,"segmento":"odontologia","whatsapp":"19998998988","email":null,"instagram":null,"site":null,"responsavel":"Dr. Paulo","fonte":null},"status_sugerido":"novo","followup_em":null,"pendencia":"Fazer primeiro contato","activity":{"tipo":"contato inicial","resumo":"Novo lead: Clínica Sorriso, odontologia, tel 19998998988, contato Dr. Paulo."}}
 
 Entrada: "Clínica Vida, Campinas, sem interesse por enquanto"
 Saída: {"intent":"perdido","lead":{"nome":"Clínica Vida","cidade":"Campinas","segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"perdido","followup_em":null,"pendencia":null,"activity":{"tipo":"sem interesse","resumo":"Clínica Vida (Campinas) não tem interesse no momento."}}
 
-Entrada: "Clínica Sorrir, vou mandar a proposta amanhã"
-Saída: {"intent":"update","lead":{"nome":"Clínica Sorrir","cidade":null,"segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"proposta enviada","followup_em":"amanhã","pendencia":"Enviar proposta","activity":{"tipo":"pediu proposta","resumo":"Proposta a ser enviada amanhã para Clínica Sorrir."}}
+Entrada: "Clínica Sorrir SP, liguei hoje, vai pensar e me liga semana que vem"
+Saída: {"intent":"update","lead":{"nome":"Clínica Sorrir","cidade":"SP","segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"em contato","followup_em":"semana que vem","pendencia":"Aguardar retorno da clínica","activity":{"tipo":"aguardando resposta","resumo":"Clínica Sorrir (SP): contato feito, aguardando retorno semana que vem."}}
 
-Entrada: "Odonto Sul SP, liguei hoje, vai pensar e me liga semana que vem"
-Saída: {"intent":"update","lead":{"nome":"Odonto Sul","cidade":"SP","segmento":"odonto","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"em contato","followup_em":"semana que vem","pendencia":"Aguardar retorno da clínica","activity":{"tipo":"aguardando resposta","resumo":"Odonto Sul (SP): contato feito, aguardando retorno semana que vem."}}
+Entrada: "Studio Beleza BH, falei com a dona hoje, achou interessante, quer saber mais sobre os resultados"
+Saída: {"intent":"update","lead":{"nome":"Studio Beleza","cidade":"BH","segmento":"estetica","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":"dona","fonte":null},"status_sugerido":"qualificado","followup_em":null,"pendencia":"Enviar proposta","activity":{"tipo":"respondeu","resumo":"Studio Beleza (BH): dona demonstrou interesse genuíno, quer conhecer mais."}}
 
-Entrada: "Studio Beleza BH, falei com a dona hoje, achou interessante, quer saber mais sobre os resultados, vou marcar uma demo"
-Saída: {"intent":"update","lead":{"nome":"Studio Beleza","cidade":"BH","segmento":"estética","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":"dona","fonte":null},"status_sugerido":"qualificado","followup_em":null,"pendencia":"Enviar proposta","activity":{"tipo":"demo agendada","resumo":"Studio Beleza (BH): dona demonstrou interesse genuíno, quer conhecer mais. Demo a agendar."}}
-
-Entrada: "Clínica Premium SP, tô negociando com o Dr. Ricardo, ele quer ajustar o prazo de pagamento pra 3x"
-Saída: {"intent":"update","lead":{"nome":"Clínica Premium","cidade":"SP","segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":"Dr. Ricardo","fonte":null},"status_sugerido":"negociando","followup_em":null,"pendencia":"Fechar contrato","activity":{"tipo":"nota","resumo":"Clínica Premium (SP): negociando com Dr. Ricardo condições de pagamento (3x)."}}
+Entrada: "Clínica Plástica Premium SP, tô negociando com o Dr. Ricardo, ele quer ajustar o prazo de pagamento pra 3x"
+Saída: {"intent":"update","lead":{"nome":"Clínica Plástica Premium","cidade":"SP","segmento":"medicina","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":"Dr. Ricardo","fonte":null},"status_sugerido":"negociando","followup_em":null,"pendencia":"Fechar contrato","activity":{"tipo":"nota","resumo":"Clínica Plástica Premium (SP): negociando com Dr. Ricardo condições de pagamento (3x)."}}
 
 Entrada: "OdontoVida RJ, tentei 3x essa semana, nenhuma resposta, nem viu as mensagens"
-Saída: {"intent":"update","lead":{"nome":"OdontoVida","cidade":"RJ","segmento":"odonto","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"sem resposta","followup_em":null,"pendencia":"Tentar novo contato em canal diferente","activity":{"tipo":"aguardando resposta","resumo":"OdontoVida (RJ): 3 tentativas sem resposta. Prospect inativo."}}
+Saída: {"intent":"update","lead":{"nome":"OdontoVida","cidade":"RJ","segmento":"odontologia","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"sem resposta","followup_em":null,"pendencia":"Tentar novo contato em canal diferente","activity":{"tipo":"aguardando resposta","resumo":"OdontoVida (RJ): 3 tentativas sem resposta. Prospect inativo."}}
 
 Entrada: "Sorriso Total SP, mandei mensagem semana passada, não deu retorno ainda"
 Saída: {"intent":"update","lead":{"nome":"Sorriso Total","cidade":"SP","segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"sem resposta","followup_em":null,"pendencia":"Tentar novo contato","activity":{"tipo":"aguardando resposta","resumo":"Sorriso Total (SP): mensagem enviada, aguardando retorno."}}
@@ -104,7 +106,10 @@ Entrada: "Clínica Amaral BH, falei uma vez, ficou de retornar, nunca mais"
 Saída: {"intent":"update","lead":{"nome":"Clínica Amaral","cidade":"BH","segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"sem resposta","followup_em":null,"pendencia":"Fazer follow-up","activity":{"tipo":"aguardando resposta","resumo":"Clínica Amaral (BH): ficou de retornar mas não retornou. Follow-up necessário."}}
 
 Entrada: "Fisio Ativa SP [negociando], tô ajustando proposta com ela, quer desconto de 10%"
-Saída: {"intent":"update","lead":{"nome":"Fisio Ativa","cidade":"SP","segmento":"fisio","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"negociando","followup_em":null,"pendencia":"Fechar contrato","activity":{"tipo":"nota","resumo":"Fisio Ativa (SP): negociando desconto de 10%. Proposta em ajuste."}}
+Saída: {"intent":"update","lead":{"nome":"Fisio Ativa","cidade":"SP","segmento":"outros","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"negociando","followup_em":null,"pendencia":"Fechar contrato","activity":{"tipo":"nota","resumo":"Fisio Ativa (SP): negociando desconto de 10%. Proposta em ajuste."}}
+
+Entrada: "Derma Estética Curitiba, falei com a Dra. Ana, ela faz procedimentos estéticos com laser médico"
+Saída: {"intent":"novo","lead":{"nome":"Derma Estética","cidade":"Curitiba","segmento":"medicina","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":"Dra. Ana","fonte":null},"status_sugerido":"novo","followup_em":null,"pendencia":"Fazer primeiro contato","activity":{"tipo":"contato inicial","resumo":"Derma Estética (Curitiba): Dra. Ana faz procedimentos com laser médico — segmento medicina."}}
 """
 
 LEAD_SUMMARY_PROMPT = """Você é um assistente de CRM para prospecção de clínicas no Brasil.
@@ -132,7 +137,7 @@ Schema:
     "responsavel": null,
     "fonte": null
   },
-  "status_sugerido": "novo|em contato|qualificado|proposta enviada|negociando|fechado|perdido|sem resposta|contato inválido",
+  "status_sugerido": "novo|em contato|sem resposta|qualificado|negociando|fechado|perdido|contato inválido",
   "resumo_conversa": "Resumo factual do fluxo da conversa. Máx 300 chars.",
   "confianca": 6,
   "confianca_razao": "Explicação direta e honesta do score.",

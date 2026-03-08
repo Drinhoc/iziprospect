@@ -1020,3 +1020,41 @@ label {
   .prob-row .prob-status,
   .prob-row .prob-link { display: none; }
 }
+
+/* ===== Leads table additions ===== */
+.td-phone { white-space: nowrap; }
+.td-pendencia { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.copy-phone-btn {
+  background: none; border: 1px solid #d1d5db; border-radius: 4px; cursor: pointer;
+  font-size: .75rem; padding: 1px 5px; margin-left: 4px; color: var(--text-muted);
+  vertical-align: middle;
+}
+.copy-phone-btn:hover { background: #f3f4f6; color: var(--text-primary); }
+
+/* Label hint (for editable fields in readonly section) */
+.label-hint { font-size: .72rem; color: var(--text-muted); font-weight: normal; margin-left: 4px; }
+
+/* ===== Segmento Detalhado ===== */
+#seg-detalhe-list { display: flex; flex-direction: column; gap: 16px; }
+.seg-detalhe-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px;
+}
+.seg-detalhe-header {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.seg-detalhe-nome { font-weight: 700; font-size: 1rem; }
+.seg-detalhe-total { font-size: .82rem; color: var(--text-muted); }
+.seg-detalhe-taxa { font-size: .82rem; font-weight: 600; }
+.seg-detalhe-bars { display: flex; flex-direction: column; gap: 6px; }
+.seg-bar-row { display: grid; grid-template-columns: 130px 1fr 36px; align-items: center; gap: 8px; }
+.seg-bar-label { font-size: .8rem; color: var(--text-muted); text-align: right; }
+.seg-bar-track { height: 8px; background: #f3f4f6; border-radius: 4px; overflow: hidden; }
+.seg-bar-fill { height: 100%; border-radius: 4px; transition: width .4s; }
+.seg-bar-count { font-size: .78rem; font-weight: 600; text-align: right; }
+
+@media (max-width: 768px) {
+  .seg-bar-row { grid-template-columns: 100px 1fr 32px; }
+  .seg-bar-label { font-size: .72rem; }
+}

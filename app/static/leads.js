@@ -7,12 +7,23 @@ let state = {
   search: '',
   status: '',
   segmento: '',
-  prioridade: '',
   searchTimer: null,
   currentLeadId: null,
 };
 
 // ===== Badges =====
+
+const SEGMENTO_LABEL = {
+  'odontologia': 'Odontologia',
+  'medicina':    'Medicina',
+  'estetica':    'Estética',
+  'psicologia':  'Psicologia',
+  'outros':      'Outros',
+};
+
+function segLabel(s) {
+  return SEGMENTO_LABEL[s] || (s ? s.charAt(0).toUpperCase() + s.slice(1) : '—');
+}
 
 function statusBadge(s) {
   const map = {
@@ -29,12 +40,6 @@ function statusBadge(s) {
   };
   const cls = map[s] || 'badge-novo';
   return `<span class="badge ${cls}">${s || '—'}</span>`;
-}
-
-function prioBadge(p) {
-  const map = { alta: 'badge-prio-alta', media: 'badge-prio-media', baixa: 'badge-prio-baixa' };
-  const cls = map[p] || 'badge-prio-media';
-  return `<span class="badge ${cls}">${p || '—'}</span>`;
 }
 
 function fmtDate(s) {
@@ -61,7 +66,6 @@ async function loadLeads() {
   if (state.search) params.set('search', state.search);
   if (state.status) params.set('status', state.status);
   if (state.segmento) params.set('segmento', state.segmento);
-  if (state.prioridade) params.set('prioridade', state.prioridade);
 
   try {
     const res = await fetch('/api/leads?' + params);
@@ -91,17 +95,34 @@ function renderTable(leads) {
   const tbody = document.getElementById('leads-tbody');
   tbody.innerHTML = '';
   leads.forEach(l => {
+    const phone = fmtPhone(l.whatsapp);
+    const phoneTd = phone
+      ? `${phone} <button class="copy-phone-btn" data-phone="${esc(l.whatsapp)}" title="Copiar">⎘</button>`
+      : '—';
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><span class="lead-name">${esc(l.nome)}</span></td>
-      <td class="text-muted">${esc(l.cidade)}</td>
-      <td class="text-muted">${esc(l.segmento)}</td>
+      <td class="text-muted">${segLabel(l.segmento)}</td>
+      <td class="text-muted">${esc(l.cidade) || '—'}</td>
+      <td class="td-phone">${phoneTd}</td>
+      <td class="text-muted">${esc(l.responsavel) || '—'}</td>
       <td>${statusBadge(l.status)}</td>
-      <td>${prioBadge(l.prioridade)}</td>
-      <td class="text-muted">${esc(l.pendencia)}</td>
+      <td class="text-muted td-pendencia">${esc(l.pendencia) || '—'}</td>
       <td class="text-muted">${fmtDate(l.ultima_interacao_em)}</td>
       <td class="text-muted">${fmtDate(l.proximo_followup_em)}</td>`;
     tr.onclick = () => openLeadModal(l.lead_id);
+    // Copy phone button — stop propagation so row click doesn't fire
+    tr.querySelectorAll('.copy-phone-btn').forEach(btn => {
+      btn.onclick = e => {
+        e.stopPropagation();
+        const num = btn.dataset.phone || '';
+        navigator.clipboard.writeText(num).then(() => {
+          const orig = btn.textContent;
+          btn.textContent = '✓';
+          setTimeout(() => { btn.textContent = orig; }, 1200);
+        });
+      };
+    });
     tbody.appendChild(tr);
   });
 }
@@ -114,24 +135,24 @@ function renderCards(leads) {
     card.className = 'lead-card';
     const phone = fmtPhone(l.whatsapp);
     const phoneHtml = phone
-      ? `📱 ${phone} <button class="copy-phone-btn" data-phone="${l.whatsapp}" title="Copiar número">⎘</button>`
+      ? `📱 ${phone} <button class="copy-phone-btn" data-phone="${esc(l.whatsapp)}" title="Copiar número">⎘</button>`
       : null;
     const meta = [
-      l.cidade ? `📍 ${l.cidade}` : null,
-      l.segmento ? `🏥 ${l.segmento}` : null,
+      l.segmento ? `🏥 ${segLabel(l.segmento)}` : null,
+      l.cidade ? `📍 ${esc(l.cidade)}` : null,
       phoneHtml,
+      l.responsavel ? `👤 ${esc(l.responsavel)}` : null,
       l.proximo_followup_em ? `📅 ${fmtDate(l.proximo_followup_em)}` : null,
     ].filter(Boolean);
 
     card.innerHTML = `
       <div class="lc-top">
         <span class="lc-name">${esc(l.nome) || '—'}</span>
-        <div class="lc-badges">${statusBadge(l.status)} ${prioBadge(l.prioridade)}</div>
+        <div class="lc-badges">${statusBadge(l.status)}</div>
       </div>
       ${meta.length ? `<div class="lc-meta">${meta.map(m => `<span class="lc-meta-item">${m}</span>`).join('')}</div>` : ''}
       ${l.pendencia ? `<div class="lc-pendencia">${esc(l.pendencia)}</div>` : ''}`;
     card.onclick = () => openLeadModal(l.lead_id);
-    // Botão copiar telefone: para propagação para não abrir modal
     card.querySelectorAll('.copy-phone-btn').forEach(btn => {
       btn.onclick = e => {
         e.stopPropagation();
@@ -188,7 +209,6 @@ function closeFilters() {
 function applyFilters() {
   state.status = document.getElementById('filter-status').value;
   state.segmento = document.getElementById('filter-segmento').value;
-  state.prioridade = document.getElementById('filter-prioridade').value;
   state.page = 1;
   updateFilterChips();
   loadLeads();
@@ -197,10 +217,8 @@ function applyFilters() {
 function clearFilters() {
   state.status = '';
   state.segmento = '';
-  state.prioridade = '';
   document.getElementById('filter-status').value = '';
   document.getElementById('filter-segmento').value = '';
-  document.getElementById('filter-prioridade').value = '';
   state.page = 1;
   updateFilterChips();
   loadLeads();
@@ -212,8 +230,7 @@ function updateFilterChips() {
   const badge = document.getElementById('filter-badge');
   const active = [
     state.status && { label: `Status: ${state.status}`, clear: () => { state.status = ''; document.getElementById('filter-status').value = ''; } },
-    state.segmento && { label: `Segmento: ${state.segmento}`, clear: () => { state.segmento = ''; document.getElementById('filter-segmento').value = ''; } },
-    state.prioridade && { label: `Prioridade: ${state.prioridade}`, clear: () => { state.prioridade = ''; document.getElementById('filter-prioridade').value = ''; } },
+    state.segmento && { label: `Segmento: ${segLabel(state.segmento)}`, clear: () => { state.segmento = ''; document.getElementById('filter-segmento').value = ''; } },
   ].filter(Boolean);
 
   if (active.length === 0) {
@@ -270,7 +287,6 @@ async function openLeadModal(leadId) {
     sheet.classList.add('visible');
   });
 
-  // Reset scroll
   setTimeout(() => {
     const body = sheet.querySelector('.sheet-body');
     if (body) body.scrollTop = 0;
@@ -293,7 +309,6 @@ function fillForm(l) {
   document.getElementById('f-cidade').value = l.cidade || '';
   document.getElementById('f-segmento').value = l.segmento || '';
   document.getElementById('f-status').value = l.status || 'novo';
-  document.getElementById('f-prioridade').value = l.prioridade || 'media';
   document.getElementById('f-whatsapp').value = l.whatsapp || '';
   document.getElementById('f-email').value = l.email || '';
   document.getElementById('f-instagram').value = l.instagram || '';
@@ -306,12 +321,12 @@ function fillForm(l) {
   document.getElementById('f-valor-venda').value = l.valor_venda || '';
   document.getElementById('f-data-fechamento').value = (l.data_fechamento || '').slice(0, 10);
   document.getElementById('f-motivo-perda').value = l.motivo_perda || '';
+  document.getElementById('f-data-criacao').value = (l.data_criacao || '').slice(0, 10);
   updateConditionalFields(l.status || 'novo');
 
   // Readonly
   document.getElementById('ro-lead-id').textContent = l.lead_id || '';
   document.getElementById('ro-resumo').textContent = l.resumo || '—';
-  document.getElementById('ro-criado').textContent = fmtDate(l.data_criacao);
   document.getElementById('ro-ultima').textContent = fmtDate(l.ultima_interacao_em);
 }
 
@@ -324,12 +339,12 @@ function updateConditionalFields(status) {
 }
 
 function clearForm() {
-  ['f-nome','f-cidade','f-whatsapp','f-email','f-instagram','f-site','f-responsavel','f-pendencia','f-observacoes','f-valor-venda','f-data-fechamento','f-motivo-perda'].forEach(id => {
+  ['f-nome','f-cidade','f-whatsapp','f-email','f-instagram','f-site','f-responsavel',
+   'f-pendencia','f-observacoes','f-valor-venda','f-data-fechamento','f-motivo-perda','f-data-criacao'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('f-segmento').value = '';
   document.getElementById('f-status').value = 'novo';
-  document.getElementById('f-prioridade').value = 'media';
   document.getElementById('f-fonte').value = '';
   document.getElementById('f-followup').value = '';
   updateConditionalFields('novo');
@@ -341,7 +356,6 @@ function formData() {
     cidade: document.getElementById('f-cidade').value.trim(),
     segmento: document.getElementById('f-segmento').value,
     status: document.getElementById('f-status').value,
-    prioridade: document.getElementById('f-prioridade').value,
     whatsapp: document.getElementById('f-whatsapp').value.trim(),
     email: document.getElementById('f-email').value.trim(),
     instagram: document.getElementById('f-instagram').value.trim(),
@@ -354,6 +368,7 @@ function formData() {
     valor_venda: document.getElementById('f-valor-venda').value || '',
     data_fechamento: document.getElementById('f-data-fechamento').value || '',
     motivo_perda: document.getElementById('f-motivo-perda').value.trim(),
+    data_criacao: document.getElementById('f-data-criacao').value || '',
   };
 }
 
@@ -427,12 +442,10 @@ function esc(s) {
 
 // ===== Init =====
 
-// Campos condicionais ao mudar status no modal
 document.getElementById('f-status').addEventListener('change', e => {
   updateConditionalFields(e.target.value);
 });
 
-// Search with debounce
 document.getElementById('search-input').addEventListener('input', e => {
   clearTimeout(state.searchTimer);
   state.searchTimer = setTimeout(() => {
@@ -442,7 +455,6 @@ document.getElementById('search-input').addEventListener('input', e => {
   }, 350);
 });
 
-// Keyboard close
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     closeModal();
@@ -456,7 +468,7 @@ document.addEventListener('keydown', e => {
 const IMPORT_COLUMNS = [
   'nome','cidade','segmento','whatsapp','email',
   'instagram','site','responsavel','fonte',
-  'status','prioridade','observacoes','proximo_followup_em',
+  'status','observacoes','proximo_followup_em',
 ];
 
 function openImportModal() {
@@ -487,17 +499,14 @@ function closeImportModal() {
   }, 280);
 }
 
-/** Detecta separador: tab (Excel/Sheets), ponto-e-vírgula ou vírgula */
 function detectSep(firstLine) {
   if (firstLine.includes('\t')) return '\t';
   if (firstLine.includes(';')) return ';';
   return ',';
 }
 
-/** Parse CSV/TSV respeitando aspas */
 function parseLine(line, sep) {
   if (sep !== ',') return line.split(sep).map(c => c.trim());
-  // Para vírgula: respeita campos com aspas
   const cells = [];
   let cur = '', inQ = false;
   for (let i = 0; i < line.length; i++) {
@@ -517,10 +526,8 @@ function parseImportText(raw) {
   const sep = detectSep(lines[0]);
   const headers = parseLine(lines[0], sep).map(h => h.toLowerCase().trim().replace(/\s+/g, '_'));
 
-  // Valida que 'nome' existe
   if (!headers.includes('nome')) throw new Error("A planilha deve ter uma coluna chamada 'nome'.");
 
-  // Filtra só colunas reconhecidas
   const validIdx = headers.map((h, i) => IMPORT_COLUMNS.includes(h) ? i : -1);
 
   return lines.slice(1).map(line => {

@@ -104,7 +104,7 @@ def infer_activity_type(raw_text: str) -> str:
 
 # Override explícito: usuário pode forçar status entre colchetes, ex: [qualificado]
 _STATUS_OVERRIDE_RE = re.compile(
-    r"\[\s*(novo|em contato|qualificado|proposta enviada|negociando|fechado|perdido|sem resposta|contato inv[aá]lido)\s*\]",
+    r"\[\s*(novo|em contato|qualificado|negociando|fechado|perdido|sem resposta|contato inv[aá]lido)\s*\]",
     re.IGNORECASE,
 )
 

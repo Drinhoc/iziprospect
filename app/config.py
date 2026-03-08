@@ -31,7 +31,7 @@ class Settings:
     crm_target_group_id: Optional[str]
     disable_evolution_confirmation: bool
     database_url: Optional[str]
-    default_timezone: str = "UTC"
+    default_timezone: str = "America/Sao_Paulo"
     sheets_sync_interval_minutes: int = 15
     daily_summary_hour: int = 18
     daily_summary_minute: int = 30
@@ -56,7 +56,7 @@ class Settings:
             ),
             disable_evolution_confirmation=_as_bool(os.getenv("DISABLE_EVOLUTION_CONFIRMATION"), default=False),
             database_url=os.getenv("DATABASE_URL"),
-            default_timezone=os.getenv("DEFAULT_TIMEZONE", "UTC"),
+            default_timezone=os.getenv("DEFAULT_TIMEZONE", "America/Sao_Paulo"),
             sheets_sync_interval_minutes=int(os.getenv("SHEETS_SYNC_INTERVAL_MINUTES", "15")),
             daily_summary_hour=int(os.getenv("DAILY_SUMMARY_HOUR", "18")),
             daily_summary_minute=int(os.getenv("DAILY_SUMMARY_MINUTE", "30")),

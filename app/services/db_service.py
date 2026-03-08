@@ -109,6 +109,22 @@ def _norm_phone(value: Any) -> str:
     return f"+{digits}" if digits else ""
 
 
+def _title_case(value: str) -> str:
+    """Convert to Title Case preserving common abbreviations (SP, RJ, etc.)."""
+    if not value:
+        return value
+    return " ".join(w.capitalize() for w in value.strip().split())
+
+
+def _priority_from_status(status: str) -> str:
+    """Auto-calculate lead priority based on current status."""
+    if status in ("negociando", "qualificado"):
+        return "alta"
+    if status in ("em contato", "novo"):
+        return "media"
+    return "baixa"
+
+
 def _safe_float(v: Any) -> Optional[float]:
     try:
         return float(v) if v not in (None, "", "None") else None
@@ -941,6 +957,29 @@ class DBService:
                 """)
                 motivos_perda = [{"motivo": r[0], "total": r[1]} for r in cur.fetchall()]
 
+                # Bloco M — Status breakdown por segmento
+                cur.execute("""
+                    SELECT segmento, status, COUNT(*) AS total
+                    FROM leads
+                    WHERE segmento != '' AND status != 'arquivado'
+                    GROUP BY segmento, status
+                    ORDER BY segmento, total DESC
+                """)
+                seg_status_raw: Dict[str, Any] = {}
+                for row in cur.fetchall():
+                    seg, st, cnt = row
+                    if seg not in seg_status_raw:
+                        seg_status_raw[seg] = {"segmento": seg, "status": {}, "total": 0}
+                    seg_status_raw[seg]["status"][st] = cnt
+                    seg_status_raw[seg]["total"] += cnt
+                # Enrich with conversion rate
+                segmento_detalhado = []
+                for seg_data in sorted(seg_status_raw.values(), key=lambda x: x["total"], reverse=True):
+                    fechados = seg_data["status"].get("fechado", 0)
+                    total = seg_data["total"]
+                    seg_data["taxa_conversao"] = round(fechados * 100 / total, 1) if total > 0 else 0.0
+                    segmento_detalhado.append(seg_data)
+
             return {
                 "kpis": kpis,
                 "funil": funil_raw,
@@ -955,7 +994,32 @@ class DBService:
                 "dist_scores": dist_scores,
                 "fechamentos": fechamentos,
                 "motivos_perda": motivos_perda,
+                "segmento_detalhado": segmento_detalhado,
             }
+        finally:
+            self._put(conn)
+
+    def _auto_transition_em_contato(self) -> None:
+        """Automatically transitions 'em contato' leads to 'sem resposta' after 5 days without activity."""
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE leads SET status = 'sem resposta', prioridade = 'baixa'
+                    WHERE status = 'em contato'
+                      AND (
+                        ultima_interacao_em IS NULL
+                        OR ultima_interacao_em = ''
+                        OR LEFT(ultima_interacao_em, 10) < (CURRENT_DATE - INTERVAL '5 days')::text
+                      )
+                """)
+                count = cur.rowcount
+            conn.commit()
+            if count > 0:
+                logger.info("auto_transition_em_contato | %d leads → sem resposta", count)
+        except Exception:
+            conn.rollback()
+            logger.warning("auto_transition_em_contato falhou", exc_info=True)
         finally:
             self._put(conn)
 
@@ -969,6 +1033,8 @@ class DBService:
         page_size: int = 50,
     ) -> Dict[str, Any]:
         """Returns paginated leads with optional filters."""
+        # Auto-transition stale 'em contato' leads before returning results
+        self._auto_transition_em_contato()
         conditions = ["status != 'arquivado'"]
         params: List[Any] = []
 
@@ -1015,18 +1081,22 @@ class DBService:
         lead: Dict[str, Any] = {k: (str(v).strip() if v is not None else "") for k, v in data.items()}
         lead["whatsapp"] = _norm_phone(lead.get("whatsapp", ""))
         lead["email"] = lead.get("email", "").strip().lower()
+        lead["nome"] = _title_case(lead.get("nome", ""))
+        lead["cidade"] = _title_case(lead.get("cidade", ""))
         lead["nome_normalizado"] = _normalize_text(lead.get("nome", ""))
         lead["cidade_normalizada"] = _normalize_text(lead.get("cidade", ""))
         lead["lead_key"] = f"{lead['cidade_normalizada']}:{_canonicalize_name(lead.get('nome', ''))}"
-        return self._create_lead(lead, data.get("status", "novo"), data.get("proximo_followup_em") or None, now)
+        status = data.get("status", "novo")
+        lead["prioridade"] = _priority_from_status(status)
+        return self._create_lead(lead, status, data.get("proximo_followup_em") or None, now)
 
     def update_lead_from_dashboard(self, lead_id: str, data: Dict[str, Any]) -> bool:
         """Updates a lead from dashboard input (allows more fields than Sheets sync)."""
         allowed = {
             "nome", "cidade", "segmento", "whatsapp", "email",
             "instagram", "site", "responsavel", "fonte",
-            "status", "prioridade", "observacoes", "proximo_followup_em", "pendencia",
-            "valor_venda", "data_fechamento", "motivo_perda",
+            "status", "observacoes", "proximo_followup_em", "pendencia",
+            "valor_venda", "data_fechamento", "motivo_perda", "data_criacao",
         }
         safe_fields: Dict[str, Any] = {
             k: str(v).strip() for k, v in data.items()
@@ -1040,14 +1110,19 @@ class DBService:
         if "email" in safe_fields:
             safe_fields["email"] = safe_fields["email"].strip().lower()
         if "nome" in safe_fields:
+            safe_fields["nome"] = _title_case(safe_fields["nome"])
             safe_fields["nome_normalizado"] = _normalize_text(safe_fields["nome"])
         if "cidade" in safe_fields:
+            safe_fields["cidade"] = _title_case(safe_fields["cidade"])
             safe_fields["cidade_normalizada"] = _normalize_text(safe_fields["cidade"])
         if "nome_normalizado" in safe_fields or "cidade_normalizada" in safe_fields:
             safe_fields["lead_key"] = (
                 f"{safe_fields.get('cidade_normalizada', '')}:"
                 f"{_canonicalize_name(safe_fields.get('nome', ''))}"
             )
+        # Auto-calculate priority from status
+        if "status" in safe_fields:
+            safe_fields["prioridade"] = _priority_from_status(safe_fields["status"])
 
         set_clause = ", ".join(f"{k} = %s" for k in safe_fields)
         values = list(safe_fields.values()) + [lead_id]

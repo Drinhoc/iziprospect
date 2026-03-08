@@ -1,6 +1,6 @@
 /* estatisticas.js — Página /estatisticas */
 
-const FUNIL_ORDER = ['novo','em contato','qualificado','proposta enviada','negociando','fechado'];
+const FUNIL_ORDER = ['novo','em contato','sem resposta','qualificado','negociando','fechado'];
 const FUNIL_COLORS = {
   'novo':             '#9ca3af',
   'em contato':       '#3b82f6',
@@ -249,6 +249,65 @@ function renderMotivos(data) {
   });
 }
 
+/* ---------- Estatísticas detalhadas por segmento ---------- */
+const SEGMENTO_LABEL_MAP = {
+  'odontologia': 'Odontologia',
+  'medicina':    'Medicina',
+  'estetica':    'Estética',
+  'psicologia':  'Psicologia',
+  'outros':      'Outros',
+};
+
+function renderSegmentoDetalhado(data) {
+  const el = document.getElementById('seg-detalhe-list');
+  el.innerHTML = '';
+  if (!data || !data.length) {
+    el.innerHTML = '<span class="no-data">Sem dados de segmento ainda.</span>';
+    return;
+  }
+  const STATUS_COLORS = {
+    'novo':             '#9ca3af',
+    'em contato':       '#3b82f6',
+    'sem resposta':     '#6b7280',
+    'qualificado':      '#8b5cf6',
+    'negociando':       '#f97316',
+    'fechado':          '#10b981',
+    'perdido':          '#ef4444',
+    'contato inválido': '#d1d5db',
+    'proposta enviada': '#f59e0b',
+  };
+  data.forEach(seg => {
+    const segLabel = SEGMENTO_LABEL_MAP[seg.segmento] || (seg.segmento.charAt(0).toUpperCase() + seg.segmento.slice(1));
+    const card = document.createElement('div');
+    card.className = 'seg-detalhe-card';
+
+    // Status bars
+    const barsHtml = Object.entries(seg.status || {})
+      .sort((a, b) => b[1] - a[1])
+      .map(([st, cnt]) => {
+        const pct = Math.round(cnt * 100 / (seg.total || 1));
+        const color = STATUS_COLORS[st] || '#9ca3af';
+        return `<div class="seg-bar-row">
+          <span class="seg-bar-label">${st}</span>
+          <div class="seg-bar-track">
+            <div class="seg-bar-fill" style="width:${pct}%;background:${color}"></div>
+          </div>
+          <span class="seg-bar-count">${cnt}</span>
+        </div>`;
+      }).join('');
+
+    const taxaColor = seg.taxa_conversao >= 20 ? '#10b981' : seg.taxa_conversao >= 5 ? '#f59e0b' : '#9ca3af';
+    card.innerHTML = `
+      <div class="seg-detalhe-header">
+        <span class="seg-detalhe-nome">${segLabel}</span>
+        <span class="seg-detalhe-total">${seg.total} leads</span>
+        <span class="seg-detalhe-taxa" style="color:${taxaColor}">${seg.taxa_conversao}% conv.</span>
+      </div>
+      <div class="seg-detalhe-bars">${barsHtml}</div>`;
+    el.appendChild(card);
+  });
+}
+
 /* ---------- Load principal ---------- */
 async function loadEstatisticas() {
   try {
@@ -306,6 +365,9 @@ async function loadEstatisticas() {
 
     // Motivos de perda
     renderMotivos(d.motivos_perda || []);
+
+    // Segmento detalhado
+    renderSegmentoDetalhado(d.segmento_detalhado || []);
 
     // Timestamp
     document.getElementById('last-update-stats').textContent =
