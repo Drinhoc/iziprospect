@@ -25,3 +25,8 @@ def dashboard(request: Request):
 @router.get("/leads", response_class=HTMLResponse)
 def leads_page(request: Request):
     return templates.TemplateResponse("leads.html", {"request": request})
+
+
+@router.get("/estatisticas", response_class=HTMLResponse)
+def estatisticas_page(request: Request):
+    return templates.TemplateResponse("estatisticas.html", {"request": request})

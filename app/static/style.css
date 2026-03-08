@@ -826,3 +826,197 @@ label {
 
 /* ---------- Utilities ---------- */
 .hidden { display: none !important; }
+
+/* ============================================================
+   PÁGINA /estatisticas
+   ============================================================ */
+
+.page-header { padding: 20px 20px 0; }
+.page-title { font-size: 1.4rem; font-weight: 700; margin: 0; }
+.page-subtitle { font-size: .8rem; color: var(--text-muted); display: block; margin-top: 2px; }
+
+/* KPIs de topo — reutiliza stats-grid existente */
+.stat-value.green { color: #10b981; }
+.stat-value.red   { color: #ef4444; }
+
+/* Seção genérica */
+.est-section {
+  margin: 20px 16px;
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.08);
+}
+.section-badge {
+  display: inline-block;
+  background: #9ca3af;
+  color: white;
+  font-size: .7rem;
+  font-weight: 700;
+  border-radius: 99px;
+  padding: 1px 7px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* Funil */
+.funil-row {
+  display: grid;
+  grid-template-columns: 180px 1fr 48px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.funil-label { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.funil-status { font-size: .85rem; }
+.funil-count { font-size: .8rem; color: var(--text-muted); }
+.funil-track { height: 10px; background: #f3f4f6; border-radius: 5px; overflow: hidden; }
+.funil-fill { height: 100%; border-radius: 5px; transition: width .4s; }
+.funil-pct { font-size: .78rem; color: var(--text-muted); text-align: right; }
+
+/* Rankings grid */
+.rankings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+.ranking-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px;
+}
+.ranking-title { font-size: .9rem; font-weight: 600; margin: 0 0 12px; }
+.rank-item { margin-bottom: 10px; }
+.rank-label-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+.rank-pos { font-size: .75rem; color: var(--text-muted); min-width: 16px; }
+.rank-name { font-size: .85rem; font-weight: 600; flex: 1; }
+.rank-meta { font-size: .75rem; color: var(--text-muted); }
+.rank-taxa { color: #10b981; font-weight: 600; }
+
+/* Análises por segmento */
+.analises-kpis-row { display: flex; gap: 20px; margin-bottom: 12px; font-size: .9rem; }
+.seg-analise-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: .85rem;
+}
+.seg-analise-nome { font-weight: 500; }
+.seg-analise-score { font-weight: 600; white-space: nowrap; }
+.seg-analise-total { color: var(--text-muted); font-size: .78rem; }
+
+/* Gráfico de scores 1-10 */
+#dist-scores-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 80px;
+  padding-bottom: 20px;
+  position: relative;
+}
+.score-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+}
+.score-bar-wrap {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 2px;
+}
+.score-bar { width: 80%; border-radius: 3px 3px 0 0; min-height: 2px; }
+.score-val { font-size: .65rem; color: var(--text-muted); }
+.score-label { font-size: .7rem; color: var(--text-muted); margin-top: 2px; }
+
+/* Timeline */
+.timeline-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 80px;
+  padding-bottom: 20px;
+  overflow-x: auto;
+}
+.tl-col {
+  flex: 0 0 auto;
+  min-width: 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  gap: 1px;
+}
+.tl-bar {
+  width: 100%;
+  background: #3b82f6;
+  border-radius: 2px 2px 0 0;
+  min-height: 2px;
+}
+.tl-val { font-size: .6rem; color: var(--text-muted); }
+.tl-label { font-size: .6rem; color: var(--text-muted); white-space: nowrap; margin-top: 2px; }
+
+/* Fechamentos */
+.fechamento-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto auto;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: .85rem;
+}
+.fech-nome { font-weight: 600; }
+.fech-meta { color: var(--text-muted); }
+.fech-valor { font-weight: 600; color: #10b981; white-space: nowrap; }
+.fech-data { color: var(--text-muted); font-size: .78rem; white-space: nowrap; }
+
+/* Leads problemáticos */
+.prob-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: .85rem;
+}
+.prob-nome { font-weight: 600; }
+.prob-dias { font-size: .75rem; color: #ef4444; }
+.prob-link { font-size: .75rem; color: var(--primary); text-decoration: none; white-space: nowrap; }
+
+/* Qualidade de dados */
+.qual-row { margin-bottom: 12px; }
+.qual-label-row { display: flex; justify-content: space-between; font-size: .85rem; margin-bottom: 4px; }
+.qual-track { height: 8px; background: #f3f4f6; border-radius: 4px; overflow: hidden; }
+.qual-fill { height: 100%; border-radius: 4px; transition: width .4s; }
+
+/* Helper */
+.no-data { font-size: .82rem; color: var(--text-muted); }
+
+/* Mobile */
+@media (max-width: 768px) {
+  .rankings-grid { grid-template-columns: 1fr; }
+  .funil-row { grid-template-columns: 140px 1fr 40px; }
+  .fechamento-row { grid-template-columns: 1fr auto; }
+  .fechamento-row .fech-meta { grid-column: 1; }
+  .fechamento-row .fech-data { grid-column: 2; }
+  .prob-row { grid-template-columns: 1fr auto; }
+  .prob-row .prob-status,
+  .prob-row .prob-link { display: none; }
+}

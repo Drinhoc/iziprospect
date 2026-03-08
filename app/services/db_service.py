@@ -156,6 +156,15 @@ class DBService:
                 cur.execute(
                     "ALTER TABLE atividades ADD COLUMN IF NOT EXISTS confianca_analise INTEGER"
                 )
+                cur.execute(
+                    "ALTER TABLE leads ADD COLUMN IF NOT EXISTS valor_venda NUMERIC DEFAULT 0"
+                )
+                cur.execute(
+                    "ALTER TABLE leads ADD COLUMN IF NOT EXISTS data_fechamento TEXT DEFAULT ''"
+                )
+                cur.execute(
+                    "ALTER TABLE leads ADD COLUMN IF NOT EXISTS motivo_perda TEXT DEFAULT ''"
+                )
             conn.commit()
         finally:
             self._put(conn)
@@ -749,6 +758,207 @@ class DBService:
         finally:
             self._put(conn)
 
+    def get_estatisticas(self) -> Dict[str, Any]:
+        """Retorna analytics completo para a página /estatisticas."""
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+
+                # Bloco A — KPIs de topo
+                cur.execute("""
+                    SELECT
+                        COUNT(*) FILTER (WHERE status != 'arquivado') AS total_leads,
+                        COUNT(*) FILTER (WHERE status = 'fechado') AS total_fechados,
+                        COUNT(*) FILTER (WHERE status = 'perdido') AS total_perdidos,
+                        COUNT(*) FILTER (WHERE status = 'sem resposta') AS total_sem_resposta,
+                        COALESCE(SUM(valor_venda) FILTER (WHERE status = 'fechado'), 0) AS valor_total_vendas,
+                        COUNT(*) FILTER (
+                            WHERE proximo_followup_em != '' AND proximo_followup_em < NOW()::text
+                            AND status NOT IN ('fechado','perdido','arquivado')
+                        ) AS followups_vencidos,
+                        ROUND(
+                            COUNT(*) FILTER (WHERE status = 'fechado') * 100.0
+                            / NULLIF(COUNT(*) FILTER (WHERE status != 'arquivado'), 0), 1
+                        ) AS taxa_conversao
+                    FROM leads
+                """)
+                krow = cur.fetchone()
+                kpis = {
+                    "total_leads": krow[0] or 0,
+                    "total_fechados": krow[1] or 0,
+                    "total_perdidos": krow[2] or 0,
+                    "total_sem_resposta": krow[3] or 0,
+                    "valor_total_vendas": float(krow[4] or 0),
+                    "followups_vencidos": krow[5] or 0,
+                    "taxa_conversao": float(krow[6]) if krow[6] is not None else 0.0,
+                }
+
+                # Bloco B — Funil por status
+                cur.execute("""
+                    SELECT status, COUNT(*) as total
+                    FROM leads WHERE status != 'arquivado'
+                    GROUP BY status
+                """)
+                funil_raw = {r[0]: r[1] for r in cur.fetchall()}
+
+                # Bloco C — Ranking por cidade
+                cur.execute("""
+                    SELECT cidade, COUNT(*) AS total,
+                        COUNT(*) FILTER (WHERE status='fechado') AS fechados,
+                        ROUND(COUNT(*) FILTER (WHERE status='fechado') * 100.0 / COUNT(*), 1) AS taxa
+                    FROM leads WHERE cidade != '' AND status != 'arquivado'
+                    GROUP BY cidade ORDER BY total DESC LIMIT 15
+                """)
+                cols = [d[0] for d in cur.description]
+                por_cidade = [dict(zip(cols, r)) for r in cur.fetchall()]
+
+                # Bloco D — Ranking por segmento
+                cur.execute("""
+                    SELECT segmento, COUNT(*) AS total,
+                        COUNT(*) FILTER (WHERE status='fechado') AS fechados,
+                        ROUND(COUNT(*) FILTER (WHERE status='fechado') * 100.0 / COUNT(*), 1) AS taxa
+                    FROM leads WHERE segmento != '' AND status != 'arquivado'
+                    GROUP BY segmento ORDER BY total DESC LIMIT 15
+                """)
+                cols = [d[0] for d in cur.description]
+                por_segmento = [dict(zip(cols, r)) for r in cur.fetchall()]
+
+                # Bloco E — Ranking por fonte
+                cur.execute("""
+                    SELECT fonte, COUNT(*) AS total,
+                        COUNT(*) FILTER (WHERE status='fechado') AS fechados,
+                        ROUND(COUNT(*) FILTER (WHERE status='fechado') * 100.0 / COUNT(*), 1) AS taxa
+                    FROM leads WHERE fonte != '' AND status != 'arquivado'
+                    GROUP BY fonte ORDER BY total DESC LIMIT 10
+                """)
+                cols = [d[0] for d in cur.description]
+                por_fonte = [dict(zip(cols, r)) for r in cur.fetchall()]
+
+                # Bloco F — Ranking por responsável
+                cur.execute("""
+                    SELECT responsavel, COUNT(*) AS total,
+                        COUNT(*) FILTER (WHERE status='fechado') AS fechados,
+                        ROUND(COUNT(*) FILTER (WHERE status='fechado') * 100.0 / COUNT(*), 1) AS taxa
+                    FROM leads WHERE responsavel != '' AND status != 'arquivado'
+                    GROUP BY responsavel ORDER BY total DESC LIMIT 10
+                """)
+                cols = [d[0] for d in cur.description]
+                por_responsavel = [dict(zip(cols, r)) for r in cur.fetchall()]
+
+                # Bloco G — Qualidade dos dados
+                cur.execute("""
+                    SELECT
+                        COUNT(*) AS total,
+                        COUNT(*) FILTER (WHERE whatsapp != '') AS com_telefone,
+                        COUNT(*) FILTER (WHERE email != '') AS com_email,
+                        COUNT(*) FILTER (WHERE cidade != '') AS com_cidade,
+                        COUNT(*) FILTER (WHERE segmento != '') AS com_segmento,
+                        COUNT(*) FILTER (WHERE fonte != '') AS com_fonte,
+                        COUNT(*) FILTER (WHERE responsavel != '') AS com_responsavel
+                    FROM leads WHERE status != 'arquivado'
+                """)
+                qrow = cur.fetchone()
+                qtotal = qrow[0] or 1
+                qualidade = {
+                    "total": qrow[0] or 0,
+                    "pct_telefone": round(qrow[1] * 100 / qtotal),
+                    "pct_email": round(qrow[2] * 100 / qtotal),
+                    "pct_cidade": round(qrow[3] * 100 / qtotal),
+                    "pct_segmento": round(qrow[4] * 100 / qtotal),
+                    "pct_fonte": round(qrow[5] * 100 / qtotal),
+                    "pct_responsavel": round(qrow[6] * 100 / qtotal),
+                }
+
+                # Bloco H — Leads problemáticos (sem atividade há 14+ dias)
+                cur.execute("""
+                    SELECT l.lead_id, l.nome, l.status, MAX(a.data_hora) AS ultima_atividade
+                    FROM leads l LEFT JOIN atividades a ON a.lead_id = l.lead_id
+                    WHERE l.status NOT IN ('fechado','perdido','arquivado','contato inválido')
+                    GROUP BY l.lead_id, l.nome, l.status
+                    HAVING MAX(a.data_hora) < (NOW() - INTERVAL '14 days')::text
+                        OR MAX(a.data_hora) IS NULL
+                    ORDER BY ultima_atividade ASC NULLS FIRST
+                    LIMIT 10
+                """)
+                cols = [d[0] for d in cur.description]
+                problematicos = [dict(zip(cols, r)) for r in cur.fetchall()]
+
+                # Bloco I — Timeline de atividades (últimos 30 dias)
+                cur.execute("""
+                    SELECT LEFT(data_hora, 10) AS dia, COUNT(*) AS total
+                    FROM atividades
+                    WHERE data_hora >= (NOW() - INTERVAL '30 days')::text AND lead_id != ''
+                    GROUP BY dia ORDER BY dia ASC
+                """)
+                timeline = [{"dia": r[0], "total": r[1]} for r in cur.fetchall()]
+
+                # Bloco J — Análises por segmento
+                cur.execute("""
+                    SELECT l.segmento,
+                        ROUND(AVG(a.confianca_analise)::numeric, 1) AS avg_confianca,
+                        COUNT(*) AS total
+                    FROM atividades a
+                    JOIN leads l ON a.lead_id = l.lead_id
+                    WHERE a.tipo = 'análise de conversa'
+                        AND a.confianca_analise IS NOT NULL
+                        AND l.segmento != ''
+                    GROUP BY l.segmento ORDER BY avg_confianca DESC
+                """)
+                cols = [d[0] for d in cur.description]
+                analises_por_segmento = [dict(zip(cols, r)) for r in cur.fetchall()]
+
+                # Distribuição de scores 1-10
+                cur.execute("""
+                    SELECT confianca_analise, COUNT(*) AS total
+                    FROM atividades
+                    WHERE tipo = 'análise de conversa' AND confianca_analise IS NOT NULL
+                    GROUP BY confianca_analise ORDER BY confianca_analise
+                """)
+                dist_scores = {str(r[0]): r[1] for r in cur.fetchall()}
+
+                # Bloco K — Últimos fechamentos
+                cur.execute("""
+                    SELECT lead_id, nome, cidade, segmento,
+                        COALESCE(valor_venda, 0) AS valor_venda,
+                        data_fechamento, resumo
+                    FROM leads WHERE status = 'fechado'
+                    ORDER BY
+                        CASE WHEN data_fechamento != '' THEN data_fechamento ELSE ultima_interacao_em END
+                        DESC NULLS LAST
+                    LIMIT 10
+                """)
+                cols = [d[0] for d in cur.description]
+                fechamentos = [dict(zip(cols, r)) for r in cur.fetchall()]
+                for f in fechamentos:
+                    f["valor_venda"] = float(f["valor_venda"] or 0)
+
+                # Bloco L — Motivos de perda
+                cur.execute("""
+                    SELECT motivo_perda, COUNT(*) AS total
+                    FROM leads
+                    WHERE status = 'perdido' AND motivo_perda IS NOT NULL AND motivo_perda != ''
+                    GROUP BY motivo_perda ORDER BY total DESC
+                """)
+                motivos_perda = [{"motivo": r[0], "total": r[1]} for r in cur.fetchall()]
+
+            return {
+                "kpis": kpis,
+                "funil": funil_raw,
+                "por_cidade": por_cidade,
+                "por_segmento": por_segmento,
+                "por_fonte": por_fonte,
+                "por_responsavel": por_responsavel,
+                "qualidade": qualidade,
+                "problematicos": problematicos,
+                "timeline": timeline,
+                "analises_por_segmento": analises_por_segmento,
+                "dist_scores": dist_scores,
+                "fechamentos": fechamentos,
+                "motivos_perda": motivos_perda,
+            }
+        finally:
+            self._put(conn)
+
     def list_leads(
         self,
         status: Optional[str] = None,
@@ -816,6 +1026,7 @@ class DBService:
             "nome", "cidade", "segmento", "whatsapp", "email",
             "instagram", "site", "responsavel", "fonte",
             "status", "prioridade", "observacoes", "proximo_followup_em", "pendencia",
+            "valor_venda", "data_fechamento", "motivo_perda",
         }
         safe_fields: Dict[str, Any] = {
             k: str(v).strip() for k, v in data.items()

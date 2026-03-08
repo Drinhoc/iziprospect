@@ -27,6 +27,12 @@ def get_analysis_stats():
     return db.get_analysis_stats()
 
 
+@router.get("/estatisticas")
+def get_estatisticas():
+    db = _get_db()
+    return db.get_estatisticas()
+
+
 @router.get("/leads")
 def list_leads(
     status: Optional[str] = Query(default=None),

@@ -190,6 +190,20 @@
           <label>Observações</label>
           <textarea id="f-observacoes" rows="3" placeholder="Notas manuais…"></textarea>
         </div>
+
+        <!-- Campos condicionais: aparecem conforme status -->
+        <div class="form-group hidden" id="fg-fechamento">
+          <label>Valor da venda (R$)</label>
+          <input type="number" id="f-valor-venda" min="0" step="0.01" placeholder="Ex: 1500.00" />
+        </div>
+        <div class="form-group hidden" id="fg-data-fechamento">
+          <label>Data de fechamento</label>
+          <input type="date" id="f-data-fechamento" />
+        </div>
+        <div class="form-group hidden" id="fg-motivo-perda">
+          <label>Motivo da perda</label>
+          <input type="text" id="f-motivo-perda" placeholder="Ex: Preço alto, cliente escolheu concorrente…" />
+        </div>
       </div>
 
       <!-- Read-only info (only visible on edit) -->

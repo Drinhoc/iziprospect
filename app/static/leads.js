@@ -303,6 +303,10 @@ function fillForm(l) {
   document.getElementById('f-followup').value = (l.proximo_followup_em || '').slice(0, 10);
   document.getElementById('f-pendencia').value = l.pendencia || '';
   document.getElementById('f-observacoes').value = l.observacoes || '';
+  document.getElementById('f-valor-venda').value = l.valor_venda || '';
+  document.getElementById('f-data-fechamento').value = (l.data_fechamento || '').slice(0, 10);
+  document.getElementById('f-motivo-perda').value = l.motivo_perda || '';
+  updateConditionalFields(l.status || 'novo');
 
   // Readonly
   document.getElementById('ro-lead-id').textContent = l.lead_id || '';
@@ -311,8 +315,16 @@ function fillForm(l) {
   document.getElementById('ro-ultima').textContent = fmtDate(l.ultima_interacao_em);
 }
 
+function updateConditionalFields(status) {
+  const isFechado = status === 'fechado';
+  const isPerdido = status === 'perdido';
+  document.getElementById('fg-fechamento').classList.toggle('hidden', !isFechado);
+  document.getElementById('fg-data-fechamento').classList.toggle('hidden', !isFechado);
+  document.getElementById('fg-motivo-perda').classList.toggle('hidden', !isPerdido);
+}
+
 function clearForm() {
-  ['f-nome','f-cidade','f-whatsapp','f-email','f-instagram','f-site','f-responsavel','f-pendencia','f-observacoes'].forEach(id => {
+  ['f-nome','f-cidade','f-whatsapp','f-email','f-instagram','f-site','f-responsavel','f-pendencia','f-observacoes','f-valor-venda','f-data-fechamento','f-motivo-perda'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('f-segmento').value = '';
@@ -320,6 +332,7 @@ function clearForm() {
   document.getElementById('f-prioridade').value = 'media';
   document.getElementById('f-fonte').value = '';
   document.getElementById('f-followup').value = '';
+  updateConditionalFields('novo');
 }
 
 function formData() {
@@ -338,6 +351,9 @@ function formData() {
     proximo_followup_em: document.getElementById('f-followup').value || '',
     pendencia: document.getElementById('f-pendencia').value.trim(),
     observacoes: document.getElementById('f-observacoes').value.trim(),
+    valor_venda: document.getElementById('f-valor-venda').value || '',
+    data_fechamento: document.getElementById('f-data-fechamento').value || '',
+    motivo_perda: document.getElementById('f-motivo-perda').value.trim(),
   };
 }
 
@@ -410,6 +426,11 @@ function esc(s) {
 }
 
 // ===== Init =====
+
+// Campos condicionais ao mudar status no modal
+document.getElementById('f-status').addEventListener('change', e => {
+  updateConditionalFields(e.target.value);
+});
 
 // Search with debounce
 document.getElementById('search-input').addEventListener('input', e => {
