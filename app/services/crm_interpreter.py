@@ -133,12 +133,16 @@ def infer_status(raw_text: str) -> Optional[str]:
     if any(k in text for k in ["numero errado", "numero invalido", "numero incorreto", "nao existe", "nao tem whatsapp"]):
         return "contato inválido"
 
-    # Perdido (verificar antes de genérico)
-    if any(k in text for k in ["sem interesse", "nao tem interesse", "nao quer", "descartei", "descartado", "caiu fora", "rejeitou"]):
-        return "perdido"
+    # Sem resposta — verificar ANTES de perdido para evitar falso positivo
+    # "sumiu", "não retornou", "nenhuma resposta" → sem resposta (não perdido)
+    if any(k in text for k in ["sem resposta", "nao respondeu", "nao responde", "nenhuma resposta",
+                                "ignorando", "sumiu", "ghosting", "nao retornou", "nunca mais",
+                                "nao deu retorno", "sem retorno", "ficou de retornar", "nao viu"]):
+        return "sem resposta"
 
-    # Sem resposta
-    if any(k in text for k in ["sem resposta", "nao respondeu", "nao responde", "nenhuma resposta", "ignorando", "sumiu", "ghosting"]):
+    # Perdido — apenas rejeição explícita e ativa
+    if any(k in text for k in ["sem interesse", "nao tem interesse", "nao quer", "descartei", "descartado",
+                                "caiu fora", "rejeitou", "pode tirar", "nao vai comprar", "nao precisa"]):
         return "sem resposta"
 
     # Negociando (verificar antes de proposta)

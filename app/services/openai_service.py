@@ -66,13 +66,13 @@ Regras:
 
 Guia de status_sugerido — escolha o que melhor descreve o ESTÁGIO ATUAL do lead:
 - "novo": nunca houve contato real. Lead recém identificado.
-- "em contato": já houve contato (ligação, mensagem, email), mas sem resposta ou ainda muito cedo. Prospect ciente mas não engajado.
+- "em contato": já houve contato (ligação, mensagem, email) e o prospect respondeu pelo menos uma vez, mas sem avançar ainda.
 - "qualificado": prospect respondeu e demonstrou algum interesse genuíno (fez perguntas, pediu mais info, quer conhecer, achou interessante). Ainda não tem proposta.
 - "proposta enviada": proposta formal já foi enviada. Aguardando feedback/aprovação.
 - "negociando": prospect está discutindo detalhes de preço, condições, prazo, ajustes. Proposta em aberto com negociação ativa.
 - "fechado": venda confirmada, contrato assinado, cliente pagou.
-- "perdido": definitivamente não vai fechar. Sem interesse, rejeitou, caiu fora, sumiu definitivamente.
-- "sem resposta": múltiplas tentativas sem nenhuma resposta. Prospect ignorando ou inativo.
+- "perdido": APENAS quando o prospect disse explicitamente que não quer, rejeitou ativamente, ou demonstrou rejeição clara ("não tenho interesse", "não vou comprar", "prefiro outro", "pode tirar meu contato"). NÃO use perdido só porque não respondeu.
+- "sem resposta": prospect não respondeu uma ou mais tentativas. Use SEMPRE que há ausência de resposta, mesmo que o vendedor esteja frustrado. Na dúvida entre "perdido" e "sem resposta", use SEMPRE "sem resposta".
 - "contato inválido": número errado, email inválido, pessoa não existe nesse contato.
 
 Exemplos:
@@ -96,6 +96,12 @@ Saída: {"intent":"update","lead":{"nome":"Clínica Premium","cidade":"SP","segm
 
 Entrada: "OdontoVida RJ, tentei 3x essa semana, nenhuma resposta, nem viu as mensagens"
 Saída: {"intent":"update","lead":{"nome":"OdontoVida","cidade":"RJ","segmento":"odonto","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"sem resposta","followup_em":null,"pendencia":"Tentar novo contato em canal diferente","activity":{"tipo":"aguardando resposta","resumo":"OdontoVida (RJ): 3 tentativas sem resposta. Prospect inativo."}}
+
+Entrada: "Sorriso Total SP, mandei mensagem semana passada, não deu retorno ainda"
+Saída: {"intent":"update","lead":{"nome":"Sorriso Total","cidade":"SP","segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"sem resposta","followup_em":null,"pendencia":"Tentar novo contato","activity":{"tipo":"aguardando resposta","resumo":"Sorriso Total (SP): mensagem enviada, aguardando retorno."}}
+
+Entrada: "Clínica Amaral BH, falei uma vez, ficou de retornar, nunca mais"
+Saída: {"intent":"update","lead":{"nome":"Clínica Amaral","cidade":"BH","segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"sem resposta","followup_em":null,"pendencia":"Fazer follow-up","activity":{"tipo":"aguardando resposta","resumo":"Clínica Amaral (BH): ficou de retornar mas não retornou. Follow-up necessário."}}
 
 Entrada: "Fisio Ativa SP [negociando], tô ajustando proposta com ela, quer desconto de 10%"
 Saída: {"intent":"update","lead":{"nome":"Fisio Ativa","cidade":"SP","segmento":"fisio","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"negociando","followup_em":null,"pendencia":"Fechar contrato","activity":{"tipo":"nota","resumo":"Fisio Ativa (SP): negociando desconto de 10%. Proposta em ajuste."}}
