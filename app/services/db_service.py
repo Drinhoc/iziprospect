@@ -168,6 +168,16 @@ class DBMatchResult:
     candidates: Optional[List[Dict[str, Any]]] = None
 
 
+@dataclass
+class FindByNameResult:
+    """Resultado de busca de lead por nome (sem criação). Usado por micro-updates."""
+    lead: Optional[Dict[str, Any]]
+    candidates: List[Dict[str, Any]]
+    score: float
+    is_exact: bool       # match único e confiante (score >= min_score)
+    is_ambiguous: bool   # múltiplos candidatos próximos
+
+
 # ---------------------------------------------------------------------------
 # DBService — PostgreSQL via psycopg2
 # ---------------------------------------------------------------------------
@@ -670,6 +680,160 @@ class DBService:
                 )
                 row = cur.fetchone()
                 return row[0] if row else ""
+        finally:
+            self._put(conn)
+
+    # ------------------------------------------------------------------
+    # Micro-update: busca por nome e atualização pontual de status
+    # ------------------------------------------------------------------
+
+    def find_lead_by_name(self, candidate_name: str, min_score: float = 0.85) -> FindByNameResult:
+        """Busca lead pelo nome usando fuzzy match. Nunca cria lead novo.
+
+        - is_exact=True: um único match com score >= min_score
+        - is_ambiguous=True: múltiplos candidatos próximos (sem match seguro)
+        - lead=None + is_exact=False: nenhum match confiante
+        """
+        canonical = _canonicalize_name(candidate_name)
+        _empty = FindByNameResult(lead=None, candidates=[], score=0.0, is_exact=False, is_ambiguous=False)
+        if not canonical:
+            return _empty
+
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                # Exclui leads definitivamente encerrados da busca
+                cur.execute(
+                    "SELECT * FROM leads WHERE status NOT IN ('arquivado', 'perdido', 'fechado', 'contato inválido')"
+                )
+                rows = self._fetchall_dict(cur)
+        finally:
+            self._put(conn)
+
+        scored: List[tuple] = []
+        for row in rows:
+            target = _canonicalize_name(row["nome"])
+            if not target:
+                continue
+            from difflib import SequenceMatcher
+            from rapidfuzz import fuzz as _fuzz
+            sim = max(
+                _fuzz.ratio(canonical, target) / 100.0,
+                SequenceMatcher(None, canonical, target).ratio(),
+            )
+            scored.append((sim, row))
+
+        if not scored:
+            return _empty
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        best_score, best_row = scored[0]
+
+        # Verifica ambiguidade: segundo candidato dentro de 0.06 do melhor
+        ambiguity_threshold = min_score - 0.06
+        second_score = scored[1][0] if len(scored) > 1 else 0.0
+        is_ambiguous = (
+            best_score >= ambiguity_threshold
+            and second_score >= ambiguity_threshold
+            and (best_score - second_score) < 0.06
+        )
+
+        if is_ambiguous:
+            candidates = [r for s, r in scored[:3] if s >= ambiguity_threshold]
+            return FindByNameResult(lead=None, candidates=candidates, score=best_score, is_exact=False, is_ambiguous=True)
+
+        if best_score >= min_score:
+            return FindByNameResult(lead=best_row, candidates=[], score=best_score, is_exact=True, is_ambiguous=False)
+
+        return _empty
+
+    def update_lead_status(self, lead_id: str, status: str, when: Optional[datetime] = None) -> None:
+        """Atualiza status e ultima_interacao_em de um lead. Usado por micro-updates."""
+        now = (when or datetime.utcnow()).isoformat()
+        prioridade = _priority_from_status(status)
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE leads SET status = %s, prioridade = %s, ultima_interacao_em = %s WHERE lead_id = %s",
+                    (status, prioridade, now, lead_id),
+                )
+            conn.commit()
+        finally:
+            self._put(conn)
+        logger.info("micro_update_status | lead_id=%s status=%s", lead_id, status)
+
+    # ------------------------------------------------------------------
+    # Consultas conversacionais (queries do CRM)
+    # ------------------------------------------------------------------
+
+    def query_leads_today(self) -> Dict[str, Any]:
+        """Leads criados hoje."""
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT lead_id, nome, segmento, status
+                       FROM leads
+                       WHERE LEFT(data_criacao, 10) = CURRENT_DATE::text
+                       ORDER BY data_criacao DESC"""
+                )
+                rows = self._fetchall_dict(cur)
+        finally:
+            self._put(conn)
+        return {"count": len(rows), "leads": rows}
+
+    def query_leads_by_activity_type(self, activity_type: str, days: int = 7) -> List[Dict[str, Any]]:
+        """Leads com atividade do tipo especificado nos últimos N dias."""
+        from datetime import date, timedelta
+        cutoff = (date.today() - timedelta(days=days)).isoformat()
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT DISTINCT l.lead_id, l.nome, l.segmento, l.status, l.cidade
+                       FROM leads l
+                       JOIN atividades a ON l.lead_id = a.lead_id
+                       WHERE a.tipo = %s AND a.data_hora >= %s
+                       ORDER BY l.nome""",
+                    (activity_type, cutoff),
+                )
+                return self._fetchall_dict(cur)
+        finally:
+            self._put(conn)
+
+    def query_leads_overdue_followup(self) -> List[Dict[str, Any]]:
+        """Leads com follow-up vencido (data <= hoje, não encerrados)."""
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT lead_id, nome, segmento, status, proximo_followup_em, pendencia
+                       FROM leads
+                       WHERE proximo_followup_em != ''
+                         AND LEFT(proximo_followup_em, 10) <= CURRENT_DATE::text
+                         AND status NOT IN ('fechado', 'perdido', 'arquivado', 'contato inválido')
+                       ORDER BY proximo_followup_em ASC
+                       LIMIT 10"""
+                )
+                return self._fetchall_dict(cur)
+        finally:
+            self._put(conn)
+
+    def query_leads_by_status(self, status: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Leads com determinado status."""
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT lead_id, nome, segmento, cidade, ultima_interacao_em
+                       FROM leads
+                       WHERE status = %s
+                       ORDER BY ultima_interacao_em DESC NULLS LAST
+                       LIMIT %s""",
+                    (status, limit),
+                )
+                return self._fetchall_dict(cur)
         finally:
             self._put(conn)
 

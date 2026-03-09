@@ -12,7 +12,13 @@ from fastapi.staticfiles import StaticFiles
 from openai import APIError, RateLimitError
 
 from app.config import settings
-from app.services.crm_interpreter import extract_phone, extract_status_override, interpret_crm_message
+from app.services.crm_interpreter import (
+    detect_micro_update,
+    detect_query_intent,
+    extract_phone,
+    extract_status_override,
+    interpret_crm_message,
+)
 from app.services.db_service import DBService
 from app.services.evolution_service import EvolutionService
 from app.services.normalizer import normalize_evolution_payload
@@ -341,6 +347,71 @@ _STATUS_PENDENCIA: Dict[str, str] = {
 }
 
 
+async def _execute_crm_query(intent, db: DBService) -> str:
+    """Executa uma query conversacional e retorna texto formatado para WhatsApp."""
+    if intent.type == "hoje":
+        result = await asyncio.to_thread(db.query_leads_today)
+        if not result["leads"]:
+            return "Nenhum lead criado hoje."
+        lines = [f"Leads criados hoje: {result['count']}"]
+        for lead in result["leads"]:
+            seg = f" ({lead['segmento']})" if lead.get("segmento") else ""
+            lines.append(f"• {lead['lead_id']} {lead['nome'] or '?'}{seg} — {lead['status']}")
+        return "\n".join(lines)
+
+    if intent.type == "por_atividade":
+        days = intent.days or 7
+        leads = await asyncio.to_thread(db.query_leads_by_activity_type, intent.activity_type, days)
+        label = intent.activity_type or "atividade"
+        if not leads:
+            return f"Nenhum lead com '{label}' nos últimos {days} dias."
+        lines = [f"Leads com '{label}' nos últimos {days} dias: {len(leads)}"]
+        for lead in leads:
+            cidade = f" ({lead['cidade']})" if lead.get("cidade") else ""
+            lines.append(f"• {lead['lead_id']} {lead['nome'] or '?'}{cidade} — {lead['status']}")
+        return "\n".join(lines)
+
+    if intent.type == "followup":
+        leads = await asyncio.to_thread(db.query_leads_overdue_followup)
+        if not leads:
+            return "Nenhum follow-up vencido no momento."
+        lines = [f"Follow-ups vencidos: {len(leads)}"]
+        for lead in leads:
+            data = (lead.get("proximo_followup_em") or "")[:10]
+            pendencia = lead.get("pendencia") or ""
+            extra = f" — {pendencia}" if pendencia else ""
+            lines.append(f"• {lead['lead_id']} {lead['nome'] or '?'} | {data}{extra}")
+        return "\n".join(lines)
+
+    if intent.type == "por_status":
+        status = intent.status or ""
+        leads = await asyncio.to_thread(db.query_leads_by_status, status)
+        if not leads:
+            return f"Nenhum lead com status '{status}'."
+        lines = [f"Leads {status}: {len(leads)}"]
+        for lead in leads:
+            cidade = f" ({lead['cidade']})" if lead.get("cidade") else ""
+            lines.append(f"• {lead['lead_id']} {lead['nome'] or '?'}{cidade}")
+        return "\n".join(lines)
+
+    if intent.type == "pipeline":
+        stats = await asyncio.to_thread(db.get_stats)
+        by_status = stats.get("by_status", {})
+        if not by_status:
+            return "Pipeline vazio."
+        lines = ["Pipeline atual:"]
+        order = ["novo", "em contato", "qualificado", "negociando", "em espera", "sem resposta", "fechado", "perdido"]
+        for st in order:
+            if st in by_status:
+                lines.append(f"• {st}: {by_status[st]}")
+        for st, cnt in by_status.items():
+            if st not in order:
+                lines.append(f"• {st}: {cnt}")
+        return "\n".join(lines)
+
+    return "Consulta não reconhecida."
+
+
 @app.post("/webhook/evolution")
 async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header(default=None)):
     if settings.evolution_webhook_secret and x_webhook_secret != settings.evolution_webhook_secret:
@@ -474,6 +545,18 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
                 event.timestamp, raw_text, None, None, [], "mensagem_nao_processavel",
             )
             return {"ok": True, "ignored": True}
+
+        # Query branch: deve vir ANTES do filtro de vagueza porque queries
+        # legítimas podem ser curtas (ex: "leads hoje", "followup").
+        query_intent = detect_query_intent(raw_text)
+        if query_intent:
+            logger.info("crm_query | type=%s | msg_id=%s", query_intent.type, event.msg_id)
+            try:
+                reply = await _execute_crm_query(query_intent, db)
+                await evolution_service.send_confirmation(event.chat_id, f". {reply}")
+            except Exception:
+                logger.warning("crm_query falhou | msg_id=%s", event.msg_id, exc_info=True)
+            return {"ok": True, "action": "crm_query", "type": query_intent.type}
 
         if is_message_too_vague(raw_text):
             logger.info("ignored: message_too_vague | msg_id=%s", event.msg_id)
@@ -616,6 +699,65 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
                 "confianca": conf,
                 "status_sugerido": analysis.status_sugerido,
             }
+
+        # Micro-update branch: padrão verbal simples sem campos estruturados.
+        # Se detectado mas sem match confiante → encerra aqui (não cria lead novo).
+        micro = detect_micro_update(raw_text)
+        if micro:
+            logger.info(
+                "micro_update_detected | candidate=%r status=%s | msg_id=%s",
+                micro.candidate_name, micro.status, event.msg_id,
+            )
+            match = await asyncio.to_thread(db.find_lead_by_name, micro.candidate_name)
+            if match.is_exact:
+                lead = match.lead
+                lead_id = lead["lead_id"]
+                await asyncio.to_thread(db.update_lead_status, lead_id, micro.status, event.timestamp)
+                await asyncio.to_thread(
+                    db.add_activity,
+                    event.timestamp, event.msg_id or "", lead_id,
+                    micro.activity_type, "whatsapp_group", "atualizar_lead",
+                    0.9, event.audio_seconds, raw_text,
+                    f"micro-update: {micro.status}", None,
+                )
+                lead_dict = await asyncio.to_thread(db.get_lead, lead_id)
+                if lead_dict:
+                    await asyncio.to_thread(sheets.sync_lead, lead_dict)
+                await asyncio.to_thread(
+                    sheets.sync_activity,
+                    event.timestamp, event.msg_id or "", lead_id,
+                    micro.activity_type, "whatsapp_group", "atualizar_lead",
+                    0.9, event.audio_seconds, raw_text,
+                    f"micro-update: {micro.status}", None,
+                )
+                logger.info("micro_update_ok | lead_id=%s status=%s", lead_id, micro.status)
+                if not settings.disable_evolution_confirmation:
+                    await evolution_service.send_confirmation(
+                        event.chat_id,
+                        f". {lead['nome']} ({lead_id}) → {micro.status}",
+                    )
+                return {"ok": True, "action": "micro_update", "lead_id": lead_id, "status": micro.status}
+
+            if match.is_ambiguous:
+                cands = " | ".join(f"{c['lead_id']} {c['nome']}" for c in match.candidates[:3])
+                logger.info("micro_update_ambiguous | candidate=%r | msg_id=%s", micro.candidate_name, event.msg_id)
+                if not settings.disable_evolution_confirmation:
+                    await evolution_service.send_confirmation(
+                        event.chat_id,
+                        f". Mais de um lead encontrado para '{micro.candidate_name}':\n{cands}\n"
+                        f"Use VINCULAR <ID> para confirmar.",
+                    )
+                return {"ok": True, "action": "micro_ambiguous", "candidate": micro.candidate_name}
+
+            # Sem match confiante → encerra, não cria lead fantasma
+            logger.info("micro_update_no_match | candidate=%r score=%.2f | msg_id=%s", micro.candidate_name, match.score, event.msg_id)
+            if not settings.disable_evolution_confirmation:
+                await evolution_service.send_confirmation(
+                    event.chat_id,
+                    f". Não encontrei '{micro.candidate_name}' com confiança suficiente para atualizar. "
+                    f"Verifique o nome ou use VINCULAR <ID>.",
+                )
+            return {"ok": True, "action": "micro_no_match", "candidate": micro.candidate_name}
 
         try:
             extracted = await asyncio.to_thread(openai_service.extract_structured_data, raw_text)

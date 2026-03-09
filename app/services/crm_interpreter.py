@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import List, Optional
 
 ACTION_TYPES = {
     "novo_lead",
@@ -130,7 +130,7 @@ def infer_status(raw_text: str) -> Optional[str]:
     text = normalize_text(raw_text)
 
     # Contato inválido
-    if any(k in text for k in ["numero errado", "numero invalido", "numero incorreto", "nao existe", "nao tem whatsapp"]):
+    if any(k in text for k in ["numero errado", "numero invalido", "numero incorreto", "nao existe", "nao tem whatsapp", "nao usa whatsapp"]):
         return "contato inválido"
 
     # Em espera — você enviou proposta/avançou e aguarda retorno (lead estava engajado)
@@ -155,11 +155,12 @@ def infer_status(raw_text: str) -> Optional[str]:
         return "negociando"
 
     # Qualificado
-    if any(k in text for k in ["achou interessante", "quer saber mais", "pediu mais info", "quer conhecer", "demonstrou interesse", "interessou", "gostou bastante", "quer ver demo", "pediu demo"]):
+    if any(k in text for k in ["achou interessante", "quer saber mais", "pediu mais info", "quer conhecer", "demonstrou interesse", "interessou", "gostou bastante", "quer ver demo", "pediu demo", "quer demo"]):
         return "qualificado"
 
     # Em contato
-    if any(k in text for k in ["respondeu", "me respondeu", "retornou", "falei com", "liguei", "atendeu"]):
+    if any(k in text for k in ["respondeu", "me respondeu", "retornou", "falei com", "liguei", "atendeu",
+                                "mandei mensagem", "enviei mensagem", "contatei"]):
         return "em contato"
 
     return None
@@ -197,6 +198,130 @@ def detect_sales_result(raw_text: str) -> Optional[str]:
         return "perdido"
     if any(p.search(text) for p in _GANHO_RE):
         return "ganho"
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Micro-update detection
+# ---------------------------------------------------------------------------
+
+@dataclass
+class MicroUpdate:
+    """Resultado de detecção de micro-update conversacional."""
+    candidate_name: str   # Nome do lead a buscar no DB
+    status: str           # Status a aplicar
+    activity_type: str    # Tipo de atividade a registrar
+
+
+# Campos estruturados: presença indica mensagem rica → deve ir pro LLM
+_STRUCTURED_FIELD_RE = [
+    re.compile(r"(?:\+?55\s*)?(?:\(?\d{2}\)?\s*)?\d{4,5}[-\s]?\d{4}"),  # telefone
+    re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"),       # email
+    re.compile(r"https?://"),                                               # URL
+    re.compile(r"@[a-zA-Z0-9_]{3,}"),                                      # instagram
+]
+
+# (regex, índice do grupo com nome-candidato, status, activity_type)
+# Aplicados sobre o texto normalizado (sem acentos, lowercase)
+_MICRO_PATTERNS: List[tuple] = [
+    # Nome vem antes do verbo
+    (re.compile(r"^(.+?)\s+respondeu\b"),                              "em contato",       "respondeu"),
+    (re.compile(r"^(.+?)\s+nao\s+(?:usa|tem)\s+whatsapp\b"),          "contato inválido", "número inválido"),
+    (re.compile(r"^(.+?)\s+quer\s+(?:demo|apresentacao|apresentação)\b"), "qualificado",  "demo agendada"),
+    (re.compile(r"^(.+?)\s+(?:esta\s+|está\s+)?interessad[ao]\b"),    "qualificado",      "respondeu"),
+    (re.compile(r"^(.+?)\s+fechou\b"),                                 "fechado",          "venda fechada"),
+    (re.compile(r"^(.+?)\s+nao\s+(?:quer|tem)\s+interesse\b"),        "perdido",          "sem interesse"),
+    (re.compile(r"^(.+?)\s+sem\s+interesse\b"),                        "perdido",          "sem interesse"),
+    (re.compile(r"^(.+?)\s+descartad[ao]\b"),                          "perdido",          "sem interesse"),
+    (re.compile(r"^(.+?)\s+numero\s+(?:errado|invalido|incorreto)\b"), "contato inválido", "número inválido"),
+    # Verbo vem antes, nome segue
+    (re.compile(r"^(?:mandei|enviei)\s+mensagem\s+(?:pra|para)\s+(.+)"), "em contato",    "aguardando resposta"),
+    (re.compile(r"^contatei\s+(?:o\s+|a\s+)?(.+)"),                   "em contato",       "aguardando resposta"),
+    (re.compile(r"^liguei\s+(?:pra|para)\s+(?:o\s+|a\s+)?(.+)"),     "em contato",       "aguardando resposta"),
+]
+
+
+def detect_micro_update(raw_text: str) -> Optional[MicroUpdate]:
+    """Detecta mensagem curta de atualização de status de lead existente.
+
+    Baseado em padrão verbal + ausência de campos estruturados.
+    NÃO usa tamanho como critério principal — considera o padrão semântico.
+
+    Retorna MicroUpdate ou None se a mensagem não encaixar.
+    """
+    text = (raw_text or "").strip()
+    if not text:
+        return None
+
+    # Presença de campos estruturados → mensagem rica, deve ir pro LLM
+    for pattern in _STRUCTURED_FIELD_RE:
+        if pattern.search(text):
+            return None
+
+    norm = normalize_text(text)
+
+    for pattern, status, activity_type in _MICRO_PATTERNS:
+        m = pattern.match(norm)
+        if m:
+            candidate_name = m.group(1).strip()
+            # Nome candidato: não muito curto (ruído) nem muito longo (contexto rico)
+            if 3 <= len(candidate_name) <= 50:
+                return MicroUpdate(
+                    candidate_name=candidate_name,
+                    status=status,
+                    activity_type=activity_type,
+                )
+
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Query intent detection
+# ---------------------------------------------------------------------------
+
+@dataclass
+class QueryIntent:
+    """Intenção de consulta ao CRM (leitura, não escrita)."""
+    type: str                       # "hoje" | "por_atividade" | "followup" | "por_status" | "pipeline"
+    activity_type: Optional[str] = None   # para type="por_atividade"
+    status: Optional[str] = None          # para type="por_status"
+    days: int = 7                         # janela temporal para consultas
+
+
+# Padrões de query: (regex sobre texto normalizado, QueryIntent)
+_QUERY_PATTERNS: List[tuple] = [
+    (re.compile(r"\bleads?\s+(de\s+)?hoje\b"),           QueryIntent(type="hoje")),
+    (re.compile(r"\bquantos\s+leads?\s+(de\s+)?hoje\b"), QueryIntent(type="hoje")),
+    (re.compile(r"\bquem\s+(me\s+)?respondeu\b"),        QueryIntent(type="por_atividade", activity_type="respondeu", days=7)),
+    (re.compile(r"\bquem\s+(devo\s+)?contatar\b"),       QueryIntent(type="followup")),
+    (re.compile(r"\bfollow[\s-]?up(s)?\b"),              QueryIntent(type="followup")),
+    (re.compile(r"\bleads?\s+qualificados?\b"),           QueryIntent(type="por_status", status="qualificado")),
+    (re.compile(r"\bleads?\s+novos?\b"),                  QueryIntent(type="por_status", status="novo")),
+    (re.compile(r"\bnovos?\s+leads?\b"),                  QueryIntent(type="por_status", status="novo")),
+    (re.compile(r"\bleads?\s+em\s+espera\b"),             QueryIntent(type="por_status", status="em espera")),
+    (re.compile(r"\bpipeline\b"),                         QueryIntent(type="pipeline")),
+]
+
+
+def detect_query_intent(raw_text: str) -> Optional[QueryIntent]:
+    """Detecta se a mensagem é uma consulta ao CRM (leitura, não atualização).
+
+    Só dispara para mensagens sem telefone e sem campos estruturados.
+    Retorna QueryIntent ou None.
+    """
+    text = (raw_text or "").strip()
+    if not text:
+        return None
+
+    # Presença de telefone indica lead update, não query
+    if re.search(r"(?:\+?55\s*)?(?:\(?\d{2}\)?\s*)?\d{4,5}[-\s]?\d{4}", text):
+        return None
+
+    norm = normalize_text(text)
+    for pattern, intent in _QUERY_PATTERNS:
+        if pattern.search(norm):
+            return intent
+
     return None
 
 
