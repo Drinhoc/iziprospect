@@ -1208,17 +1208,29 @@ class DBService:
                 """)
                 count_frio = cur.rowcount
 
-                # qualificado / negociando → em espera (7 days, was engaged but went silent)
+                # qualificado → em espera (5 days, had interest but went silent)
                 cur.execute("""
                     UPDATE leads SET status = 'em espera', prioridade = 'alta'
-                    WHERE status IN ('qualificado', 'negociando')
+                    WHERE status = 'qualificado'
+                      AND (
+                        ultima_interacao_em IS NULL
+                        OR ultima_interacao_em = ''
+                        OR LEFT(ultima_interacao_em, 10) < (CURRENT_DATE - INTERVAL '5 days')::text
+                      )
+                """)
+                count_espera = cur.rowcount
+
+                # negociando → em espera (7 days, was actively negotiating but went silent)
+                cur.execute("""
+                    UPDATE leads SET status = 'em espera', prioridade = 'alta'
+                    WHERE status = 'negociando'
                       AND (
                         ultima_interacao_em IS NULL
                         OR ultima_interacao_em = ''
                         OR LEFT(ultima_interacao_em, 10) < (CURRENT_DATE - INTERVAL '7 days')::text
                       )
                 """)
-                count_espera = cur.rowcount
+                count_espera += cur.rowcount
 
             conn.commit()
             if count_frio > 0:

@@ -70,11 +70,11 @@ Regras:
 - STATUS OVERRIDE: se o usuário escrever explicitamente um status entre colchetes (ex: [qualificado], [negociando], [sem resposta]), use exatamente esse valor em status_sugerido, sem questionar.
 
 Guia de status_sugerido — escolha o que melhor descreve o ESTÁGIO ATUAL do lead:
-- "novo": nunca houve contato real. Lead recém identificado.
-- "em contato": primeiro contato realizado, dentro dos 5 primeiros dias. Prospect pode ter respondido superficialmente, sem avanço definido.
-- "sem resposta": passou 5+ dias sem retorno após primeiro contato, ou prospect nunca respondeu. Lead frio mas retomável em ~60 dias.
-- "qualificado": prospect demonstrou interesse genuíno (fez perguntas, pediu mais info, quer conhecer, achou interessante). Alta prioridade.
-- "em espera": você enviou proposta / avançou na negociação e está AGUARDANDO retorno do prospect. Ele estava engajado antes. Use quando há proposta enviada ou reunião feita e o prospect sumiu temporariamente. Diferente de "sem resposta" que é lead que nunca engajou de verdade.
+- "novo": contato adicionado, mas nenhuma mensagem foi enviada ainda.
+- "em contato": primeiro contato feito, mas sem nada concreto ainda. Prospect pode não ter respondido ou respondeu superficialmente.
+- "sem resposta": nunca retornou o primeiro contato. Atribuído automaticamente após 5 dias sem resposta. Lead frio mas retomável.
+- "qualificado": demonstrou interesse genuíno (fez perguntas, pediu mais info, quer conhecer, achou interessante). Alta prioridade.
+- "em espera": estava qualificado mas deixou de responder. Você aguarda retorno. Atribuído automaticamente após 5 dias sem resposta do qualificado. Diferente de "sem resposta" — este já tinha demonstrado interesse antes.
 - "negociando": prospect gostou e está ativamente discutindo fechar — preço, condições, prazo, ajustes.
 - "fechado": venda confirmada, contrato assinado, cliente pagou.
 - "perdido": APENAS quando o prospect disse explicitamente que NÃO quer. NÃO use só porque não respondeu.
