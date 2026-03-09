@@ -37,6 +37,58 @@ Guia rápido para encontrar o que você precisa.
 
 ---
 
+## 🌐 Landing Page
+
+Página de marketing standalone — não usa o `base.html` (sem sidebar).
+
+**URL:** `/landing`
+**Arquivo:** `app/templates/landing.html`
+**Rota:** `app/routers/dashboard_ui.py`
+
+### Seções da landing (em ordem)
+1. **Nav** — Logo + link "Planos" + CTA "Acessar plataforma"
+2. **Hero** — Headline principal + mock de conversa + lead card animado
+3. **Social proof bar** — 4 stats (100% capturado, 0 cliques, ∞ leads, 24h)
+4. **Problema** — 3 pain cards (leads perdidos, CRM vazio, follow-ups que não acontecem)
+5. **Analogia** — "Diário vs gravador que escreve sozinho"
+6. **Como funciona** — 3 passos
+7. **Features** — 6 cards de funcionalidades
+8. **Dados** — "O ativo escondido" + visual de métricas
+9. **Posicionamento** — "Você não compete com HubSpot, compete com o caos"
+10. **Planos** — Starter vs Pro (ver abaixo)
+11. **CTA final** — Botões de ação
+12. **Footer**
+
+### Planos (seção `#plans`)
+
+| | Starter | Pro |
+|---|---|---|
+| **Nome** | Modo Grupo | Número Dedicado |
+| **Como funciona** | Vendedor encaminha conversa pro grupo → IA organiza | WhatsApp Business conectado → captura automática |
+| **Fluxo** | Conversa → Encaminha → IA organiza | Conversa → IA classifica → Relatório diário → Aprovação |
+| **Cobertura** | O que for encaminhado | 100% do número |
+| **Dependência humana** | Precisa encaminhar | Nenhuma |
+| **Relatório diário** | Não | ✓ Incluso |
+| **Setup** | Simples | Requer configuração |
+| **Ideal para** | Vendedores solos, times pequenos, validação | Empresas com WhatsApp Business, times estruturados |
+
+### Relatório diário de aprovação (Pro)
+
+Feature exclusiva do plano Pro. Ao fim do dia, a IA apresenta o resumo de todas as conversas classificadas em 3 estados:
+
+- `✓ Lead` — interesse real de compra identificado → já no pipeline
+- `? Revisar` — contexto ambíguo → aguarda aprovação do usuário
+- `✕ Ruído` — suporte, fornecedor, conversa irrelevante → descartado
+
+O usuário revisa em ~2 minutos e aprova/descarta as sugestões. Pipeline limpo sem trabalho manual.
+
+> **Status:** Definido no produto e na landing. Implementação pendente no backend.
+
+### Acesso rápido via sidebar
+O link "Landing Page" foi adicionado à sidebar do dashboard (`base.html`) e ao bottom nav mobile — abre em nova aba.
+
+---
+
 ## 💰 Resultado de venda
 
 - **[SALES_RESULT_DETECTION.md](./SALES_RESULT_DETECTION.md)** — Detecção automática de vendas
@@ -242,11 +294,20 @@ Veja [DASHBOARD.md — Configuração](./DASHBOARD.md#-configuração) para a li
 - Queries conversacionais (consultar leads no WhatsApp)
 - Fuzzy matching por nome sem criar lead novo
 
+### ✅ Completo (Fase 1.7 — Landing + Produto)
+- Landing page completa com todas as seções de marketing
+- Definição dos 2 planos: Starter (Modo Grupo) e Pro (Número Dedicado)
+- Seção de planos com cards, comparativo e tabela na landing
+- Relatório diário de aprovação definido como feature exclusiva do Pro
+- Landing page acessível via sidebar do dashboard
+
 ### 🔄 Planejado (Fase 2)
 - Follow-up automático
 - Lead score por lead
 - Tags customizadas
 - Bulk actions (update múltiplos leads)
+- **Relatório diário de aprovação** (backend — já definido no produto)
+- Modo Número Dedicado (conectar WhatsApp Business via Evolution API)
 
 ### 🚀 Futuro (Fase 3+)
 - Analytics avançado
@@ -280,4 +341,4 @@ Veja [DASHBOARD.md — Roadmap](./DASHBOARD.md#-próximas-features-planejadas-ro
 
 ---
 
-**Última atualização:** 2026-03-09
+**Última atualização:** 2026-03-09 (Fase 1.7 — Landing + Planos + Relatório diário Pro)

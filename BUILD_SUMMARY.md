@@ -94,6 +94,31 @@ Total: ~3.100 linhas de código novo + documentação
 
 ---
 
+## 🌐 Landing Page + Produto (Sessão 2026-03-09)
+
+### **Landing Page**
+- ✅ Página de marketing completa em `/landing` (`app/templates/landing.html`)
+- ✅ 12 seções: Nav, Hero, Social proof, Problema, Analogia, Como funciona, Features, Dados, Posicionamento, Planos, CTA, Footer
+- ✅ Animações CSS (scroll reveal, float, gradientes)
+- ✅ Responsivo mobile-first
+- ✅ Standalone (sem sidebar — layout próprio)
+- ✅ Link adicionado à sidebar do dashboard e bottom nav mobile
+
+### **Dois Planos definidos**
+- ✅ **Starter — Modo Grupo:** vendedor encaminha conversas para grupo monitorado → IA captura
+- ✅ **Pro — Número Dedicado:** WhatsApp Business inteiro conectado → captura 100% automática
+- ✅ Seção `#plans` na landing com 2 cards + tabela comparativa
+- ✅ Link "Planos" adicionado ao nav da landing
+
+### **Relatório diário de aprovação (Pro)**
+- ✅ Definido como feature exclusiva do plano Pro
+- ✅ Fluxo: Conversa → IA classifica → Relatório diário → Usuário aprova em ~2 min
+- ✅ 3 estados: `✓ Lead` / `? Revisar` / `✕ Ruído`
+- ✅ Documentado na landing (bloco de destaque no card Pro)
+- ⏳ **Implementação backend pendente (Fase 2)**
+
+---
+
 ## 🔧 Melhorias & Bug Fixes (Sessão 2026-03-08)
 
 ### **Conversation Analysis Persistence**
@@ -139,12 +164,21 @@ Total: ~3.100 linhas de código novo + documentação
 - [x] Detecção automática de separador (CSV parsing robusto)
 - [x] Bug fixes: word boundaries, JSON error handling
 
+### ✅ Implementado — Fase 1.7 (Landing + Produto)
+- [x] Landing page completa com 12 seções
+- [x] 2 planos definidos: Starter (Modo Grupo) e Pro (Número Dedicado)
+- [x] Seção de planos na landing com cards + tabela comparativa
+- [x] Relatório diário de aprovação definido como feature Pro
+- [x] Sidebar do dashboard com link para landing
+
 ### 🔄 Planejado — Fase 2
 - [ ] Follow-up automático (sugestões de ação)
 - [ ] Lead score automático
 - [ ] Tags customizadas
 - [ ] Bulk actions
 - [ ] Resumo semanal
+- [ ] **Relatório diário de aprovação** (backend do plano Pro)
+- [ ] Modo Número Dedicado (conectar WhatsApp Business via Evolution API)
 
 ### 🚀 Roadmap — Fase 3+
 - [ ] Analytics avançado (conversão, taxa fechamento)
@@ -322,6 +356,6 @@ b6a1d97 fix: replace archive with permanent delete
 
 ---
 
-**Data:** 2026-03-08
+**Data:** 2026-03-09
 **Branch:** `claude/analyze-project-XnE4G`
 **Status:** ✅ Ready for production
