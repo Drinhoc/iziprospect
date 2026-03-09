@@ -216,6 +216,9 @@ class DBService:
                 cur.execute(
                     "ALTER TABLE leads ADD COLUMN IF NOT EXISTS motivo_perda TEXT DEFAULT ''"
                 )
+                cur.execute(
+                    "ALTER TABLE leads ADD COLUMN IF NOT EXISTS status_anterior TEXT DEFAULT ''"
+                )
             conn.commit()
         finally:
             self._put(conn)
@@ -1210,7 +1213,7 @@ class DBService:
 
                 # qualificado → em espera (5 days, had interest but went silent)
                 cur.execute("""
-                    UPDATE leads SET status = 'em espera', prioridade = 'alta'
+                    UPDATE leads SET status = 'em espera', status_anterior = 'qualificado', prioridade = 'alta'
                     WHERE status = 'qualificado'
                       AND (
                         ultima_interacao_em IS NULL
@@ -1222,7 +1225,7 @@ class DBService:
 
                 # negociando → em espera (7 days, was actively negotiating but went silent)
                 cur.execute("""
-                    UPDATE leads SET status = 'em espera', prioridade = 'alta'
+                    UPDATE leads SET status = 'em espera', status_anterior = 'negociando', prioridade = 'alta'
                     WHERE status = 'negociando'
                       AND (
                         ultima_interacao_em IS NULL

@@ -25,12 +25,12 @@ function segLabel(s) {
   return SEGMENTO_LABEL[s] || (s ? s.charAt(0).toUpperCase() + s.slice(1) : '—');
 }
 
-function statusBadge(s) {
+function statusBadge(s, statusAnterior) {
   const map = {
     'novo':             'badge-novo',
     'em contato':       'badge-em-contato',
     'qualificado':      'badge-qualificado',
-    'em espera':        'badge-em-espera',
+    'em espera':        statusAnterior === 'negociando' ? 'badge-negociando' : 'badge-qualificado',
     'proposta enviada': 'badge-proposta',
     'negociando':       'badge-negociando',
     'fechado':          'badge-fechado',
@@ -107,7 +107,7 @@ function renderTable(leads) {
       <td class="text-muted">${esc(l.cidade) || '—'}</td>
       <td class="td-phone">${phoneTd}</td>
       <td class="text-muted">${esc(l.responsavel) || '—'}</td>
-      <td>${statusBadge(l.status)}</td>
+      <td>${statusBadge(l.status, l.status_anterior)}</td>
       <td class="text-muted td-pendencia">${esc(l.pendencia) || '—'}</td>
       <td class="text-muted">${fmtDate(l.ultima_interacao_em)}</td>
       <td class="text-muted">${fmtDate(l.proximo_followup_em)}</td>`;
@@ -149,7 +149,7 @@ function renderCards(leads) {
     card.innerHTML = `
       <div class="lc-top">
         <span class="lc-name">${esc(l.nome) || '—'}</span>
-        <div class="lc-badges">${statusBadge(l.status)}</div>
+        <div class="lc-badges">${statusBadge(l.status, l.status_anterior)}</div>
       </div>
       ${meta.length ? `<div class="lc-meta">${meta.map(m => `<span class="lc-meta-item">${m}</span>`).join('')}</div>` : ''}
       ${l.pendencia ? `<div class="lc-pendencia">${esc(l.pendencia)}</div>` : ''}`;
