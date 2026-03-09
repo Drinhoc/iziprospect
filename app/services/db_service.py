@@ -1056,6 +1056,25 @@ class DBService:
                 """)
                 funil_raw = {r[0]: r[1] for r in cur.fetchall()}
 
+                # Bloco B2 — Funil de conversão (o dado mais importante)
+                cur.execute("""
+                    SELECT
+                        COUNT(*) FILTER (WHERE status != 'arquivado') AS total,
+                        COUNT(*) FILTER (WHERE status NOT IN ('arquivado', 'novo')) AS contatados,
+                        COUNT(*) FILTER (WHERE status NOT IN ('arquivado', 'novo', 'sem resposta', 'contato inválido')) AS responderam,
+                        COUNT(*) FILTER (WHERE status IN ('qualificado', 'em espera', 'negociando', 'fechado')) AS conversas_reais,
+                        COUNT(*) FILTER (WHERE status = 'fechado') AS fechados
+                    FROM leads
+                """)
+                fcrow = cur.fetchone()
+                funil_conversao = {
+                    "total":          fcrow[0] or 0,
+                    "contatados":     fcrow[1] or 0,
+                    "responderam":    fcrow[2] or 0,
+                    "conversas_reais": fcrow[3] or 0,
+                    "fechados":       fcrow[4] or 0,
+                }
+
                 # Bloco C — Ranking por cidade
                 cur.execute("""
                     SELECT cidade, COUNT(*) AS total,
@@ -1222,6 +1241,7 @@ class DBService:
             return {
                 "kpis": kpis,
                 "funil": funil_raw,
+                "funil_conversao": funil_conversao,
                 "por_cidade": por_cidade,
                 "por_segmento": por_segmento,
                 "por_fonte": por_fonte,

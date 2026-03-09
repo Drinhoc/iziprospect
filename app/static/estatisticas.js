@@ -30,6 +30,63 @@ function pctColor(pct) {
   return '#ef4444';
 }
 
+/* ---------- Funil de Conversão ---------- */
+function renderFunilConversao(data) {
+  const el = document.getElementById('funil-conversao');
+  if (!el) return;
+
+  const stages = [
+    { key: 'total',          label: 'Leads gerados',    color: '#9ca3af', desc: 'cadastrados no CRM' },
+    { key: 'contatados',     label: 'Contatados',       color: '#3b82f6', desc: 'primeiro contato feito' },
+    { key: 'responderam',    label: 'Responderam',      color: '#8b5cf6', desc: 'houve interação real' },
+    { key: 'conversas_reais',label: 'Conversas reais',  color: '#f97316', desc: 'demonstraram interesse' },
+    { key: 'fechados',       label: 'Vendas fechadas',  color: '#10b981', desc: 'convertidos' },
+  ];
+
+  const total = data.total || 1;
+  let html = '';
+
+  stages.forEach((stage, i) => {
+    const val = data[stage.key] || 0;
+    const pct = total > 0 ? Math.round(val * 100 / total) : 0;
+
+    html += `
+      <div class="fc-row">
+        <div class="fc-meta">
+          <span class="fc-count">${val}</span>
+          <div class="fc-labels">
+            <span class="fc-label">${stage.label}</span>
+            <span class="fc-desc">${stage.desc}</span>
+          </div>
+        </div>
+        <div class="fc-bar-track">
+          <div class="fc-bar-fill" style="width:${Math.max(pct, val > 0 ? 1 : 0)}%;background:${stage.color}"></div>
+        </div>
+        <span class="fc-pct">${pct}%</span>
+      </div>`;
+
+    if (i < stages.length - 1) {
+      const nextVal = data[stages[i + 1].key] || 0;
+      const convPct = val > 0 ? Math.round(nextVal * 100 / val) : 0;
+      const convColor = convPct >= 30 ? '#10b981' : convPct >= 10 ? '#f59e0b' : '#ef4444';
+      html += `
+        <div class="fc-connector">
+          <div class="fc-conn-arrow">↓</div>
+          <div class="fc-conn-rate" style="color:${convColor}">${convPct}% avançaram</div>
+          <div class="fc-conn-lost">${val - nextVal > 0 ? `− ${val - nextVal} saíram` : ''}</div>
+        </div>`;
+    }
+  });
+
+  // Taxa total de conversão em destaque
+  const fechados = data.fechados || 0;
+  const taxaTotal = total > 1 ? (fechados / data.total * 100).toFixed(1) : '0.0';
+  const taxaColor = parseFloat(taxaTotal) >= 10 ? '#10b981' : parseFloat(taxaTotal) >= 3 ? '#f59e0b' : '#ef4444';
+  html += `<div class="fc-taxa-total">Taxa total <strong style="color:${taxaColor}">${taxaTotal}%</strong> <span class="fc-taxa-sub">(de lead gerado a venda fechada)</span></div>`;
+
+  el.innerHTML = html;
+}
+
 /* ---------- Funil ---------- */
 function renderFunil(funil) {
   const el = document.getElementById('funil-chart');
@@ -325,6 +382,9 @@ async function loadEstatisticas() {
     document.getElementById('kpi-valor').textContent = fmtMoney(k.valor_total_vendas);
     document.getElementById('kpi-vencidos').textContent = k.followups_vencidos ?? '—';
     document.getElementById('kpi-sem-resposta').textContent = k.total_sem_resposta ?? '—';
+
+    // Funil de Conversão
+    renderFunilConversao(d.funil_conversao || {});
 
     // Funil
     renderFunil(d.funil || {});
