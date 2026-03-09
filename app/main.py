@@ -95,37 +95,6 @@ async def _seed_db_from_sheets() -> None:
         logger.warning("db_seed falhou — não crítico", exc_info=True)
 
 
-async def _do_sheets_sync() -> int:
-    """Lê todos os leads do Sheets e atualiza o DB com edições manuais do usuário."""
-    sheets = await asyncio.to_thread(get_sheets_service)
-    db = get_db_service()
-    leads = await asyncio.to_thread(sheets.all_leads)
-    updated = 0
-    for lead in leads:
-        lead_id = str(lead.get("lead_id", "")).strip()
-        if not lead_id:
-            continue
-        ok = await asyncio.to_thread(db.update_lead_from_sheets, lead_id, lead)
-        if ok:
-            updated += 1
-    return updated
-
-
-@app.on_event("startup")
-async def _start_sheets_sync_loop() -> None:
-    """Inicia loop de sincronização Sheets→DB em background."""
-    async def _loop():
-        interval = settings.sheets_sync_interval_minutes * 60
-        logger.info("sheets_sync_loop iniciado | interval=%ds", interval)
-        while True:
-            await asyncio.sleep(interval)
-            try:
-                updated = await _do_sheets_sync()
-                logger.info("sheets_sync_loop OK | updated=%d", updated)
-            except Exception:
-                logger.warning("sheets_sync_loop falhou", exc_info=True)
-
-    asyncio.create_task(_loop())
 
 
 @app.on_event("startup")
