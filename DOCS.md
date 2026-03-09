@@ -11,6 +11,16 @@ Guia rápido para encontrar o que você precisa.
 
 ---
 
+## 💬 CRM Conversacional
+
+- **[CRM_CONVERSACIONAL.md](./CRM_CONVERSACIONAL.md)** — Micro-updates e queries por linguagem natural
+  - Micro-updates: atualizar status com linguagem natural
+  - Queries: consultar leads em tempo real
+  - Padrões reconhecidos
+  - Exemplos de uso
+
+---
+
 ## 🎨 Dashboard web
 
 - **[DASHBOARD.md](./DASHBOARD.md)** — Documentação completa do dashboard
@@ -68,6 +78,14 @@ Guia rápido para encontrar o que você precisa.
 #### ...importar 30 leads antigos via CSV?
 → Vá para `/leads`, clique em "Importar", cole seu CSV (separado por tab/semicolon/vírgula), e clique enviar.
 
+#### ...atualizar um lead rapidamente no grupo?
+→ Use micro-updates: "clinica sorriso respondeu", "mandei mensagem pra dr joao", "odonto prime quer demo".
+→ Leia [CRM_CONVERSACIONAL.md — Micro-updates](./CRM_CONVERSACIONAL.md#micro-updates).
+
+#### ...consultar leads no grupo (sem sair do WhatsApp)?
+→ Use queries: "leads de hoje", "quem respondeu", "followup", "pipeline".
+→ Leia [CRM_CONVERSACIONAL.md — Queries](./CRM_CONVERSACIONAL.md#queries).
+
 ---
 
 ## 🔧 Para desenvolvedores
@@ -83,7 +101,9 @@ app/
 ├── static/              # CSS + JS
 ├── services/            # Business logic
 │   ├── crm_interpreter.py  # CRM message parsing + sales detection
+│   │                       # + micro-updates + query detection
 │   ├── db_service.py       # Database layer
+│   │                       # + fuzzy matching + CRM queries
 │   ├── openai_service.py   # OpenAI integration
 │   ├── sheets_service.py   # Google Sheets sync
 │   └── evolution_service.py # WhatsApp API
@@ -217,6 +237,11 @@ Veja [DASHBOARD.md — Configuração](./DASHBOARD.md#-configuração) para a li
 - Bulk import de leads via CSV
 - Bug fixes: word boundaries, JSON error handling
 
+### ✅ Completo (Fase 1.6)
+- Micro-updates conversacionais (atualizar lead por padrão verbal)
+- Queries conversacionais (consultar leads no WhatsApp)
+- Fuzzy matching por nome sem criar lead novo
+
 ### 🔄 Planejado (Fase 2)
 - Follow-up automático
 - Lead score por lead
@@ -249,9 +274,10 @@ Veja [DASHBOARD.md — Roadmap](./DASHBOARD.md#-próximas-features-planejadas-ro
 | [BUILD_SUMMARY.md](./BUILD_SUMMARY.md) | Todos | Overview do projeto, decisões |
 | [DASHBOARD.md](./DASHBOARD.md) | Devs + PMs | Detalhes completos do dashboard |
 | [SALES_RESULT_DETECTION.md](./SALES_RESULT_DETECTION.md) | Devs + Sales | Como detectar venda ganha/perdida |
+| [CRM_CONVERSACIONAL.md](./CRM_CONVERSACIONAL.md) | Todos | Micro-updates e queries por linguagem natural |
 | [DOCS.md](./DOCS.md) | Todos | Este arquivo — índice |
 | [README.md](./README.md) | Devs | Setup, deploy, variáveis |
 
 ---
 
-**Última atualização:** 2026-03-08
+**Última atualização:** 2026-03-09
