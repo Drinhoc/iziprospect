@@ -15,6 +15,11 @@ def _get_db():
     return get_db_service()
 
 
+def _get_sheets():
+    from app.main import get_sheets_service
+    return get_sheets_service()
+
+
 @router.get("/stats")
 def get_stats():
     db = _get_db()
@@ -77,6 +82,14 @@ def update_lead(lead_id: str, body: dict):
     if db.get_lead(lead_id) is None:
         raise HTTPException(status_code=404, detail="Lead not found")
     ok = db.update_lead_from_dashboard(lead_id, body)
+    if ok:
+        try:
+            updated_lead = db.get_lead(lead_id)
+            if updated_lead:
+                sheets = _get_sheets()
+                sheets.sync_lead(updated_lead)
+        except Exception:
+            logger.warning("sync_lead falhou após update do dashboard | lead_id=%s", lead_id, exc_info=True)
     return {"ok": ok}
 
 
