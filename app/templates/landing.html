@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IziProspect — O pipeline que se monta sozinho</title>
+  <meta name="description" content="IziProspect transforma conversas do WhatsApp em pipeline de vendas automaticamente. Sem CRM para preencher. Sem planilha. Sem mudar a rotina do time." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    /* ===== RESET & BASE ===== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; scroll-behavior: smooth; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #ffffff;
+      color: #111827;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+    a { color: inherit; text-decoration: none; }
+    img { max-width: 100%; display: block; }
+
+    /* ===== TOKENS ===== */
+    :root {
+      --blue: #1a56db;
+      --blue-dark: #1346b8;
+      --blue-light: #dbeafe;
+      --green: #10b981;
+      --green-wpp: #25d366;
+      --dark: #0a0f1e;
+      --dark2: #111827;
+      --gray: #6b7280;
+      --gray-light: #f3f4f6;
+      --border: #e5e7eb;
+      --radius: 14px;
+      --radius-sm: 8px;
+      --shadow: 0 4px 24px rgba(0,0,0,.08);
+      --shadow-lg: 0 16px 48px rgba(0,0,0,.14);
+    }
+
+    /* ===== UTILS ===== */
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+    .tag {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+      padding: 6px 12px; border-radius: 100px;
+    }
+    .tag-blue { background: var(--blue-light); color: var(--blue); }
+    .tag-green { background: #d1fae5; color: #065f46; }
+    .tag-dark { background: rgba(255,255,255,.12); color: rgba(255,255,255,.9); }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-weight: 600; font-size: 15px; padding: 14px 28px;
+      border-radius: var(--radius-sm); border: none; cursor: pointer;
+      transition: all .2s ease; text-align: center; line-height: 1;
+    }
+    .btn-primary { background: var(--blue); color: #fff; }
+    .btn-primary:hover { background: var(--blue-dark); transform: translateY(-1px); box-shadow: 0 8px 24px rgba(26,86,219,.35); }
+    .btn-ghost { background: transparent; color: #fff; border: 1.5px solid rgba(255,255,255,.3); }
+    .btn-ghost:hover { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.6); }
+    .btn-dark { background: var(--dark2); color: #fff; }
+    .btn-dark:hover { background: #1f2937; transform: translateY(-1px); box-shadow: 0 8px 24px rgba(0,0,0,.25); }
+    .btn-lg { font-size: 17px; padding: 18px 36px; }
+
+    /* ===== REVEAL ANIMATION ===== */
+    .reveal { opacity: 0; transform: translateY(28px); transition: opacity .6s ease, transform .6s ease; }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+    .reveal-delay-1 { transition-delay: .1s; }
+    .reveal-delay-2 { transition-delay: .2s; }
+    .reveal-delay-3 { transition-delay: .3s; }
+    .reveal-delay-4 { transition-delay: .4s; }
+
+    /* ===== NAV ===== */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      padding: 16px 0;
+      transition: all .3s ease;
+    }
+    nav.scrolled {
+      background: rgba(10,15,30,.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+    }
+    .nav-inner { display: flex; align-items: center; justify-content: space-between; }
+    .nav-logo {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 18px; font-weight: 800; color: #fff; letter-spacing: -.02em;
+    }
+    .logo-icon {
+      width: 36px; height: 36px; border-radius: 9px;
+      background: linear-gradient(135deg, #1a56db 0%, #7c3aed 100%);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .nav-cta { display: flex; align-items: center; gap: 12px; }
+    .nav-link { color: rgba(255,255,255,.7); font-size: 14px; font-weight: 500; transition: color .2s; }
+    .nav-link:hover { color: #fff; }
+
+    /* ===== HERO ===== */
+    #hero {
+      background: linear-gradient(160deg, #0a0f1e 0%, #0d1a3a 45%, #0f1f2e 100%);
+      min-height: 100vh;
+      display: flex; align-items: center;
+      padding: 120px 0 80px;
+      position: relative;
+      overflow: hidden;
+    }
+    #hero::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse 80% 60% at 60% 40%, rgba(26,86,219,.18) 0%, transparent 70%),
+                  radial-gradient(ellipse 50% 50% at 20% 80%, rgba(124,58,237,.12) 0%, transparent 60%);
+    }
+    #hero::after {
+      content: '';
+      position: absolute; bottom: 0; left: 0; right: 0; height: 120px;
+      background: linear-gradient(to bottom, transparent, #ffffff);
+      pointer-events: none;
+    }
+    .hero-inner {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center;
+      position: relative; z-index: 1;
+    }
+    .hero-eyebrow { margin-bottom: 20px; }
+    .hero-title {
+      font-size: clamp(36px, 5vw, 58px); font-weight: 900; line-height: 1.08;
+      letter-spacing: -.03em; color: #fff;
+      margin-bottom: 20px;
+    }
+    .hero-title .accent { color: #60a5fa; }
+    .hero-subtitle {
+      font-size: 18px; color: rgba(255,255,255,.68); line-height: 1.65;
+      margin-bottom: 36px; max-width: 460px;
+    }
+    .hero-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .hero-note { font-size: 13px; color: rgba(255,255,255,.4); margin-top: 16px; }
+
+    /* Mock Phone */
+    .hero-visual { display: flex; justify-content: center; align-items: center; position: relative; }
+    .phone-mock {
+      width: 280px; background: #1c1c1e; border-radius: 36px;
+      padding: 16px; box-shadow: 0 32px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.08);
+      transform: rotate(2deg);
+      animation: float 4s ease-in-out infinite;
+    }
+    @keyframes float {
+      0%, 100% { transform: rotate(2deg) translateY(0); }
+      50% { transform: rotate(2deg) translateY(-10px); }
+    }
+    .phone-bar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 12px; background: #2c2c2e; border-radius: 22px; margin-bottom: 12px;
+    }
+    .phone-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--green-wpp); display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+    .phone-contact { flex: 1; }
+    .phone-contact-name { font-size: 12px; font-weight: 600; color: #fff; }
+    .phone-contact-status { font-size: 10px; color: #6b7280; }
+    .chat-bubble {
+      padding: 8px 12px; border-radius: 14px 14px 14px 4px;
+      font-size: 11px; line-height: 1.5; margin-bottom: 6px; max-width: 88%;
+    }
+    .chat-in { background: #2c2c2e; color: #e5e7eb; }
+    .chat-out { background: #005c4b; color: #e5e7eb; margin-left: auto; border-radius: 14px 14px 4px 14px; }
+    .chat-time { font-size: 9px; color: #6b7280; text-align: right; margin-top: 2px; }
+    .arrow-transform {
+      position: absolute; right: -30px; top: 50%; transform: translateY(-50%);
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+    }
+    .lead-card-mini {
+      background: #fff; border-radius: 12px; padding: 12px 14px; width: 200px;
+      box-shadow: var(--shadow-lg); border: 1px solid var(--border);
+      position: absolute; right: -180px; top: 50%; transform: translateY(-50%);
+      animation: float-card 4s ease-in-out infinite;
+    }
+    @keyframes float-card {
+      0%, 100% { transform: translateY(-50%) translateX(0); }
+      50% { transform: translateY(-50%) translateX(4px); }
+    }
+    .lcm-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .lcm-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+    .lcm-name { font-size: 11px; font-weight: 700; color: var(--dark2); }
+    .lcm-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+    .lcm-label { font-size: 9px; color: var(--gray); text-transform: uppercase; letter-spacing: .04em; }
+    .lcm-value { font-size: 10px; font-weight: 600; color: var(--dark2); }
+    .lcm-status {
+      display: inline-block; font-size: 9px; font-weight: 600; padding: 2px 7px;
+      border-radius: 100px; background: #d1fae5; color: #065f46; margin-top: 6px;
+    }
+    .lcm-ai-badge {
+      display: flex; align-items: center; gap: 4px; margin-top: 8px;
+      font-size: 9px; color: var(--gray); border-top: 1px solid var(--border); padding-top: 7px;
+    }
+
+    /* ===== SOCIAL PROOF BAR ===== */
+    #social-bar {
+      background: var(--gray-light); padding: 20px 0;
+      border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+    }
+    .social-bar-inner {
+      display: flex; align-items: center; justify-content: center;
+      gap: 40px; flex-wrap: wrap;
+    }
+    .social-stat { text-align: center; }
+    .social-stat-num { font-size: 26px; font-weight: 900; color: var(--dark2); letter-spacing: -.02em; }
+    .social-stat-label { font-size: 12px; color: var(--gray); font-weight: 500; }
+    .social-divider { width: 1px; height: 36px; background: var(--border); }
+
+    /* ===== PROBLEM ===== */
+    #problem { padding: 100px 0; background: #fff; }
+    .section-header { text-align: center; margin-bottom: 60px; }
+    .section-title {
+      font-size: clamp(28px, 4vw, 42px); font-weight: 900; letter-spacing: -.025em;
+      color: var(--dark2); margin: 12px 0 16px; line-height: 1.15;
+    }
+    .section-sub { font-size: 17px; color: var(--gray); max-width: 520px; margin: 0 auto; line-height: 1.65; }
+    .pain-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+    .pain-card {
+      background: var(--gray-light); border-radius: var(--radius);
+      padding: 32px 28px; position: relative; overflow: hidden;
+      border: 1.5px solid transparent;
+      transition: all .3s ease;
+    }
+    .pain-card:hover { border-color: #fca5a5; background: #fff5f5; transform: translateY(-4px); box-shadow: var(--shadow); }
+    .pain-icon { font-size: 36px; margin-bottom: 16px; }
+    .pain-card h3 { font-size: 17px; font-weight: 700; color: var(--dark2); margin-bottom: 10px; }
+    .pain-card p { font-size: 14px; color: var(--gray); line-height: 1.65; }
+    .pain-tag {
+      display: inline-block; font-size: 10px; font-weight: 700; padding: 3px 9px;
+      border-radius: 100px; background: #fee2e2; color: #b91c1c; margin-bottom: 14px; text-transform: uppercase; letter-spacing: .04em;
+    }
+
+    /* ===== ANALOGY ===== */
+    #analogy { padding: 80px 0; background: var(--dark); }
+    .analogy-inner {
+      display: grid; grid-template-columns: 1fr auto 1fr; gap: 32px; align-items: center;
+    }
+    .analogy-card {
+      border-radius: var(--radius); padding: 36px 32px; text-align: center;
+    }
+    .analogy-before {
+      background: rgba(255,255,255,.04); border: 1.5px solid rgba(255,255,255,.08);
+    }
+    .analogy-after {
+      background: linear-gradient(135deg, #1a56db22, #7c3aed22);
+      border: 1.5px solid rgba(26,86,219,.4);
+    }
+    .analogy-emoji { font-size: 48px; margin-bottom: 16px; }
+    .analogy-card h3 { font-size: 18px; font-weight: 800; color: #fff; margin-bottom: 10px; }
+    .analogy-card p { font-size: 14px; color: rgba(255,255,255,.5); line-height: 1.65; }
+    .analogy-card .analogy-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 12px; }
+    .analogy-before .analogy-label { color: #ef4444; }
+    .analogy-after .analogy-label { color: #60a5fa; }
+    .analogy-vs {
+      font-size: 22px; font-weight: 900; color: rgba(255,255,255,.2);
+      flex-shrink: 0;
+    }
+    .analogy-quote {
+      text-align: center; margin-top: 48px;
+    }
+    .analogy-quote blockquote {
+      font-size: clamp(20px, 3vw, 30px); font-weight: 800; color: #fff;
+      letter-spacing: -.02em; line-height: 1.35; max-width: 680px; margin: 0 auto;
+    }
+    .analogy-quote blockquote em { color: #60a5fa; font-style: normal; }
+
+    /* ===== HOW IT WORKS ===== */
+    #how { padding: 100px 0; background: #fff; }
+    .steps-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; margin-top: 60px; position: relative; }
+    .steps-grid::before {
+      content: ''; position: absolute;
+      top: 52px; left: calc(16.67% + 20px); right: calc(16.67% + 20px); height: 2px;
+      background: linear-gradient(90deg, var(--blue-light), var(--blue-light));
+      z-index: 0;
+    }
+    .step-card { text-align: center; position: relative; z-index: 1; }
+    .step-num {
+      width: 52px; height: 52px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px; font-weight: 900; margin: 0 auto 20px;
+    }
+    .step-num-1 { background: #dbeafe; color: var(--blue); }
+    .step-num-2 { background: #ede9fe; color: #7c3aed; }
+    .step-num-3 { background: #d1fae5; color: #065f46; }
+    .step-card h3 { font-size: 18px; font-weight: 800; color: var(--dark2); margin-bottom: 10px; }
+    .step-card p { font-size: 14px; color: var(--gray); line-height: 1.65; }
+    .step-icon { font-size: 28px; margin-bottom: 8px; }
+
+    /* ===== FEATURES ===== */
+    #features { padding: 100px 0; background: var(--gray-light); }
+    .features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+    .feat-card {
+      background: #fff; border-radius: var(--radius); padding: 28px 24px;
+      border: 1.5px solid var(--border); transition: all .3s ease;
+    }
+    .feat-card:hover { border-color: var(--blue); transform: translateY(-4px); box-shadow: var(--shadow); }
+    .feat-icon {
+      width: 44px; height: 44px; border-radius: 11px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; margin-bottom: 16px;
+    }
+    .feat-icon-blue { background: var(--blue-light); }
+    .feat-icon-purple { background: #ede9fe; }
+    .feat-icon-green { background: #d1fae5; }
+    .feat-icon-orange { background: #ffedd5; }
+    .feat-icon-yellow { background: #fef9c3; }
+    .feat-icon-pink { background: #fce7f3; }
+    .feat-card h3 { font-size: 16px; font-weight: 700; color: var(--dark2); margin-bottom: 8px; }
+    .feat-card p { font-size: 13px; color: var(--gray); line-height: 1.6; }
+
+    /* ===== DATA SECTION ===== */
+    #data { padding: 100px 0; background: #fff; }
+    .data-inner {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center;
+    }
+    .data-text .section-title { text-align: left; }
+    .data-text .section-sub { text-align: left; margin: 0; }
+    .data-points { margin-top: 32px; display: flex; flex-direction: column; gap: 16px; }
+    .data-point {
+      display: flex; align-items: flex-start; gap: 14px;
+      padding: 16px; background: var(--gray-light); border-radius: var(--radius-sm);
+    }
+    .data-point-icon { font-size: 22px; flex-shrink: 0; }
+    .data-point h4 { font-size: 14px; font-weight: 700; color: var(--dark2); margin-bottom: 4px; }
+    .data-point p { font-size: 13px; color: var(--gray); line-height: 1.55; }
+    .data-visual {
+      background: var(--dark); border-radius: var(--radius); padding: 28px;
+      box-shadow: var(--shadow-lg);
+    }
+    .data-visual-title {
+      font-size: 12px; font-weight: 700; color: rgba(255,255,255,.4);
+      text-transform: uppercase; letter-spacing: .08em; margin-bottom: 20px;
+    }
+    .metric-row {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 14px;
+    }
+    .metric-label { font-size: 12px; color: rgba(255,255,255,.6); width: 130px; flex-shrink: 0; }
+    .metric-bar-wrap { flex: 1; background: rgba(255,255,255,.07); border-radius: 100px; height: 6px; }
+    .metric-bar { height: 6px; border-radius: 100px; }
+    .metric-val { font-size: 12px; font-weight: 700; color: #fff; width: 32px; text-align: right; }
+    .metric-bar-blue { background: linear-gradient(90deg, #1a56db, #60a5fa); }
+    .metric-bar-green { background: linear-gradient(90deg, #10b981, #34d399); }
+    .metric-bar-purple { background: linear-gradient(90deg, #7c3aed, #a78bfa); }
+    .metric-bar-orange { background: linear-gradient(90deg, #f97316, #fb923c); }
+
+    /* ===== POSITIONING ===== */
+    #positioning { padding: 100px 0; background: linear-gradient(135deg, #0a0f1e, #0d1a3a); }
+    .pos-inner { text-align: center; }
+    .pos-inner .section-title { color: #fff; }
+    .pos-inner .section-sub { color: rgba(255,255,255,.5); }
+    .compete-grid {
+      display: grid; grid-template-columns: 1fr auto 1fr; gap: 32px;
+      align-items: start; margin-top: 52px;
+    }
+    .compete-col h3 {
+      font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
+      margin-bottom: 16px;
+    }
+    .compete-col.old h3 { color: rgba(255,255,255,.3); }
+    .compete-col.new h3 { color: #60a5fa; }
+    .compete-item {
+      padding: 12px 16px; border-radius: var(--radius-sm); margin-bottom: 10px;
+      font-size: 14px; font-weight: 500;
+    }
+    .compete-item-old { background: rgba(255,255,255,.04); color: rgba(255,255,255,.35); text-decoration: line-through; }
+    .compete-item-new { background: rgba(26,86,219,.2); color: #93c5fd; border: 1px solid rgba(26,86,219,.3); }
+    .compete-arrow { font-size: 32px; color: rgba(255,255,255,.2); padding-top: 40px; }
+    .compete-insight {
+      margin-top: 52px; padding: 28px 36px; background: rgba(255,255,255,.04);
+      border: 1.5px solid rgba(255,255,255,.08); border-radius: var(--radius);
+      display: flex; align-items: center; gap: 20px; text-align: left;
+    }
+    .compete-insight-icon { font-size: 36px; flex-shrink: 0; }
+    .compete-insight p { font-size: 16px; color: rgba(255,255,255,.7); line-height: 1.6; }
+    .compete-insight strong { color: #fff; }
+
+    /* ===== FINAL CTA ===== */
+    #cta { padding: 120px 0; background: #fff; }
+    .cta-inner { text-align: center; }
+    .cta-inner .section-title { font-size: clamp(32px, 5vw, 52px); }
+    .cta-inner .section-sub { font-size: 18px; max-width: 560px; }
+    .cta-actions { display: flex; justify-content: center; gap: 14px; margin-top: 36px; flex-wrap: wrap; }
+    .cta-fine { font-size: 13px; color: var(--gray); margin-top: 20px; }
+
+    /* ===== FOOTER ===== */
+    footer {
+      background: var(--dark2); padding: 28px 0;
+      border-top: 1px solid rgba(255,255,255,.06);
+    }
+    .footer-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 12px;
+    }
+    .footer-logo { font-size: 15px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 8px; }
+    .footer-logo .logo-icon { width: 26px; height: 26px; font-size: 13px; }
+    .footer-copy { font-size: 13px; color: rgba(255,255,255,.35); }
+    .footer-links { display: flex; gap: 20px; }
+    .footer-links a { font-size: 13px; color: rgba(255,255,255,.4); transition: color .2s; }
+    .footer-links a:hover { color: rgba(255,255,255,.8); }
+
+    /* ===== RESPONSIVE ===== */
+    @media (max-width: 900px) {
+      .hero-inner { grid-template-columns: 1fr; gap: 40px; }
+      .hero-visual { display: none; }
+      .pain-grid { grid-template-columns: 1fr; }
+      .steps-grid { grid-template-columns: 1fr; gap: 24px; }
+      .steps-grid::before { display: none; }
+      .features-grid { grid-template-columns: repeat(2, 1fr); }
+      .data-inner { grid-template-columns: 1fr; gap: 40px; }
+      .analogy-inner { grid-template-columns: 1fr; gap: 16px; }
+      .analogy-vs { display: none; }
+      .compete-grid { grid-template-columns: 1fr; }
+      .compete-arrow { display: none; }
+      .footer-inner { flex-direction: column; text-align: center; }
+      .social-bar-inner { gap: 24px; }
+      .social-divider { display: none; }
+    }
+    @media (max-width: 600px) {
+      .features-grid { grid-template-columns: 1fr; }
+      .hero-actions { flex-direction: column; align-items: flex-start; }
+      .hero-actions .btn { width: 100%; justify-content: center; }
+      .cta-actions { flex-direction: column; align-items: center; }
+      .cta-actions .btn { width: 100%; max-width: 360px; justify-content: center; }
+      .compete-insight { flex-direction: column; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav id="main-nav">
+    <div class="container">
+      <div class="nav-inner">
+        <a href="/landing" class="nav-logo">
+          <div class="logo-icon">⚡</div>
+          IziProspect
+        </a>
+        <div class="nav-cta">
+          <a href="/dashboard" class="nav-link" style="display:none" id="nav-platform">Plataforma</a>
+          <a href="/dashboard" class="btn btn-primary" style="font-size:13px;padding:10px 20px;">
+            Acessar plataforma →
+          </a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section id="hero">
+    <div class="container">
+      <div class="hero-inner">
+        <div class="hero-content">
+          <div class="hero-eyebrow reveal">
+            <span class="tag tag-dark">⚡ Ambient Sales Software para WhatsApp</span>
+          </div>
+          <h1 class="hero-title reveal reveal-delay-1">
+            Seu time prospecta<br/>no WhatsApp.<br/>
+            <span class="accent">O pipeline se monta sozinho.</span>
+          </h1>
+          <p class="hero-subtitle reveal reveal-delay-2">
+            IziProspect lê as conversas da sua equipe, extrai os dados dos leads, organiza o pipeline e programa follow-ups — sem que ninguém precise abrir um sistema.
+          </p>
+          <div class="hero-actions reveal reveal-delay-3">
+            <a href="/dashboard" class="btn btn-primary btn-lg">
+              Ver meu pipeline →
+            </a>
+            <a href="#how" class="btn btn-ghost">
+              Como funciona
+            </a>
+          </div>
+          <p class="hero-note reveal reveal-delay-4">Sem CRM para preencher. Sem planilha. Sem mudar a rotina do time.</p>
+        </div>
+
+        <div class="hero-visual reveal reveal-delay-2">
+          <div class="phone-mock">
+            <div class="phone-bar">
+              <div class="phone-avatar">👤</div>
+              <div class="phone-contact">
+                <div class="phone-contact-name">Carlos Silva</div>
+                <div class="phone-contact-status">online</div>
+              </div>
+            </div>
+            <div class="chat-bubble chat-in">
+              Oi! Vi o post de vocês sobre automação. Tenho uma empresa de 15 vendedores e tô precisando organizar melhor a prospecção
+            </div>
+            <div class="chat-time">09:14</div>
+            <div class="chat-bubble chat-out" style="margin-top:8px">
+              Olá Carlos! Perfeito. Qual é o seu principal desafio hoje?
+            </div>
+            <div class="chat-time">09:15</div>
+            <div class="chat-bubble chat-in" style="margin-top:8px">
+              Meu time usa só o WhatsApp e fica tudo perdido. Nem sei quantos leads temos
+            </div>
+            <div class="chat-time">09:17</div>
+            <div style="display:flex;align-items:center;gap:6px;margin:12px 4px 4px;padding:8px 10px;background:rgba(26,86,219,.15);border-radius:8px;border:1px solid rgba(26,86,219,.3);">
+              <span style="font-size:14px">⚡</span>
+              <span style="font-size:10px;color:#60a5fa;font-weight:600;">IziProspect capturou este lead automaticamente</span>
+            </div>
+          </div>
+
+          <div class="lead-card-mini">
+            <div class="lcm-header">
+              <div class="lcm-dot"></div>
+              <div class="lcm-name">Carlos Silva</div>
+            </div>
+            <div class="lcm-row">
+              <span class="lcm-label">Empresa</span>
+              <span class="lcm-value">—</span>
+            </div>
+            <div class="lcm-row">
+              <span class="lcm-label">Interesse</span>
+              <span class="lcm-value">Automação vendas</span>
+            </div>
+            <div class="lcm-row">
+              <span class="lcm-label">Tamanho</span>
+              <span class="lcm-value">15 vendedores</span>
+            </div>
+            <div class="lcm-row">
+              <span class="lcm-label">Prioridade</span>
+              <span class="lcm-value" style="color:#ef4444;">🔴 Alta</span>
+            </div>
+            <span class="lcm-status">✓ Qualificado</span>
+            <div class="lcm-ai-badge">
+              <span>⚡</span>
+              <span>Extraído por IA automaticamente</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SOCIAL PROOF BAR -->
+  <div id="social-bar">
+    <div class="container">
+      <div class="social-bar-inner">
+        <div class="social-stat reveal">
+          <div class="social-stat-num">100%</div>
+          <div class="social-stat-label">das conversas capturadas</div>
+        </div>
+        <div class="social-divider"></div>
+        <div class="social-stat reveal reveal-delay-1">
+          <div class="social-stat-num">0</div>
+          <div class="social-stat-label">cliques para alimentar o CRM</div>
+        </div>
+        <div class="social-divider"></div>
+        <div class="social-stat reveal reveal-delay-2">
+          <div class="social-stat-num">∞</div>
+          <div class="social-stat-label">leads que não vão mais se perder</div>
+        </div>
+        <div class="social-divider"></div>
+        <div class="social-stat reveal reveal-delay-3">
+          <div class="social-stat-num">24h</div>
+          <div class="social-stat-label">até o pipeline estar organizado</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROBLEM -->
+  <section id="problem">
+    <div class="container">
+      <div class="section-header reveal">
+        <span class="tag tag-blue">O problema</span>
+        <h2 class="section-title">Todo time de vendas tem<br/>o mesmo problema.</h2>
+        <p class="section-sub">Não é falta de leads. É falta de organização. E o culpado costuma ser o mesmo: ninguém quer preencher CRM.</p>
+      </div>
+      <div class="pain-grid">
+        <div class="pain-card reveal">
+          <span class="pain-tag">Problema 1</span>
+          <div class="pain-icon">💬</div>
+          <h3>Leads enterrados no WhatsApp</h3>
+          <p>Uma conversa promissora some no meio de centenas de mensagens. Sem registro, sem histórico, sem continuidade.</p>
+        </div>
+        <div class="pain-card reveal reveal-delay-1">
+          <span class="pain-tag">Problema 2</span>
+          <div class="pain-icon">📋</div>
+          <h3>CRM vazio ou desatualizado</h3>
+          <p>Todo mundo sabe que deveria preencher. Ninguém preenche. O sistema existe mas os dados não estão lá.</p>
+        </div>
+        <div class="pain-card reveal reveal-delay-2">
+          <span class="pain-tag">Problema 3</span>
+          <div class="pain-icon">🔔</div>
+          <h3>Follow-ups que nunca acontecem</h3>
+          <p>"Vou chamar amanhã" vira "vou chamar semana que vem" vira nada. Oportunidades perdidas por falta de sistema.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ANALOGY -->
+  <section id="analogy">
+    <div class="container">
+      <div class="analogy-inner">
+        <div class="analogy-card analogy-before reveal">
+          <div class="analogy-label">Antes</div>
+          <div class="analogy-emoji">📓</div>
+          <h3>O diário que você precisa escrever</h3>
+          <p>CRM tradicional. Depende de disciplina. Depende de lembrar. Depende de tempo que ninguém tem.</p>
+        </div>
+        <div class="analogy-vs reveal reveal-delay-1">VS</div>
+        <div class="analogy-card analogy-after reveal reveal-delay-2">
+          <div class="analogy-label">IziProspect</div>
+          <div class="analogy-emoji">🎙️</div>
+          <h3>O gravador que escreve sozinho</h3>
+          <p>Captura o que já acontece nas conversas. Sem pedir nada do vendedor. Sem mudar nenhuma rotina.</p>
+        </div>
+      </div>
+      <div class="analogy-quote reveal">
+        <blockquote>
+          "CRM é um diário que você precisa escrever todo dia.<br/>
+          <em>IziProspect é o gravador que escreve o diário sozinho.</em>"
+        </blockquote>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section id="how">
+    <div class="container">
+      <div class="section-header reveal">
+        <span class="tag tag-blue">Como funciona</span>
+        <h2 class="section-title">Três passos.<br/>Nenhum deles envolve seu time.</h2>
+        <p class="section-sub">O IziProspect trabalha em segundo plano. Seu time continua no WhatsApp como sempre. O sistema se resolve sozinho.</p>
+      </div>
+      <div class="steps-grid">
+        <div class="step-card reveal">
+          <div class="step-icon">💬</div>
+          <div class="step-num step-num-1">1</div>
+          <h3>Seu time conversa no WhatsApp</h3>
+          <p>Nada muda na rotina. Nenhuma nova ferramenta para aprender. Seu time prospecta exatamente como sempre fez.</p>
+        </div>
+        <div class="step-card reveal reveal-delay-1">
+          <div class="step-icon">⚡</div>
+          <div class="step-num step-num-2">2</div>
+          <h3>IziProspect lê e entende tudo</h3>
+          <p>Cada conversa é analisada por IA. Nome, empresa, interesse, tamanho, urgência — tudo extraído automaticamente, em tempo real.</p>
+        </div>
+        <div class="step-card reveal reveal-delay-2">
+          <div class="step-icon">📊</div>
+          <div class="step-num step-num-3">3</div>
+          <h3>Pipeline atualizado em tempo real</h3>
+          <p>Leads organizados, histórico completo, follow-ups programados, métricas prontas. Sem ninguém ter digitado nada.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section id="features">
+    <div class="container">
+      <div class="section-header reveal">
+        <span class="tag tag-blue">O que você ganha</span>
+        <h2 class="section-title">Tudo que um CRM deveria fazer,<br/>mas sem o trabalho de um CRM.</h2>
+      </div>
+      <div class="features-grid">
+        <div class="feat-card reveal">
+          <div class="feat-icon feat-icon-blue">🎯</div>
+          <h3>Leads organizados automaticamente</h3>
+          <p>Cada conversa vira um lead com nome, contato, contexto e histórico. Sem nenhum clique manual.</p>
+        </div>
+        <div class="feat-card reveal reveal-delay-1">
+          <div class="feat-icon feat-icon-green">💬</div>
+          <h3>Histórico completo de conversas</h3>
+          <p>Todo o contexto preservado. Qualquer vendedor pode continuar uma conversa que outro começou.</p>
+        </div>
+        <div class="feat-card reveal reveal-delay-2">
+          <div class="feat-icon feat-icon-orange">🔔</div>
+          <h3>Follow-ups inteligentes</h3>
+          <p>O sistema identifica quem precisa de acompanhamento e avisa na hora certa. Nenhum lead esquecido.</p>
+        </div>
+        <div class="feat-card reveal reveal-delay-1">
+          <div class="feat-icon feat-icon-purple">📊</div>
+          <h3>Pipeline visual em tempo real</h3>
+          <p>Veja em segundos onde cada lead está no funil. Sem abrir planilha, sem perguntar pro vendedor.</p>
+        </div>
+        <div class="feat-card reveal reveal-delay-2">
+          <div class="feat-icon feat-icon-yellow">📈</div>
+          <h3>Métricas reais de prospecção</h3>
+          <p>Taxa de resposta, tempo de conversão, volume por vendedor. Dados que você nunca conseguiu antes.</p>
+        </div>
+        <div class="feat-card reveal reveal-delay-3">
+          <div class="feat-icon feat-icon-pink">🧠</div>
+          <h3>Inteligência que cresce com você</h3>
+          <p>Quanto mais conversas, mais o sistema entende o seu processo de vendas e os padrões que convertem.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DATA SECTION -->
+  <section id="data">
+    <div class="container">
+      <div class="data-inner">
+        <div class="data-text">
+          <div class="reveal">
+            <span class="tag tag-blue">O ativo escondido</span>
+          </div>
+          <h2 class="section-title reveal reveal-delay-1" style="text-align:left;">
+            Seus dados de vendas valem mais do que você imagina.
+          </h2>
+          <p class="section-sub reveal reveal-delay-2" style="text-align:left;">
+            CRMs capturam o que o vendedor decide registrar — filtrado, atrasado e incompleto. O IziProspect captura o que realmente acontece.
+          </p>
+          <div class="data-points">
+            <div class="data-point reveal reveal-delay-2">
+              <div class="data-point-icon">⏱️</div>
+              <div>
+                <h4>Timing real de resposta</h4>
+                <p>Quanto tempo cada lead leva para responder. Qual horário converte mais. Qual abordagem funciona.</p>
+              </div>
+            </div>
+            <div class="data-point reveal reveal-delay-3">
+              <div class="data-point-icon">🗣️</div>
+              <div>
+                <h4>Padrões que precedem fechamento</h4>
+                <p>Quais palavras, perguntas e comportamentos aparecem nos leads que viram clientes.</p>
+              </div>
+            </div>
+            <div class="data-point reveal reveal-delay-3">
+              <div class="data-point-icon">📍</div>
+              <div>
+                <h4>Segmentação real do mercado</h4>
+                <p>Quais segmentos, cidades e perfis respondem mais. Dados que só existem porque o IziProspect os captura.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="data-visual reveal reveal-delay-2">
+          <div class="data-visual-title">📊 Inteligência de vendas em tempo real</div>
+          <div class="metric-row">
+            <span class="metric-label">Taxa de resposta</span>
+            <div class="metric-bar-wrap"><div class="metric-bar metric-bar-blue" style="width:78%"></div></div>
+            <span class="metric-val">78%</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">Leads qualificados</span>
+            <div class="metric-bar-wrap"><div class="metric-bar metric-bar-green" style="width:62%"></div></div>
+            <span class="metric-val">62%</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">Follow-up feito</span>
+            <div class="metric-bar-wrap"><div class="metric-bar metric-bar-purple" style="width:91%"></div></div>
+            <span class="metric-val">91%</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">Conversão</span>
+            <div class="metric-bar-wrap"><div class="metric-bar metric-bar-orange" style="width:34%"></div></div>
+            <span class="metric-val">34%</span>
+          </div>
+          <div style="margin-top:24px;padding-top:20px;border-top:1px solid rgba(255,255,255,.07);">
+            <div style="font-size:10px;color:rgba(255,255,255,.3);margin-bottom:12px;text-transform:uppercase;letter-spacing:.06em;">Top segmentos esta semana</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <span style="font-size:11px;background:rgba(26,86,219,.2);color:#93c5fd;padding:4px 10px;border-radius:100px;">Saúde · 23 leads</span>
+              <span style="font-size:11px;background:rgba(16,185,129,.15);color:#6ee7b7;padding:4px 10px;border-radius:100px;">Educação · 18 leads</span>
+              <span style="font-size:11px;background:rgba(124,58,237,.2);color:#c4b5fd;padding:4px 10px;border-radius:100px;">Varejo · 15 leads</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- POSITIONING / COMPETE -->
+  <section id="positioning">
+    <div class="container">
+      <div class="pos-inner">
+        <div class="reveal">
+          <span class="tag tag-dark">Posicionamento</span>
+        </div>
+        <h2 class="section-title reveal reveal-delay-1">
+          Você não compete com HubSpot.<br/>Você compete com o caos.
+        </h2>
+        <p class="section-sub reveal reveal-delay-2">
+          E esse é um campo muito mais fácil de vencer.
+        </p>
+        <div class="compete-grid">
+          <div class="compete-col old reveal">
+            <h3>Antes: competia com</h3>
+            <div class="compete-item compete-item-old">HubSpot</div>
+            <div class="compete-item compete-item-old">Pipedrive</div>
+            <div class="compete-item compete-item-old">Salesforce</div>
+            <div class="compete-item compete-item-old">RD Station</div>
+          </div>
+          <div class="compete-arrow reveal reveal-delay-1">→</div>
+          <div class="compete-col new reveal reveal-delay-2">
+            <h3>Agora: substitui</h3>
+            <div class="compete-item compete-item-new">Anotações no WhatsApp</div>
+            <div class="compete-item compete-item-new">Planilhas bagunçadas</div>
+            <div class="compete-item compete-item-new">Memória humana</div>
+            <div class="compete-item compete-item-new">Caos de prospecção</div>
+          </div>
+        </div>
+        <div class="compete-insight reveal">
+          <div class="compete-insight-icon">💡</div>
+          <p>O problema real nunca foi o software. Foi que <strong>ninguém quer alimentar software</strong>. O IziProspect resolve isso de uma vez: funciona sozinho, onde o time já trabalha, sem pedir nada em troca.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FINAL CTA -->
+  <section id="cta">
+    <div class="container">
+      <div class="cta-inner">
+        <div class="reveal">
+          <span class="tag tag-blue">Pronto para começar?</span>
+        </div>
+        <h2 class="section-title reveal reveal-delay-1">
+          Chega de perder lead<br/>no WhatsApp.
+        </h2>
+        <p class="section-sub reveal reveal-delay-2">
+          Transforme cada conversa da sua equipe em um lead organizado, qualificado e com follow-up programado. Automaticamente.
+        </p>
+        <div class="cta-actions reveal reveal-delay-3">
+          <a href="/dashboard" class="btn btn-dark btn-lg">
+            Acessar meu pipeline →
+          </a>
+          <a href="#how" class="btn btn-primary btn-lg">
+            Ver como funciona
+          </a>
+        </div>
+        <p class="cta-fine reveal reveal-delay-4">Sem CRM para preencher · Sem planilha · Sem mudar a rotina do time</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="container">
+      <div class="footer-inner">
+        <div class="footer-logo">
+          <div class="logo-icon">⚡</div>
+          IziProspect
+        </div>
+        <p class="footer-copy">© 2025 IziProspect · O pipeline que se monta sozinho.</p>
+        <div class="footer-links">
+          <a href="/dashboard">Dashboard</a>
+          <a href="/leads">Leads</a>
+          <a href="/estatisticas">Estatísticas</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Scroll reveal
+    const reveals = document.querySelectorAll('.reveal');
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+    reveals.forEach(el => observer.observe(el));
+
+    // Trigger hero elements immediately
+    document.querySelectorAll('#hero .reveal').forEach(el => {
+      setTimeout(() => el.classList.add('visible'), 100);
+    });
+    document.querySelectorAll('#social-bar .reveal').forEach(el => {
+      setTimeout(() => el.classList.add('visible'), 300);
+    });
+
+    // Sticky nav
+    const nav = document.getElementById('main-nav');
+    window.addEventListener('scroll', () => {
+      nav.classList.toggle('scrolled', window.scrollY > 60);
+    }, { passive: true });
+
+    // Smooth scroll for anchor links
+    document.querySelectorAll('a[href^="#"]').forEach(a => {
+      a.addEventListener('click', e => {
+        const target = document.querySelector(a.getAttribute('href'));
+        if (target) {
+          e.preventDefault();
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+  </script>
+</body>
+</html>

@@ -35,3 +35,8 @@ def estatisticas_page(request: Request):
 @router.get("/prospeccao", response_class=HTMLResponse)
 def prospeccao_page(request: Request):
     return templates.TemplateResponse("prospeccao.html", {"request": request})
+
+
+@router.get("/landing", response_class=HTMLResponse)
+def landing_page(request: Request):
+    return templates.TemplateResponse("landing.html", {"request": request})
