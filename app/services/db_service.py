@@ -8,6 +8,8 @@ from datetime import datetime
 from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.services.crm_interpreter import suggest_followup_from_status
+
 import psycopg2
 import psycopg2.extras
 import psycopg2.pool
@@ -530,6 +532,25 @@ class DBService:
             fields["status"] = status
         if followup_em:
             fields["proximo_followup_em"] = followup_em
+        elif status:
+            # Auto-sugerir followup quando status muda e nenhum foi explicitamente definido
+            suggestion = suggest_followup_from_status(status, when)
+            if suggestion:
+                date_str, context = suggestion
+                # Só aplica se não há followup futuro já agendado
+                conn_peek = self._conn()
+                try:
+                    with conn_peek.cursor() as cur:
+                        cur.execute("SELECT proximo_followup_em FROM leads WHERE lead_id = %s", (lead_id,))
+                        row = cur.fetchone()
+                        existing = (row[0] or "") if row else ""
+                finally:
+                    self._put(conn_peek)
+                today = when.date().isoformat()
+                if not existing or existing < today:
+                    fields["proximo_followup_em"] = date_str
+                    if "pendencia" not in fields:
+                        fields["pendencia"] = context
 
         set_clause = ", ".join(f"{k} = %s" for k in fields)
         values = list(fields.values()) + [lead_id]
@@ -556,21 +577,31 @@ class DBService:
         try:
             with conn.cursor() as cur:
                 lead_id = self._next_lead_id(cur)
+                final_status = status or "novo"
+                # Auto-sugerir followup se não definido explicitamente
+                auto_followup = followup_em or ""
+                auto_pendencia = lead.get("pendencia", "")
+                if not auto_followup:
+                    suggestion = suggest_followup_from_status(final_status, when)
+                    if suggestion:
+                        auto_followup, auto_ctx = suggestion
+                        if not auto_pendencia:
+                            auto_pendencia = auto_ctx
                 cur.execute(
                     """INSERT INTO leads (
                         lead_id, nome, cidade, segmento, whatsapp, email, instagram, site,
                         responsavel, fonte, status, prioridade, observacoes, data_criacao,
-                        ultima_interacao_em, proximo_followup_em,
+                        ultima_interacao_em, proximo_followup_em, pendencia,
                         nome_normalizado, cidade_normalizada, lead_key
-                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'media','',%s,%s,%s,%s,%s,%s)""",
+                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'media','',%s,%s,%s,%s,%s,%s,%s)""",
                     (
                         lead_id,
                         lead.get("nome", ""), lead.get("cidade", ""),
                         lead.get("segmento", ""), lead.get("whatsapp", ""),
                         lead.get("email", ""), lead.get("instagram", ""),
                         lead.get("site", ""), lead.get("responsavel", ""),
-                        lead.get("fonte", ""), status or "novo",
-                        now_iso, now_iso, followup_em or "",
+                        lead.get("fonte", ""), final_status,
+                        now_iso, now_iso, auto_followup, auto_pendencia,
                         lead.get("nome_normalizado", ""), lead.get("cidade_normalizada", ""),
                         lead.get("lead_key", ""),
                     ),
@@ -818,6 +849,22 @@ class DBService:
                          AND status NOT IN ('fechado', 'perdido', 'arquivado', 'contato inválido')
                        ORDER BY proximo_followup_em ASC
                        LIMIT 10"""
+                )
+                return self._fetchall_dict(cur)
+        finally:
+            self._put(conn)
+
+    def get_followups_today_list(self) -> List[Dict[str, Any]]:
+        """Leads com followup agendado exatamente para hoje (usado no lembrete das 9h)."""
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT lead_id, nome, status, pendencia, proximo_followup_em
+                       FROM leads
+                       WHERE LEFT(proximo_followup_em, 10) = CURRENT_DATE::text
+                         AND status NOT IN ('fechado', 'perdido', 'arquivado', 'contato inválido')
+                       ORDER BY nome ASC"""
                 )
                 return self._fetchall_dict(cur)
         finally:

@@ -57,10 +57,26 @@ def parse_followup_from_text(raw_text: str, now: Optional[datetime] = None) -> O
     text = normalize_text(raw_text)
     base = now or datetime.utcnow()
 
+    if "depois de amanha" in text:
+        return (base + timedelta(days=2)).date().isoformat()
     if "amanha" in text:
         return (base + timedelta(days=1)).date().isoformat()
     if "semana que vem" in text:
         return (base + timedelta(days=7)).date().isoformat()
+
+    # "em X dias" ou "X dias"
+    m = re.search(r"em\s+(\d+)\s+dias?", text) or re.search(r"^(\d+)\s+dias?", text)
+    if m:
+        return (base + timedelta(days=int(m.group(1)))).date().isoformat()
+
+    # dias da semana → próxima ocorrência futura
+    _WEEKDAYS = {"segunda": 0, "terca": 1, "quarta": 2, "quinta": 3, "sexta": 4, "sabado": 5}
+    for nome, wd in _WEEKDAYS.items():
+        if nome in text:
+            days_ahead = (wd - base.weekday()) % 7
+            if days_ahead == 0:
+                days_ahead = 7  # já é hoje, vai para a próxima semana
+            return (base + timedelta(days=days_ahead)).date().isoformat()
 
     if "depois das" in text:
         hour_match = re.search(r"depois das\s*(\d{1,2})", text)
@@ -75,6 +91,66 @@ def parse_followup_from_text(raw_text: str, now: Optional[datetime] = None) -> O
         return base.date().isoformat()
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# Followup command detection ("followup [lead] [data]")
+# ---------------------------------------------------------------------------
+
+_FOLLOWUP_CMD_RE = re.compile(
+    r"^(?:followup|follow[\s\-]?up|lembrar(?:\s+de)?|falar\s+com|ligar\s+(?:pra|para)|contatar)\s+"
+    r"(.+?)\s+"
+    r"(amanha|depois\s+de\s+amanha|segunda|terca|quarta|quinta|sexta|sabado|semana\s+que\s+vem"
+    r"|em\s+\d+\s+dias?|\d+\s+dias?)\s*$",
+    re.IGNORECASE,
+)
+
+
+def detect_followup_command(raw_text: str) -> Optional[tuple]:
+    """Detecta comando direto de agendamento: 'followup [lead] [data]'.
+
+    Retorna (nome_lead, date_iso) ou None.
+    Não usa LLM — processamento local rápido.
+    """
+    norm = normalize_text(raw_text)
+    m = _FOLLOWUP_CMD_RE.match(norm)
+    if not m:
+        return None
+    lead_name = m.group(1).strip()
+    date_part = m.group(2).strip()
+    if len(lead_name) < 3:
+        return None
+    date_str = parse_followup_from_text(date_part)
+    if not date_str:
+        return None
+    return lead_name, date_str
+
+
+# ---------------------------------------------------------------------------
+# Auto-sugestão de followup por status
+# ---------------------------------------------------------------------------
+
+_STATUS_FOLLOWUP_RULES: dict = {
+    "em contato":   (2,  "retomar contato"),
+    "qualificado":  (2,  "avançar proposta"),
+    "em espera":    (5,  "cobrar retorno"),
+    "negociando":   (2,  "fechar negociação"),
+    "sem resposta": (30, "tentar nova abordagem"),
+}
+
+
+def suggest_followup_from_status(status: str, now: Optional[datetime] = None) -> Optional[tuple]:
+    """Sugere (date_iso, contexto) com base no status do lead.
+
+    Retorna None para status sem followup automático (novo, fechado, perdido, etc).
+    """
+    rule = _STATUS_FOLLOWUP_RULES.get(status)
+    if not rule:
+        return None
+    days, context = rule
+    base = now or datetime.utcnow()
+    date_str = (base + timedelta(days=days)).date().isoformat()
+    return date_str, context
 
 
 def infer_activity_type(raw_text: str) -> str:

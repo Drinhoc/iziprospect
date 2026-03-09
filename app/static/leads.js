@@ -48,6 +48,16 @@ function fmtDate(s) {
   return s.slice(0, 10).split('-').reverse().join('/');
 }
 
+function followupCell(s) {
+  if (!s) return '<span class="text-muted">—</span>';
+  const date = s.slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+  let cls = 'text-muted';
+  if (date < today) cls = 'followup-vencido';
+  else if (date === today) cls = 'followup-hoje';
+  return `<span class="${cls}">${date.split('-').reverse().join('/')}</span>`;
+}
+
 function fmtPhone(s) {
   if (!s) return null;
   return s.replace(/^\+55/, '').replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3').trim();
@@ -110,7 +120,7 @@ function renderTable(leads) {
       <td>${statusBadge(l.status, l.status_anterior)}</td>
       <td class="text-muted td-pendencia">${esc(l.pendencia) || '—'}</td>
       <td class="text-muted">${fmtDate(l.ultima_interacao_em)}</td>
-      <td class="text-muted">${fmtDate(l.proximo_followup_em)}</td>`;
+      <td>${followupCell(l.proximo_followup_em)}</td>`;
     tr.onclick = () => openLeadModal(l.lead_id);
     // Copy phone button — stop propagation so row click doesn't fire
     tr.querySelectorAll('.copy-phone-btn').forEach(btn => {

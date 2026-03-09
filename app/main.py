@@ -13,6 +13,7 @@ from openai import APIError, RateLimitError
 
 from app.config import settings
 from app.services.crm_interpreter import (
+    detect_followup_command,
     detect_micro_update,
     detect_query_intent,
     extract_phone,
@@ -130,6 +131,51 @@ async def _start_sheets_sync_loop() -> None:
 @app.on_event("startup")
 async def _start_daily_summary_loop() -> None:
     asyncio.create_task(_daily_summary_loop())
+
+
+@app.on_event("startup")
+async def _start_followup_reminder_loop() -> None:
+    asyncio.create_task(_followup_reminder_loop())
+
+
+async def _followup_reminder_loop() -> None:
+    """Envia às 9h a lista de follow-ups do dia para o grupo CRM."""
+    if not settings.crm_target_group_id:
+        return
+
+    last_sent_date: str = ""
+    while True:
+        await asyncio.sleep(60)
+        try:
+            from zoneinfo import ZoneInfo
+            from datetime import datetime as _dt
+            now = _dt.now(ZoneInfo(settings.default_timezone))
+
+            if now.hour != 9 or now.minute != 0:
+                continue
+
+            today_str = now.date().isoformat()
+            if last_sent_date == today_str:
+                continue
+
+            last_sent_date = today_str
+
+            db = get_db_service()
+            leads = await asyncio.to_thread(db.get_followups_today_list)
+            if not leads:
+                continue
+
+            lines = [f". 🔔 *Follow-ups de hoje: {len(leads)}*"]
+            for lead in leads:
+                pendencia = lead.get("pendencia") or ""
+                extra = f" — {pendencia}" if pendencia else ""
+                lines.append(f"• {lead['nome']} ({lead['status']}){extra}")
+
+            group_id = _normalize_group_id(settings.crm_target_group_id)
+            await evolution_service.send_confirmation(group_id, "\n".join(lines))
+            logger.info("followup_reminder enviado | total=%d", len(leads))
+        except Exception:
+            logger.warning("followup_reminder_loop falhou", exc_info=True)
 
 
 def _build_daily_summary_message(data: Dict[str, Any]) -> str:
@@ -557,6 +603,34 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
             except Exception:
                 logger.warning("crm_query falhou | msg_id=%s", event.msg_id, exc_info=True)
             return {"ok": True, "action": "crm_query", "type": query_intent.type}
+
+        # Followup command branch: "followup [lead] [data]", "falar com X sexta", etc.
+        followup_cmd = detect_followup_command(raw_text)
+        if followup_cmd:
+            lead_name, date_str = followup_cmd
+            logger.info("followup_cmd | lead=%r date=%s | msg_id=%s", lead_name, date_str, event.msg_id)
+            match = await asyncio.to_thread(db.find_lead_by_name, lead_name)
+            if match.is_exact:
+                lead = match.lead
+                lead_id = lead["lead_id"]
+                await asyncio.to_thread(
+                    db.update_lead_from_dashboard, lead_id, {"proximo_followup_em": date_str}
+                )
+                from datetime import date as _date
+                d = _date.fromisoformat(date_str)
+                _PTBR_DAYS = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"]
+                label = f"{_PTBR_DAYS[d.weekday()]} {d.strftime('%d/%m')}"
+                await evolution_service.send_confirmation(
+                    event.chat_id,
+                    f". ✅ Follow-up de *{lead['nome']}* agendado para {label}",
+                )
+                return {"ok": True, "action": "followup_cmd", "lead_id": lead_id, "date": date_str}
+            else:
+                await evolution_service.send_confirmation(
+                    event.chat_id,
+                    f". Lead '{lead_name}' não encontrado — tente um nome mais próximo.",
+                )
+                return {"ok": True, "action": "followup_cmd_not_found"}
 
         if is_message_too_vague(raw_text):
             logger.info("ignored: message_too_vague | msg_id=%s", event.msg_id)

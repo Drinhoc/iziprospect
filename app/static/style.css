@@ -1062,6 +1062,10 @@ label {
 /* em espera badge — amber */
 .badge-em-espera { background: #fef3c7; color: #92400e; }
 
+/* followup date indicators */
+.followup-hoje    { color: #d97706; font-weight: 600; }
+.followup-vencido { color: #dc2626; font-weight: 600; }
+
 /* ===================================================
    Prospecção — IziLead
    =================================================== */
@@ -1503,3 +1507,5 @@ label {
 :root.dark .badge-aprovado { background: #064e3b; color: #6ee7b7; }
 :root.dark .badge-descartado { background: #450a0a; color: #fca5a5; }
 :root.dark .badge-em-espera { background: #451a03; color: #fbbf24; }
+:root.dark .followup-hoje    { color: #fbbf24; }
+:root.dark .followup-vencido { color: #f87171; }
