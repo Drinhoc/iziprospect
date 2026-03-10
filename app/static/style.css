@@ -48,7 +48,7 @@ body {
 a { color: inherit; text-decoration: none; }
 button, input, select, textarea { font: inherit; }
 input, select, textarea {
-  background: #fff;
+  background: var(--card);
   border: 1.5px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 10px 12px;
@@ -98,7 +98,7 @@ label {
   position: fixed;
   bottom: 0; left: 0; right: 0;
   height: var(--bottomnav-h);
-  background: #fff;
+  background: var(--card);
   border-top: 1px solid var(--border);
   display: flex;
   z-index: 90;
@@ -131,7 +131,7 @@ label {
     position: fixed;
     top: 0; left: 0; bottom: 0;
     width: var(--sidebar-w);
-    background: #fff;
+    background: var(--card);
     border-right: 1px solid var(--border);
     z-index: 90;
   }
@@ -356,7 +356,7 @@ label {
   padding: 0 14px;
   border: 1.5px solid var(--border);
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--card);
   cursor: pointer;
   font-weight: 500;
   font-size: .88rem;
@@ -533,7 +533,8 @@ label {
   padding: 8px 16px;
   border: 1.5px solid var(--border);
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--card);
+  color: var(--text);
   cursor: pointer;
   font-size: .88rem;
   font-weight: 500;
@@ -647,7 +648,7 @@ label {
   position: fixed;
   left: 0; right: 0; bottom: 0;
   max-height: 92vh;
-  background: #fff;
+  background: var(--card);
   border-radius: 20px 20px 0 0;
   z-index: 101;
   display: flex;
@@ -748,7 +749,7 @@ label {
   gap: 10px;
   padding: 16px 20px;
   border-top: 1px solid var(--border);
-  background: #fff;
+  background: var(--card);
   flex-shrink: 0;
 }
 .sheet-actions-right { display: flex; gap: 10px; }
@@ -766,7 +767,8 @@ label {
 .btn-save:active, .btn-cancel:active, .btn-archive:active { opacity: .7; }
 .btn-save { background: var(--primary); color: #fff; flex: 1; max-width: 140px; }
 .btn-cancel { background: var(--bg); color: var(--text); }
-.btn-archive { background: #fef2f2; color: #b91c1c; }
+.btn-archive { background: transparent; color: #b91c1c; border: 1.5px solid #fca5a5; }
+:root.dark .btn-archive { color: #fca5a5; border-color: #7f1d1d; }
 
 /* ---------- Análises de Conversa ---------- */
 .analises-section {
