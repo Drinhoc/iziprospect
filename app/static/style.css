@@ -308,19 +308,19 @@ label {
   white-space: nowrap;
   text-transform: capitalize;
 }
-.badge-novo         { background: #f3f4f6; color: #6b7280; }
-.badge-em-contato   { background: #eff6ff; color: #1d4ed8; }
-.badge-qualificado  { background: #f5f3ff; color: #7c3aed; }
-.badge-proposta     { background: #fffbeb; color: #b45309; }
-.badge-negociando   { background: #fff7ed; color: #c2410c; }
-.badge-fechado      { background: #ecfdf5; color: #047857; }
-.badge-perdido      { background: #fef2f2; color: #b91c1c; }
-.badge-sem-resposta { background: #f9fafb; color: #374151; }
-.badge-arquivado    { background: #f3f4f6; color: #9ca3af; }
+.badge-novo         { background: #e5e7eb; color: #374151; }
+.badge-em-contato   { background: #dbeafe; color: #1d4ed8; }
+.badge-qualificado  { background: #ede9fe; color: #6d28d9; }
+.badge-proposta     { background: #fef3c7; color: #92400e; }
+.badge-negociando   { background: #ffedd5; color: #c2410c; }
+.badge-fechado      { background: #d1fae5; color: #065f46; }
+.badge-perdido      { background: #fee2e2; color: #991b1b; }
+.badge-sem-resposta { background: #e5e7eb; color: #4b5563; }
+.badge-arquivado    { background: #e5e7eb; color: #6b7280; }
 
-.badge-prio-alta   { background: #fef2f2; color: #b91c1c; }
-.badge-prio-media  { background: #fffbeb; color: #b45309; }
-.badge-prio-baixa  { background: #ecfdf5; color: #047857; }
+.badge-prio-alta   { background: #fee2e2; color: #991b1b; }
+.badge-prio-media  { background: #fef3c7; color: #92400e; }
+.badge-prio-baixa  { background: #d1fae5; color: #065f46; }
 
 /* ---------- Filter bar ---------- */
 .filter-bar {
@@ -842,7 +842,7 @@ label {
 /* Seção genérica */
 .est-section {
   margin: 20px 16px;
-  background: white;
+  background: var(--card);
   border-radius: 12px;
   padding: 16px;
   box-shadow: 0 1px 3px rgba(0,0,0,.08);
@@ -922,7 +922,7 @@ label {
 .funil-label { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
 .funil-status { font-size: .85rem; }
 .funil-count { font-size: .8rem; color: var(--text-muted); }
-.funil-track { height: 10px; background: #f3f4f6; border-radius: 5px; overflow: hidden; }
+.funil-track { height: 10px; background: var(--bg); border-radius: 5px; overflow: hidden; }
 .funil-fill { height: 100%; border-radius: 5px; transition: width .4s; }
 .funil-pct { font-size: .78rem; color: var(--text-muted); text-align: right; }
 
@@ -933,8 +933,8 @@ label {
   gap: 16px;
 }
 .ranking-card {
-  background: white;
-  border: 1px solid #e5e7eb;
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 14px;
 }
@@ -1055,7 +1055,7 @@ label {
 /* Qualidade de dados */
 .qual-row { margin-bottom: 12px; }
 .qual-label-row { display: flex; justify-content: space-between; font-size: .85rem; margin-bottom: 4px; }
-.qual-track { height: 8px; background: #f3f4f6; border-radius: 4px; overflow: hidden; }
+.qual-track { height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; }
 .qual-fill { height: 100%; border-radius: 4px; transition: width .4s; }
 
 /* Helper */
@@ -1081,7 +1081,7 @@ label {
   font-size: .75rem; padding: 1px 5px; margin-left: 4px; color: var(--text-muted);
   vertical-align: middle;
 }
-.copy-phone-btn:hover { background: #f3f4f6; color: var(--text-primary); }
+.copy-phone-btn:hover { background: var(--bg); color: var(--text); }
 
 /* Label hint (for editable fields in readonly section) */
 .label-hint { font-size: .72rem; color: var(--text-muted); font-weight: normal; margin-left: 4px; }
@@ -1102,7 +1102,7 @@ label {
 .seg-detalhe-bars { display: flex; flex-direction: column; gap: 6px; }
 .seg-bar-row { display: grid; grid-template-columns: 130px 1fr 36px; align-items: center; gap: 8px; }
 .seg-bar-label { font-size: .8rem; color: var(--text-muted); text-align: right; }
-.seg-bar-track { height: 8px; background: #f3f4f6; border-radius: 4px; overflow: hidden; }
+.seg-bar-track { height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; }
 .seg-bar-fill { height: 100%; border-radius: 4px; transition: width .4s; }
 .seg-bar-count { font-size: .78rem; font-weight: 600; text-align: right; }
 
@@ -1551,6 +1551,24 @@ label {
 :root.dark .nav-item:hover { background: #0f172a; }
 
 /* Dark mode: status/priority badges that use hardcoded light bg */
+/* Dark: status badges */
+:root.dark .badge-novo         { background: #374151; color: #d1d5db; }
+:root.dark .badge-em-contato   { background: #1e3a5f; color: #93c5fd; }
+:root.dark .badge-qualificado  { background: #2e1065; color: #c4b5fd; }
+:root.dark .badge-proposta     { background: #451a03; color: #fcd34d; }
+:root.dark .badge-negociando   { background: #431407; color: #fb923c; }
+:root.dark .badge-fechado      { background: #064e3b; color: #6ee7b7; }
+:root.dark .badge-perdido      { background: #450a0a; color: #fca5a5; }
+:root.dark .badge-sem-resposta { background: #1f2937; color: #9ca3af; }
+:root.dark .badge-arquivado    { background: #1f2937; color: #6b7280; }
+:root.dark .badge-em-espera    { background: #451a03; color: #fbbf24; }
+
+/* Dark: priority badges */
+:root.dark .badge-prio-alta   { background: #450a0a; color: #fca5a5; }
+:root.dark .badge-prio-media  { background: #451a03; color: #fcd34d; }
+:root.dark .badge-prio-baixa  { background: #064e3b; color: #6ee7b7; }
+
+/* Dark: contact/source badges */
 :root.dark .badge-wa { background: #064e3b; color: #6ee7b7; }
 :root.dark .badge-phone { background: #451a03; color: #fbbf24; }
 :root.dark .badge-no-contact { background: #1e293b; color: var(--text-muted); }
@@ -1558,6 +1576,5 @@ label {
 :root.dark .badge-fonte { background: #2e1065; color: #c4b5fd; }
 :root.dark .badge-aprovado { background: #064e3b; color: #6ee7b7; }
 :root.dark .badge-descartado { background: #450a0a; color: #fca5a5; }
-:root.dark .badge-em-espera { background: #451a03; color: #fbbf24; }
 :root.dark .followup-hoje    { color: #fbbf24; }
 :root.dark .followup-vencido { color: #f87171; }
