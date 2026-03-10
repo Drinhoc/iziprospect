@@ -435,7 +435,7 @@ label {
   cursor: pointer;
   transition: background .1s;
 }
-.leads-table tbody tr:hover { background: #f9fafb; }
+.leads-table tbody tr:hover { background: #f3f4f6; }
 .leads-table tbody tr:last-child td { border-bottom: none; }
 .lead-name { font-weight: 600; }
 .text-muted { color: var(--text-muted); font-size: .82rem; }
@@ -488,7 +488,7 @@ label {
 .lc-pendencia {
   font-size: .82rem;
   color: var(--text);
-  background: #f9fafb;
+  background: var(--bg);
   border-radius: var(--radius-sm);
   padding: 5px 9px;
   border-left: 3px solid var(--primary);
@@ -727,7 +727,7 @@ label {
 }
 
 .readonly-section {
-  background: #f9fafb;
+  background: var(--bg);
   border-radius: var(--radius-sm);
   padding: 12px;
   margin-top: 8px;
@@ -1549,6 +1549,12 @@ label {
 /* Dark mode: active nav */
 :root.dark .nav-item.active { background: #1e3a5f; color: #60a5fa; }
 :root.dark .nav-item:hover { background: #0f172a; }
+
+/* Dark mode: table row hover */
+:root.dark .leads-table tbody tr:hover { background: #263347; }
+:root.dark .leads-table tbody tr:hover .lead-name,
+:root.dark .leads-table tbody tr:hover td { color: #f1f5f9; }
+:root.dark .leads-table th { background: #162032; }
 
 /* Dark mode: status/priority badges that use hardcoded light bg */
 /* Dark: status badges */
