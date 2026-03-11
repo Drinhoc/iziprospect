@@ -41,7 +41,7 @@ Schema:
   },
   "status_sugerido": null,
   "followup_em": null,
-  "pendencia": null,
+  "acao_followup": null,
   "activity": {"tipo": "", "resumo": ""}
 }
 
@@ -59,10 +59,10 @@ Regras:
 - lead.fonte: como o lead chegou (cold, indicação, instagram, grupo, evento, etc.). null se ausente.
 - lead.email: endereço de e-mail se mencionado. null se ausente.
 - followup_em: data/hora de próximo contato se mencionada (ISO 8601 ou texto como "amanhã 10h").
-- pendencia: próxima ação comercial concreta. Preencha sempre que houver contexto suficiente.
-  Por status: "novo"→"Fazer primeiro contato", "1º contato"→"Aguardar resposta / fazer follow-up",
-  "qualificado"→"Enviar proposta", "negociando"→"Fechar contrato", "fechado"→"Emitir contrato/NF".
-  null APENAS para mensagens de nota pura sem ação decorrente.
+- acao_followup: próxima ação concreta e específica mencionada na mensagem.
+  Preencha SOMENTE quando a mensagem contiver uma ação real e explícita, como:
+  "vou mandar proposta", "ligar na quinta", "esperar resposta do sócio", "enviar vídeo demo".
+  null quando a mensagem não mencionar nenhuma ação concreta — NÃO inferir com base no status.
 - activity.tipo: contato inicial | respondeu | pediu proposta | sem interesse | número inválido | retorno agendado | aguardando resposta | demo agendada | nota
 - activity.resumo: máx 220 chars, factual, sem especulação.
 - intent "perdido" → status_sugerido "perdido"; intent "fechado" → status_sugerido "fechado".
@@ -83,40 +83,40 @@ Na dúvida entre "perdido" e qualquer outro status, use SEMPRE o outro status.
 
 Exemplos:
 Entrada: "Clínica Sorriso, 19 998998988 odontologia, falar com Dr. Paulo"
-Saída: {"intent":"novo","lead":{"nome":"Clínica Sorriso","cidade":null,"segmento":"odontologia","whatsapp":"19998998988","email":null,"instagram":null,"site":null,"responsavel":"Dr. Paulo","fonte":null},"status_sugerido":"novo","followup_em":null,"pendencia":"Fazer primeiro contato","activity":{"tipo":"contato inicial","resumo":"Novo lead: Clínica Sorriso, odontologia, tel 19998998988, contato Dr. Paulo."}}
+Saída: {"intent":"novo","lead":{"nome":"Clínica Sorriso","cidade":null,"segmento":"odontologia","whatsapp":"19998998988","email":null,"instagram":null,"site":null,"responsavel":"Dr. Paulo","fonte":null},"status_sugerido":"novo","followup_em":null,"acao_followup":null,"activity":{"tipo":"contato inicial","resumo":"Novo lead: Clínica Sorriso, odontologia, tel 19998998988, contato Dr. Paulo."}}
 
 Entrada: "Clínica Vida, Campinas, sem interesse por enquanto"
-Saída: {"intent":"perdido","lead":{"nome":"Clínica Vida","cidade":"Campinas","segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"perdido","followup_em":null,"pendencia":null,"activity":{"tipo":"sem interesse","resumo":"Clínica Vida (Campinas) não tem interesse no momento."}}
+Saída: {"intent":"perdido","lead":{"nome":"Clínica Vida","cidade":"Campinas","segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"perdido","followup_em":null,"acao_followup":null,"activity":{"tipo":"sem interesse","resumo":"Clínica Vida (Campinas) não tem interesse no momento."}}
 
 Entrada: "Clínica Sorrir SP, liguei hoje, vai pensar e me liga semana que vem"
-Saída: {"intent":"update","lead":{"nome":"Clínica Sorrir","cidade":"SP","segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"1º contato","followup_em":"semana que vem","pendencia":"Aguardar retorno da clínica","activity":{"tipo":"aguardando resposta","resumo":"Clínica Sorrir (SP): contato feito, aguardando retorno semana que vem."}}
+Saída: {"intent":"update","lead":{"nome":"Clínica Sorrir","cidade":"SP","segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"contato feito","followup_em":"semana que vem","acao_followup":"Aguardar retorno da clínica","activity":{"tipo":"aguardando resposta","resumo":"Clínica Sorrir (SP): contato feito, aguardando retorno semana que vem."}}
 
 Entrada: "Studio Beleza BH, falei com a dona hoje, achou interessante, quer saber mais sobre os resultados"
-Saída: {"intent":"update","lead":{"nome":"Studio Beleza","cidade":"BH","segmento":"estetica","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":"dona","fonte":null},"status_sugerido":"qualificado","followup_em":null,"pendencia":"Enviar proposta","activity":{"tipo":"respondeu","resumo":"Studio Beleza (BH): dona demonstrou interesse genuíno, quer conhecer mais."}}
+Saída: {"intent":"update","lead":{"nome":"Studio Beleza","cidade":"BH","segmento":"estetica","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":"dona","fonte":null},"status_sugerido":"conversando","followup_em":null,"acao_followup":null,"activity":{"tipo":"respondeu","resumo":"Studio Beleza (BH): dona demonstrou interesse genuíno, quer conhecer mais."}}
 
 Entrada: "Clínica Plástica Premium SP, tô negociando com o Dr. Ricardo, ele quer ajustar o prazo de pagamento pra 3x"
-Saída: {"intent":"update","lead":{"nome":"Clínica Plástica Premium","cidade":"SP","segmento":"medicina","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":"Dr. Ricardo","fonte":null},"status_sugerido":"negociando","followup_em":null,"pendencia":"Fechar contrato","activity":{"tipo":"nota","resumo":"Clínica Plástica Premium (SP): negociando com Dr. Ricardo condições de pagamento (3x)."}}
+Saída: {"intent":"update","lead":{"nome":"Clínica Plástica Premium","cidade":"SP","segmento":"medicina","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":"Dr. Ricardo","fonte":null},"status_sugerido":"negociando","followup_em":null,"acao_followup":"Ajustar proposta com prazo 3x","activity":{"tipo":"nota","resumo":"Clínica Plástica Premium (SP): negociando com Dr. Ricardo condições de pagamento (3x)."}}
 
 Entrada: "OdontoVida RJ, tentei 3x essa semana, nenhuma resposta, nem viu as mensagens"
-Saída: {"intent":"update","lead":{"nome":"OdontoVida","cidade":"RJ","segmento":"odontologia","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"sem resposta","followup_em":null,"pendencia":"Tentar novo contato em canal diferente","activity":{"tipo":"aguardando resposta","resumo":"OdontoVida (RJ): 3 tentativas sem resposta. Prospect inativo."}}
+Saída: {"intent":"update","lead":{"nome":"OdontoVida","cidade":"RJ","segmento":"odontologia","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"contato feito","followup_em":null,"acao_followup":null,"activity":{"tipo":"aguardando resposta","resumo":"OdontoVida (RJ): 3 tentativas sem resposta. Prospect inativo."}}
 
 Entrada: "Sorriso Total SP, mandei mensagem semana passada, não deu retorno ainda"
-Saída: {"intent":"update","lead":{"nome":"Sorriso Total","cidade":"SP","segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"sem resposta","followup_em":null,"pendencia":"Tentar novo contato","activity":{"tipo":"aguardando resposta","resumo":"Sorriso Total (SP): mensagem enviada, aguardando retorno."}}
+Saída: {"intent":"update","lead":{"nome":"Sorriso Total","cidade":"SP","segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"contato feito","followup_em":null,"acao_followup":null,"activity":{"tipo":"aguardando resposta","resumo":"Sorriso Total (SP): mensagem enviada, aguardando retorno."}}
 
 Entrada: "Clínica Amaral BH, falei uma vez, ficou de retornar, nunca mais"
-Saída: {"intent":"update","lead":{"nome":"Clínica Amaral","cidade":"BH","segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"sem resposta","followup_em":null,"pendencia":"Fazer follow-up","activity":{"tipo":"aguardando resposta","resumo":"Clínica Amaral (BH): ficou de retornar mas não retornou. Follow-up necessário."}}
+Saída: {"intent":"update","lead":{"nome":"Clínica Amaral","cidade":"BH","segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"contato feito","followup_em":null,"acao_followup":null,"activity":{"tipo":"aguardando resposta","resumo":"Clínica Amaral (BH): ficou de retornar mas não retornou. Follow-up necessário."}}
 
 Entrada: "Fisio Ativa SP [negociando], tô ajustando proposta com ela, quer desconto de 10%"
-Saída: {"intent":"update","lead":{"nome":"Fisio Ativa","cidade":"SP","segmento":"outros","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"negociando","followup_em":null,"pendencia":"Fechar contrato","activity":{"tipo":"nota","resumo":"Fisio Ativa (SP): negociando desconto de 10%. Proposta em ajuste."}}
+Saída: {"intent":"update","lead":{"nome":"Fisio Ativa","cidade":"SP","segmento":"outros","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"negociando","followup_em":null,"acao_followup":"Enviar proposta ajustada com desconto de 10%","activity":{"tipo":"nota","resumo":"Fisio Ativa (SP): negociando desconto de 10%. Proposta em ajuste."}}
 
 Entrada: "Derma Estética Curitiba, falei com a Dra. Ana, ela faz procedimentos estéticos com laser médico"
-Saída: {"intent":"novo","lead":{"nome":"Derma Estética","cidade":"Curitiba","segmento":"medicina","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":"Dra. Ana","fonte":null},"status_sugerido":"novo","followup_em":null,"pendencia":"Fazer primeiro contato","activity":{"tipo":"contato inicial","resumo":"Derma Estética (Curitiba): Dra. Ana faz procedimentos com laser médico — segmento medicina."}}
+Saída: {"intent":"novo","lead":{"nome":"Derma Estética","cidade":"Curitiba","segmento":"medicina","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":"Dra. Ana","fonte":null},"status_sugerido":"novo","followup_em":null,"acao_followup":null,"activity":{"tipo":"contato inicial","resumo":"Derma Estética (Curitiba): Dra. Ana faz procedimentos com laser médico — segmento medicina."}}
 
 Entrada: "Clínica Sorrir SP, enviei a proposta semana passada, ainda não retornou"
-Saída: {"intent":"update","lead":{"nome":"Clínica Sorrir","cidade":"SP","segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"em espera","followup_em":null,"pendencia":"Fazer follow-up da proposta","activity":{"tipo":"aguardando resposta","resumo":"Clínica Sorrir (SP): proposta enviada, aguardando retorno do cliente."}}
+Saída: {"intent":"update","lead":{"nome":"Clínica Sorrir","cidade":"SP","segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"conversando","followup_em":null,"acao_followup":null,"activity":{"tipo":"aguardando resposta","resumo":"Clínica Sorrir (SP): proposta enviada, aguardando retorno do cliente."}}
 
 Entrada: "Odonto Norte BH, tivemos uma ótima reunião, mandei a proposta, ele achou caro mas ficou de ver com o sócio"
-Saída: {"intent":"update","lead":{"nome":"Odonto Norte","cidade":"BH","segmento":"odontologia","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"em espera","followup_em":null,"pendencia":"Aguardar retorno sobre proposta após análise com sócio","activity":{"tipo":"aguardando resposta","resumo":"Odonto Norte (BH): reunião feita, proposta enviada, prospect vai consultar sócio sobre o preço."}}
+Saída: {"intent":"update","lead":{"nome":"Odonto Norte","cidade":"BH","segmento":"odontologia","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"conversando","followup_em":null,"acao_followup":"Aguardar retorno após análise com sócio","activity":{"tipo":"aguardando resposta","resumo":"Odonto Norte (BH): reunião feita, proposta enviada, prospect vai consultar sócio sobre o preço."}}
 """
 
 LEAD_SUMMARY_PROMPT = """Você é um assistente de CRM para prospecção de clínicas no Brasil.

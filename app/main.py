@@ -198,8 +198,8 @@ async def _followup_reminder_loop() -> None:
 
             lines = [f". 🔔 *Follow-ups de hoje: {len(leads)}*"]
             for lead in leads:
-                pendencia = lead.get("pendencia") or ""
-                extra = f" — {pendencia}" if pendencia else ""
+                acao = lead.get("acao_followup") or ""
+                extra = f" — {acao}" if acao else ""
                 lines.append(f"• {lead['nome']} ({lead['status']}){extra}")
 
             group_id = _normalize_group_id(settings.crm_target_group_id)
@@ -414,15 +414,6 @@ async def sync_sheets_to_db(x_webhook_secret: str | None = Header(default=None))
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-# Tabela de fallback: quando OpenAI não extrai pendência mas o status implica ação
-_STATUS_PENDENCIA: Dict[str, str] = {
-    "novo": "Fazer primeiro contato",
-    "1º contato": "Aguardar resposta ou fazer follow-up",
-    "qualificado": "Enviar proposta",
-    "proposta enviada": "Aguardar retorno",
-    "negociando": "Fechar contrato",
-}
-
 
 async def _execute_crm_query(intent, db: DBService) -> str:
     """Executa uma query conversacional e retorna texto formatado para WhatsApp."""
@@ -455,8 +446,8 @@ async def _execute_crm_query(intent, db: DBService) -> str:
         lines = [f"Follow-ups vencidos: {len(leads)}"]
         for lead in leads:
             data = (lead.get("proximo_followup_em") or "")[:10]
-            pendencia = lead.get("pendencia") or ""
-            extra = f" — {pendencia}" if pendencia else ""
+            acao = lead.get("acao_followup") or ""
+            extra = f" — {acao}" if acao else ""
             lines.append(f"• {lead['lead_id']} {lead['nome'] or '?'} | {data}{extra}")
         return "\n".join(lines)
 
@@ -739,7 +730,7 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
             # Atualiza resumo e pendência do lead com os dados da análise
             if conv_lead_id:
                 await asyncio.to_thread(
-                    db.update_lead_resumo_pendencia,
+                    db.update_lead_resumo_acao,
                     conv_lead_id,
                     analysis.resumo_conversa or None,
                     analysis.proximo_passo or None,
@@ -960,10 +951,6 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
                 interpretation.resultado_venda,
             )
 
-        # Fallback de pendência: se OpenAI retornou null mas status implica ação, infere
-        if not extracted.pendencia and extracted.status_sugerido in _STATUS_PENDENCIA:
-            extracted.pendencia = _STATUS_PENDENCIA[extracted.status_sugerido]
-
         summary = factual_summary(
             raw_text=raw_text,
             nome=extracted.lead.nome,
@@ -1040,14 +1027,14 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
             if not lead_resumo and recent_summaries:
                 lead_resumo = recent_summaries[0]
             logger.info(
-                "lead_resumo | lead_id=%s resumo=%r pendencia=%r",
-                lead_id, lead_resumo[:60] if lead_resumo else "", extracted.pendencia,
+                "lead_resumo | lead_id=%s resumo=%r acao_followup=%r",
+                lead_id, lead_resumo[:60] if lead_resumo else "", extracted.acao_followup,
             )
             await asyncio.to_thread(
-                db.update_lead_resumo_pendencia,
+                db.update_lead_resumo_acao,
                 lead_id,
                 lead_resumo or None,
-                extracted.pendencia,
+                extracted.acao_followup,
             )
 
         # --- 4. Sheets: sync lead + atividade (write-only) ---

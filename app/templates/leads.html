@@ -30,7 +30,7 @@
 <!-- Active filter chips -->
 <div class="filter-chips hidden" id="filter-chips"></div>
 
-<!-- Desktop table — columns: Clínica | Segmento | Cidade | WhatsApp | Responsável | Status | Pendência | Última interação | Follow-up -->
+<!-- Desktop table — columns: Clínica | Segmento | Cidade | WhatsApp | Responsável | Status | Última interação | Próximo passo -->
 <div class="table-wrap desktop-only">
   <table class="leads-table">
     <thead>
@@ -41,9 +41,8 @@
         <th>WhatsApp</th>
         <th>Responsável</th>
         <th>Status</th>
-        <th>Pendência</th>
         <th>Última interação</th>
-        <th>Follow-up</th>
+        <th>Próximo passo</th>
       </tr>
     </thead>
     <tbody id="leads-tbody"></tbody>
@@ -161,6 +160,10 @@
             <label>Próximo follow-up</label>
             <input type="date" id="f-followup" />
           </div>
+          <div class="form-group">
+            <label>O que fazer</label>
+            <input type="text" id="f-acao-followup" placeholder="Ex: Enviar proposta, Ligar na 6ª" />
+          </div>
         </div>
       </div>
 
@@ -205,10 +208,6 @@
       </div>
 
       <div class="form-section">
-        <div class="form-group">
-          <label>Pendência</label>
-          <input type="text" id="f-pendencia" placeholder="Ex: Enviar proposta" />
-        </div>
         <div class="form-group">
           <label>Observações</label>
           <textarea id="f-observacoes" rows="3" placeholder="Notas manuais…"></textarea>

@@ -257,6 +257,14 @@ function followupCell(s) {
   return `<span class="${cls}">${date.split('-').reverse().join('/')}</span>`;
 }
 
+// Renderiza célula "Próximo passo" unificando data + acao_followup
+function _proximoPasso(l) {
+  const dateHtml = followupCell(l.proximo_followup_em);
+  const acao = l.acao_followup ? `<span class="proxpasso-acao">${esc(l.acao_followup)}</span>` : '';
+  if (!l.proximo_followup_em && !l.acao_followup) return '<span class="text-muted">—</span>';
+  return `<span class="proxpasso">${dateHtml}${acao}</span>`;
+}
+
 function fmtPhone(s) {
   if (!s) return null;
   let n = s.replace(/^\+55/, '');
@@ -417,9 +425,8 @@ function renderTable(leads) {
       <td class="td-phone">${phoneTd}</td>
       <td class="text-muted">${esc(l.responsavel) || '—'}</td>
       <td>${l.status === 'novo' ? _novoBadgeBtn(l) : statusBadge(l.status)} ${temperaturaBadge(l)}</td>
-      <td class="text-muted td-pendencia">${esc(l.pendencia) || '—'}</td>
       <td class="text-muted">${fmtDate(l.ultima_interacao_em)}</td>
-      <td>${followupCell(l.proximo_followup_em)}</td>`;
+      <td>${_proximoPasso(l)}</td>`;
     tr.onclick = () => openLeadModal(l.lead_id);
     _bindCopyMsgBtns(tr);
     _bindNovoBadgeBtns(tr);
@@ -457,12 +464,15 @@ function renderCards(leads) {
           ${msgBtnLabel}
         </button>`
       : null;
+    const proxPassoMeta = l.proximo_followup_em
+      ? `📅 ${fmtDate(l.proximo_followup_em)}${l.acao_followup ? ' — ' + esc(l.acao_followup) : ''}`
+      : l.acao_followup ? `📋 ${esc(l.acao_followup)}` : null;
     const meta = [
       l.segmento ? `🏥 ${segLabel(l.segmento)}` : null,
       l.cidade ? `📍 ${esc(l.cidade)}` : null,
       phoneHtml,
       l.responsavel ? `👤 ${esc(l.responsavel)}` : null,
-      l.proximo_followup_em ? `📅 ${fmtDate(l.proximo_followup_em)}` : null,
+      proxPassoMeta,
     ].filter(Boolean);
 
     card.innerHTML = `
@@ -471,8 +481,7 @@ function renderCards(leads) {
         <div class="lc-badges">${l.status === 'novo' ? _novoBadgeBtn(l) : statusBadge(l.status)} ${temperaturaBadge(l)}</div>
       </div>
       ${meta.length ? `<div class="lc-meta">${meta.map(m => `<span class="lc-meta-item">${m}</span>`).join('')}</div>` : ''}
-      ${msgBtnHtml ? `<div class="lc-msg-action">${msgBtnHtml}</div>` : ''}
-      ${l.pendencia ? `<div class="lc-pendencia">${esc(l.pendencia)}</div>` : ''}`;
+      ${msgBtnHtml ? `<div class="lc-msg-action">${msgBtnHtml}</div>` : ''}`;
     card.onclick = () => openLeadModal(l.lead_id);
     _bindCopyMsgBtns(card);
     _bindNovoBadgeBtns(card);
@@ -740,7 +749,7 @@ function fillForm(l) {
   document.getElementById('f-responsavel').value = l.responsavel || '';
   document.getElementById('f-fonte').value = l.fonte || '';
   document.getElementById('f-followup').value = (l.proximo_followup_em || '').slice(0, 10);
-  document.getElementById('f-pendencia').value = l.pendencia || '';
+  document.getElementById('f-acao-followup').value = l.acao_followup || '';
   document.getElementById('f-observacoes').value = l.observacoes || '';
   document.getElementById('f-valor-venda').value = l.valor_venda || '';
   document.getElementById('f-data-fechamento').value = (l.data_fechamento || '').slice(0, 10);
@@ -773,7 +782,7 @@ function updateConditionalFields(status) {
 
 function clearForm() {
   ['f-nome','f-cidade','f-whatsapp','f-email','f-instagram','f-site','f-responsavel',
-   'f-pendencia','f-observacoes','f-valor-venda','f-data-fechamento','f-motivo-perda',
+   'f-acao-followup','f-observacoes','f-valor-venda','f-data-fechamento','f-motivo-perda',
    'f-data-criacao','f-data-recontato'].forEach(id => {
     document.getElementById(id).value = '';
   });
@@ -800,7 +809,7 @@ function formData() {
     responsavel: document.getElementById('f-responsavel').value.trim(),
     fonte: document.getElementById('f-fonte').value,
     proximo_followup_em: document.getElementById('f-followup').value || '',
-    pendencia: document.getElementById('f-pendencia').value.trim(),
+    acao_followup: document.getElementById('f-acao-followup').value.trim(),
     observacoes: document.getElementById('f-observacoes').value.trim(),
     valor_venda: document.getElementById('f-valor-venda').value || '',
     data_fechamento: document.getElementById('f-data-fechamento').value || '',

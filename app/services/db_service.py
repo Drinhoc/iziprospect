@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS leads (
     status               TEXT DEFAULT 'novo',
     temperatura          TEXT DEFAULT 'frio',
     resumo               TEXT DEFAULT '',
-    pendencia            TEXT DEFAULT '',
+    acao_followup        TEXT DEFAULT '',
     observacoes          TEXT DEFAULT '',
     data_criacao         TEXT,
     ultima_interacao_em  TEXT,
@@ -266,6 +266,20 @@ class DBService:
                 cur.execute(
                     "ALTER TABLE msg_ab_eventos ADD COLUMN IF NOT EXISTS tipo TEXT DEFAULT 'inicial'"
                 )
+                # Migrar pendencia → acao_followup
+                cur.execute("""
+                    DO $$ BEGIN
+                      IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name='leads' AND column_name='pendencia'
+                      ) THEN
+                        ALTER TABLE leads RENAME COLUMN pendencia TO acao_followup;
+                      END IF;
+                    END $$
+                """)
+                cur.execute(
+                    "ALTER TABLE leads ADD COLUMN IF NOT EXISTS acao_followup TEXT DEFAULT ''"
+                )
             conn.commit()
         finally:
             self._put(conn)
@@ -322,7 +336,7 @@ class DBService:
                         """INSERT INTO leads (
                             lead_id, nome, cidade, segmento, whatsapp, email,
                             instagram, site, responsavel, fonte, status, prioridade,
-                            resumo, pendencia, observacoes, data_criacao,
+                            resumo, acao_followup, observacoes, data_criacao,
                             ultima_interacao_em, proximo_followup_em,
                             nome_normalizado, cidade_normalizada, lead_key
                         ) VALUES (
@@ -342,7 +356,7 @@ class DBService:
                             lead.get("status", "novo"),
                             lead.get("prioridade", "media"),
                             lead.get("resumo", ""),
-                            lead.get("pendencia", ""),
+                            lead.get("acao_followup", "") or lead.get("pendencia", ""),
                             lead.get("observacoes", ""),
                             lead.get("data_criacao", ""),
                             lead.get("ultima_interacao_em", ""),
@@ -594,8 +608,7 @@ class DBService:
                 today = when.date().isoformat()
                 if not existing or existing < today:
                     fields["proximo_followup_em"] = date_str
-                    if "pendencia" not in fields:
-                        fields["pendencia"] = context
+                    pass  # acao_followup is set explicitly by the caller, not auto-inferred
 
         set_clause = ", ".join(f"{k} = %s" for k in fields)
         values = list(fields.values()) + [lead_id]
@@ -625,20 +638,18 @@ class DBService:
                 final_status = status or "novo"
                 # Auto-sugerir followup se não definido explicitamente
                 auto_followup = followup_em or ""
-                auto_pendencia = lead.get("pendencia", "")
+                auto_acao = lead.get("acao_followup", "")
                 if not auto_followup:
                     suggestion = suggest_followup_from_status(final_status, when)
                     if suggestion:
-                        auto_followup, auto_ctx = suggestion
-                        if not auto_pendencia:
-                            auto_pendencia = auto_ctx
+                        auto_followup, _ = suggestion
                 cur.execute(
                     """INSERT INTO leads (
                         lead_id, nome, cidade, segmento, whatsapp, email, instagram, site,
-                        responsavel, fonte, status, prioridade, observacoes, data_criacao,
-                        ultima_interacao_em, proximo_followup_em, pendencia,
+                        responsavel, fonte, status, observacoes, data_criacao,
+                        ultima_interacao_em, proximo_followup_em, acao_followup,
                         nome_normalizado, cidade_normalizada, lead_key
-                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'media','',%s,%s,%s,%s,%s,%s,%s)""",
+                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'',%s,%s,%s,%s,%s,%s,%s)""",
                     (
                         lead_id,
                         lead.get("nome", ""), lead.get("cidade", ""),
@@ -646,7 +657,7 @@ class DBService:
                         lead.get("email", ""), lead.get("instagram", ""),
                         lead.get("site", ""), lead.get("responsavel", ""),
                         lead.get("fonte", ""), final_status,
-                        now_iso, now_iso, auto_followup, auto_pendencia,
+                        now_iso, now_iso, auto_followup, auto_acao,
                         lead.get("nome_normalizado", ""), lead.get("cidade_normalizada", ""),
                         lead.get("lead_key", ""),
                     ),
@@ -697,7 +708,7 @@ class DBService:
             self._put(conn)
 
     # ------------------------------------------------------------------
-    # Lead summary / pendencia
+    # Lead summary / acao_followup
     # ------------------------------------------------------------------
 
     def get_lead_recent_activity_summaries(self, lead_id: str, n: int = 5) -> List[str]:
@@ -780,17 +791,17 @@ class DBService:
         finally:
             self._put(conn)
 
-    def update_lead_resumo_pendencia(
+    def update_lead_resumo_acao(
         self,
         lead_id: str,
         resumo: Optional[str],
-        pendencia: Optional[str],
+        acao_followup: Optional[str],
     ) -> None:
         fields: Dict[str, Any] = {}
         if resumo is not None:
             fields["resumo"] = resumo
-        if pendencia is not None:
-            fields["pendencia"] = pendencia
+        if acao_followup is not None:
+            fields["acao_followup"] = acao_followup
         if not fields:
             return
         set_clause = ", ".join(f"{k} = %s" for k in fields)
@@ -957,7 +968,7 @@ class DBService:
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    """SELECT lead_id, nome, segmento, status, proximo_followup_em, pendencia
+                    """SELECT lead_id, nome, segmento, status, proximo_followup_em, acao_followup
                        FROM leads
                        WHERE proximo_followup_em != ''
                          AND LEFT(proximo_followup_em, 10) <= CURRENT_DATE::text
@@ -975,7 +986,7 @@ class DBService:
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    """SELECT lead_id, nome, status, pendencia, proximo_followup_em
+                    """SELECT lead_id, nome, status, acao_followup, proximo_followup_em
                        FROM leads
                        WHERE LEFT(proximo_followup_em, 10) = CURRENT_DATE::text
                          AND status NOT IN ('fechado', 'perdido', 'contato inválido')
@@ -1064,7 +1075,7 @@ class DBService:
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    """SELECT lead_id, nome, segmento, cidade, whatsapp, data_recontato, pendencia, motivo_perda
+                    """SELECT lead_id, nome, segmento, cidade, whatsapp, data_recontato, acao_followup, motivo_perda
                        FROM leads
                        WHERE status = 'perdido'
                          AND data_recontato != ''
@@ -1240,7 +1251,7 @@ class DBService:
                 recentes = [dict(zip(cols, r)) for r in cur.fetchall()]
 
                 cur.execute(
-                    """SELECT lead_id, nome, segmento, status, temperatura, proximo_followup_em, pendencia
+                    """SELECT lead_id, nome, segmento, status, temperatura, proximo_followup_em, acao_followup
                        FROM leads WHERE proximo_followup_em != ''
                          AND LEFT(proximo_followup_em, 10) >= CURRENT_DATE::text
                          AND status NOT IN ('fechado', 'perdido')
@@ -1697,7 +1708,7 @@ class DBService:
         allowed = {
             "nome", "cidade", "segmento", "whatsapp", "email",
             "instagram", "site", "responsavel", "fonte",
-            "status", "temperatura", "observacoes", "proximo_followup_em", "pendencia",
+            "status", "temperatura", "observacoes", "proximo_followup_em", "acao_followup",
             "valor_venda", "data_fechamento", "motivo_perda", "data_criacao", "data_recontato",
         }
         safe_fields: Dict[str, Any] = {

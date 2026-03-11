@@ -34,7 +34,7 @@ LEADS_HEADERS = [
     "ultima_interacao_em",  # Temporal
     "proximo_followup_em",
     "data_criacao",
-    "pendencia",            # Notas automáticas
+    "acao_followup",        # Próxima ação concreta (extraída pelo bot)
     "resumo",
     "observacoes",          # Nota manual
     "nome_normalizado",     # oculta
@@ -76,7 +76,7 @@ LEAD_SYNC_FIELDS = [
     "nome", "cidade", "segmento", "whatsapp", "email",
     "instagram", "site", "responsavel", "fonte",
     "status", "prioridade", "ultima_interacao_em", "proximo_followup_em",
-    "resumo", "pendencia",
+    "resumo", "acao_followup",
     "nome_normalizado", "cidade_normalizada", "lead_key",
 ]
 
@@ -88,7 +88,7 @@ LEAD_SYNC_FIELDS = [
 # lead_id(oculta), nome, status, prioridade, whatsapp, email, instagram,
 # segmento, cidade, responsavel, fonte, site,
 # ultima_interacao_em, proximo_followup_em, data_criacao,
-# pendencia, resumo, observacoes, nome_norm(oculta), cidade_norm(oculta), lead_key(oculta)
+# acao_followup, resumo, observacoes, nome_norm(oculta), cidade_norm(oculta), lead_key(oculta)
 LEADS_COL_WIDTHS = [1, 200, 140, 90, 140, 170, 130,
                     110, 110, 140, 100, 140,
                     155, 155, 155,

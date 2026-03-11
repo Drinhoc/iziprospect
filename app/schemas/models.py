@@ -46,7 +46,7 @@ class LLMExtraction(BaseModel):
     status_sugerido: Optional[str] = None
     followup_em: Optional[str] = None
     activity: ActivityData = Field(default_factory=ActivityData)
-    pendencia: Optional[str] = None          # ação pendente extraída da mensagem
+    acao_followup: Optional[str] = None      # próxima ação concreta extraída da mensagem (só quando explícita)
 
 
 class ConversationAnalysis(BaseModel):
