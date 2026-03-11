@@ -4,60 +4,52 @@
 // Templates A/B por segmento. Variante determinada pelo lead_id (consistente por lead).
 const MSG_TEMPLATES = {
   odontologia: [
-    `Oi, tudo bem? 😊
+    `Oi, tudo bem? Me chamo Pedro e estou estruturando um assistente virtual voltado para clínicas odontológicas aqui na região, com foco em resposta rápida e organização dos agendamentos pelo WhatsApp.
 
-Vi a *{{nome}}* e quis entrar em contato.
+Vi o perfil da *{{nome}}* e achei que pode fazer sentido conversar rapidamente sobre isso.
 
-Estou desenvolvendo uma assistente de WhatsApp para clínicas odontológicas — ela responde, agenda e confirma consultas automaticamente, 24h por dia, mesmo fora do horário da recepção.
+Posso explicar em 2 minutos como funciona?`,
+    `Oi! Me chamo Pedro e estou desenvolvendo uma solução de atendimento pelo WhatsApp para clínicas de odontologia — voltada principalmente para não perder pacientes que entram em contato fora do horário.
 
-Faz sentido conversarmos alguns minutinhos?`,
-    `Olá! Tudo bem por aí na *{{nome}}*? 😊
+Vi o perfil da *{{nome}}* e achei que o contexto de vocês faz sentido pra gente conversar.
 
-Queria apresentar uma ideia para vocês: uma secretária virtual no WhatsApp que atende, agenda e confirma consultas — sem precisar contratar mais recepcionistas.
-
-Ainda estou validando a solução e gostaria muito de entender se faz sentido para o contexto de vocês. Vale uma conversa rápida?`,
+Consigo explicar em 2 minutos, se tiver interesse.`,
   ],
   medicina: [
-    `Oi, tudo bem? 😊
+    `Oi, tudo bem? Me chamo Pedro e estou estruturando um assistente virtual voltado para clínicas médicas aqui na região, com foco em resposta rápida e organização dos agendamentos pelo WhatsApp.
 
-Vi a *{{nome}}* e gostaria de me apresentar rapidinho.
+Vi o perfil da *{{nome}}* e achei que pode fazer sentido conversar rapidamente sobre isso.
 
-Estou trabalhando em uma solução para um problema que parece comum em clínicas: perder pacientes porque a equipe não consegue responder o WhatsApp fora do horário. A ideia é uma assistente virtual que atende, agenda e confirma consultas automaticamente.
+Posso explicar em 2 minutos como funciona?`,
+    `Oi! Me chamo Pedro e estou desenvolvendo uma solução de atendimento automático pelo WhatsApp para clínicas médicas — com foco em agenda e confirmação de consultas sem depender da recepção estar disponível o tempo todo.
 
-Faz sentido trocarmos uma ideia?`,
-    `Olá! Tudo bem? 😊
+Vi o perfil da *{{nome}}* e achei que pode fazer sentido conversar.
 
-Gostaria de apresentar uma proposta para a *{{nome}}*: uma secretária virtual no WhatsApp que atende pacientes a qualquer hora, agenda consultas e envia lembretes de confirmação — sem precisar estar disponível o tempo todo.
-
-Ainda estou validando com primeiros clientes. Vale cinco minutinhos de conversa?`,
+Consigo explicar em 2 minutos, se quiser.`,
   ],
   estetica: [
-    `Oi, tudo bem? 😊
+    `Oi, tudo bem? Me chamo Pedro e estou estruturando um assistente virtual voltado para clínicas de estética aqui na região, com foco em resposta rápida e agendamento pelo WhatsApp.
 
-Vi a *{{nome}}* e achei que faria sentido entrar em contato.
+Vi o perfil da *{{nome}}* e achei que pode fazer sentido conversar rapidamente sobre isso.
 
-Estou desenvolvendo uma assistente virtual para clínicas de estética — ela agenda procedimentos, responde dúvidas no WhatsApp e confirma tudo automaticamente, mesmo fora do horário comercial.
+Posso explicar em 2 minutos como funciona?`,
+    `Oi! Me chamo Pedro e estou desenvolvendo uma solução de atendimento pelo WhatsApp para clínicas de estética — voltada para não perder clientes que entram em contato fora do horário comercial.
 
-Posso te contar mais em uma conversa rápida?`,
-    `Olá! Tudo bem? 😊
+Vi o perfil da *{{nome}}* e achei que o contexto de vocês faz sentido pra gente conversar.
 
-Queria apresentar uma ideia para a *{{nome}}*: uma assistente de WhatsApp que agenda procedimentos, responde clientes e manda confirmações no automático.
-
-Estou buscando os primeiros parceiros para validar a solução — vale uma conversa rápida?`,
+Consigo explicar em 2 minutos, se tiver interesse.`,
   ],
   default: [
-    `Oi, tudo bem? 😊
+    `Oi, tudo bem? Me chamo Pedro e estou estruturando um assistente virtual de atendimento pelo WhatsApp — com foco em resposta rápida e organização de agendamentos.
 
-Vi a *{{nome}}* e gostaria de apresentar uma ideia que pode fazer sentido para o atendimento de vocês.
+Vi o perfil da *{{nome}}* e achei que pode fazer sentido conversar rapidamente sobre isso.
 
-Estou desenvolvendo uma assistente virtual no WhatsApp que responde, agenda e confirma clientes automaticamente — 24h por dia, sem precisar de ninguém disponível o tempo todo.
+Posso explicar em 2 minutos como funciona?`,
+    `Oi! Me chamo Pedro e estou desenvolvendo uma solução de atendimento automático pelo WhatsApp — voltada para quem quer atender clientes com rapidez sem depender de alguém disponível o tempo todo.
 
-Faz sentido conversar alguns minutinhos?`,
-    `Olá! Tudo bem? 😊
+Vi o perfil da *{{nome}}* e achei que pode fazer sentido conversar.
 
-Gostaria de apresentar uma proposta para a *{{nome}}*: uma secretária virtual no WhatsApp que atende clientes a qualquer hora e confirma atendimentos automaticamente.
-
-Ainda estou validando a solução com os primeiros parceiros. Vale uma conversa rápida?`,
+Consigo explicar em 2 minutos, se quiser.`,
   ],
 };
 
