@@ -1,13 +1,14 @@
 # Melhorias Implementadas no IziProspect CRM
 
 ## 📋 Resumo
-Implementadas 6 melhorias principais no sistema de CRM para prospecção de clínicas:
+Implementadas 7 melhorias principais no sistema de CRM para prospecção de clínicas:
 - Pendência inteligente e consistente
 - Colunas reorganizadas no Sheets
 - Prompts melhorados para resumo e pendência
 - Sincronização bidirecional Sheets↔DB
 - Fix para áudios sequenciais
 - Confirmação interativa no WhatsApp quando há dúvida
+- **Revisão das mensagens A/B/C de primeiro contato** (2026-03-11)
 
 ---
 
@@ -203,3 +204,76 @@ Default: 15 minutos. Mude para 30 ou 60 se quiser sincronizar menos frequentemen
 ---
 
 **Tudo funcionando? Legal! 🎉**
+
+---
+
+## 7. **Revisão das Mensagens A/B/C de Primeiro Contato** ✍️ *(2026-03-11)*
+
+### Problema
+A e B eram estruturalmente idênticas — mesma abertura ("Me chamo Pedro"), mesmo "Vi o perfil da {{nome}}", mesma estrutura de pitch. Não fazia sentido testar variações tão parecidas.
+
+### O que mudou
+
+| Variante | Estratégia | O que foi alterado |
+|----------|-----------|-------------------|
+| **A** | Apresentação pessoal **casual** | Reescrita: "Sou o Pedro 🙂", tom de papo, sem "Vi o perfil da X", sem "estruturando/desenvolvendo" |
+| **B** | **Dor-primeiro** (totalmente nova) | Abre com pergunta direta sobre o problema deles — sem intro, sem pitch imediato |
+| **C** | Prova social leve | **Sem alteração** — já performava bem como controle |
+
+### Por que a B nova é diferente de verdade
+- Não começa falando de si (o maior erro das cold messages)
+- A pergunta sobre o problema força o prospect a pensar na própria dor antes de receber a solução
+- "Pergunto porque..." cria contexto natural para o pitch sem parecer script
+- Testável: se B converter mais que A e C, confirma que abrir com dor > apresentação pessoal
+
+### Exemplos por variante (segmento: odontologia)
+
+**Variante A — Apresentação pessoal casual:**
+```
+Oi, tudo bem? Sou o Pedro 🙂
+
+Tô montando um assistente de atendimento pelo WhatsApp pra clínicas odontológicas
+aqui da região — basicamente pra responder rápido e organizar agendamentos sem
+precisar de alguém na tela o tempo todo.
+
+Faz sentido te explicar em 2 minutos como funciona?
+```
+
+**Variante B — Dor-primeiro (nova):**
+```
+Oi! Pergunta rápida: vocês costumam perder agendamentos porque a mensagem chegou
+fora do horário ou demorou a ser respondida?
+
+Pergunto porque estou ajudando algumas clínicas de odontologia aqui na região a
+resolver exatamente isso pelo WhatsApp.
+
+Posso te contar como em 2 minutinhos?
+```
+
+**Variante C — Prova social leve (inalterada):**
+```
+Olá! Tudo bem? 🙂
+
+Estou conversando com algumas clínicas odontológicas aqui da região sobre
+automação de atendimento no WhatsApp (agendamento, confirmação de consultas, etc).
+
+Posso te explicar rapidinho em 2 minutos como funciona?
+```
+
+### Como acompanhar os resultados
+As métricas já estão sendo coletadas automaticamente pela tabela `msg_ab_eventos`.
+
+```bash
+# Ver taxa de resposta por variante
+GET /api/msg-ab/stats
+```
+
+Campos monitorados por variante:
+- `copiadas` — quantas vezes a mensagem foi usada
+- `responderam` — leads que responderam após receber cada variante
+- `taxa` — `(responderam / copiadas) * 100`
+- Breakdown por segmento (odonto, estética, médica...)
+
+**Hipótese atual:** C > B > A — mas B nova pode surpreender por abordar a dor direto.
+
+**Onde:** `app/static/leads.js` (MSG_TEMPLATES, linhas 3-80)

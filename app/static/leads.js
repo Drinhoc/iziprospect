@@ -2,18 +2,22 @@
 
 // ===== Mensagem inicial sugerida =====
 // Templates A/B/C por segmento. Variante determinada pelo lead_id (consistente por lead).
+// A/B/C — Estratégias distintas:
+// A = Apresentação pessoal casual (sem "Vi o perfil", tom de papo)
+// B = Dor-primeiro (abre com pergunta sobre o problema deles, sem intro)
+// C = Prova social leve (menciona clínicas da região, sem citar o lead)
 const MSG_TEMPLATES = {
   odontologia: [
-    `Oi, tudo bem? Me chamo Pedro e estou estruturando um assistente virtual voltado para clínicas odontológicas aqui na região, com foco em resposta rápida e organização dos agendamentos pelo WhatsApp.
+    `Oi, tudo bem? Sou o Pedro 🙂
 
-Vi o perfil da *{{nome}}* e achei que pode fazer sentido conversar rapidamente sobre isso.
+Tô montando um assistente de atendimento pelo WhatsApp pra clínicas odontológicas aqui da região — basicamente pra responder rápido e organizar agendamentos sem precisar de alguém na tela o tempo todo.
 
-Posso explicar em 2 minutos como funciona?`,
-    `Oi! Me chamo Pedro e estou desenvolvendo uma solução de atendimento pelo WhatsApp para clínicas de odontologia — voltada principalmente para não perder pacientes que entram em contato fora do horário.
+Faz sentido te explicar em 2 minutos como funciona?`,
+    `Oi! Pergunta rápida: vocês costumam perder agendamentos porque a mensagem chegou fora do horário ou demorou a ser respondida?
 
-Vi o perfil da *{{nome}}* e achei que o contexto de vocês faz sentido pra gente conversar.
+Pergunto porque estou ajudando algumas clínicas de odontologia aqui na região a resolver exatamente isso pelo WhatsApp.
 
-Consigo explicar em 2 minutos, se tiver interesse.`,
+Posso te contar como em 2 minutinhos?`,
     `Olá! Tudo bem? 🙂
 
 Estou conversando com algumas clínicas odontológicas aqui da região sobre automação de atendimento no WhatsApp (agendamento, confirmação de consultas, etc).
@@ -21,16 +25,16 @@ Estou conversando com algumas clínicas odontológicas aqui da região sobre aut
 Posso te explicar rapidinho em 2 minutos como funciona?`,
   ],
   medicina: [
-    `Oi, tudo bem? Me chamo Pedro e estou estruturando um assistente virtual voltado para clínicas médicas aqui na região, com foco em resposta rápida e organização dos agendamentos pelo WhatsApp.
+    `Oi, tudo bem? Sou o Pedro 🙂
 
-Vi o perfil da *{{nome}}* e achei que pode fazer sentido conversar rapidamente sobre isso.
+Tô montando um assistente de atendimento pelo WhatsApp pra clínicas médicas aqui da região — pra responder rápido e confirmar consultas sem sobrecarregar a recepção.
 
-Posso explicar em 2 minutos como funciona?`,
-    `Oi! Me chamo Pedro e estou desenvolvendo uma solução de atendimento automático pelo WhatsApp para clínicas médicas — com foco em agenda e confirmação de consultas sem depender da recepção estar disponível o tempo todo.
+Faz sentido te explicar em 2 minutos como funciona?`,
+    `Oi! Pergunta rápida: vocês costumam perder consultas porque a mensagem chegou fora do horário ou a recepção não conseguiu responder a tempo?
 
-Vi o perfil da *{{nome}}* e achei que pode fazer sentido conversar.
+Pergunto porque estou ajudando algumas clínicas médicas aqui na região a resolver exatamente isso pelo WhatsApp.
 
-Consigo explicar em 2 minutos, se quiser.`,
+Posso te contar como em 2 minutinhos?`,
     `Olá! Tudo bem? 🙂
 
 Estou conversando com algumas clínicas aqui da região sobre automação de atendimento no WhatsApp (agendamento, confirmação de consultas, etc).
@@ -38,16 +42,16 @@ Estou conversando com algumas clínicas aqui da região sobre automação de ate
 Posso te explicar rapidinho em 2 minutos como funciona?`,
   ],
   estetica: [
-    `Oi, tudo bem? Me chamo Pedro e estou estruturando um assistente virtual voltado para clínicas de estética aqui na região, com foco em resposta rápida e agendamento pelo WhatsApp.
+    `Oi, tudo bem? Sou o Pedro 🙂
 
-Vi o perfil da *{{nome}}* e achei que pode fazer sentido conversar rapidamente sobre isso.
+Tô montando um assistente de atendimento pelo WhatsApp pra clínicas de estética aqui da região — pra responder rápido, agendar e confirmar procedimentos sem depender de alguém disponível o tempo todo.
 
-Posso explicar em 2 minutos como funciona?`,
-    `Oi! Me chamo Pedro e estou desenvolvendo uma solução de atendimento pelo WhatsApp para clínicas de estética — voltada para não perder clientes que entram em contato fora do horário comercial.
+Faz sentido te explicar em 2 minutos como funciona?`,
+    `Oi! Pergunta rápida: vocês costumam perder clientes porque a mensagem chegou fora do horário e não foi respondida a tempo?
 
-Vi o perfil da *{{nome}}* e achei que o contexto de vocês faz sentido pra gente conversar.
+Pergunto porque estou ajudando algumas clínicas de estética aqui na região a resolver exatamente isso pelo WhatsApp.
 
-Consigo explicar em 2 minutos, se tiver interesse.`,
+Posso te contar como em 2 minutinhos?`,
     `Olá! Tudo bem? 🙂
 
 Estou ajudando algumas clínicas de estética a automatizar o atendimento no WhatsApp (agendamentos, confirmação de consultas e respostas rápidas).
@@ -55,16 +59,16 @@ Estou ajudando algumas clínicas de estética a automatizar o atendimento no Wha
 Queria saber se vocês já usam algo assim por aí.`,
   ],
   default: [
-    `Oi, tudo bem? Me chamo Pedro e estou estruturando um assistente virtual de atendimento pelo WhatsApp — com foco em resposta rápida e organização de agendamentos.
+    `Oi, tudo bem? Sou o Pedro 🙂
 
-Vi o perfil da *{{nome}}* e achei que pode fazer sentido conversar rapidamente sobre isso.
+Tô montando um assistente de atendimento pelo WhatsApp — pra responder rápido e organizar agendamentos sem precisar de alguém disponível o tempo todo.
 
-Posso explicar em 2 minutos como funciona?`,
-    `Oi! Me chamo Pedro e estou desenvolvendo uma solução de atendimento automático pelo WhatsApp — voltada para quem quer atender clientes com rapidez sem depender de alguém disponível o tempo todo.
+Faz sentido te explicar em 2 minutos como funciona?`,
+    `Oi! Pergunta rápida: vocês costumam perder clientes porque a mensagem chegou fora do horário ou demorou a ser respondida?
 
-Vi o perfil da *{{nome}}* e achei que pode fazer sentido conversar.
+Pergunto porque estou ajudando alguns negócios aqui na região a resolver exatamente isso pelo WhatsApp.
 
-Consigo explicar em 2 minutos, se quiser.`,
+Posso te contar como em 2 minutinhos?`,
     `Olá! Tudo bem? 🙂
 
 Estou ajudando algumas clínicas a automatizar o atendimento no WhatsApp (agendamentos, confirmação de consultas e respostas rápidas).
