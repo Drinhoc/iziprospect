@@ -309,6 +309,8 @@ label {
   text-transform: capitalize;
 }
 .badge-novo         { background: #e5e7eb; color: #374151; }
+button.badge-novo--btn { border: none; cursor: pointer; line-height: inherit; }
+button.badge-novo--btn:hover { background: #cffafe; color: #0e7490; }
 .badge-1-contato    { background: #cffafe; color: #0e7490; }
 .badge-em-contato   { background: #dbeafe; color: #1d4ed8; }
 .badge-qualificado  { background: #ede9fe; color: #6d28d9; }
@@ -1654,6 +1656,7 @@ label {
 /* Dark mode: status/priority badges that use hardcoded light bg */
 /* Dark: status badges */
 :root.dark .badge-novo         { background: #374151; color: #d1d5db; }
+:root.dark button.badge-novo--btn:hover { background: #164e63; color: #67e8f9; }
 :root.dark .badge-1-contato    { background: #164e63; color: #67e8f9; }
 :root.dark .badge-em-contato   { background: #1e3a5f; color: #93c5fd; }
 :root.dark .badge-qualificado  { background: #2e1065; color: #c4b5fd; }

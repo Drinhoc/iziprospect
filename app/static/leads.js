@@ -295,6 +295,30 @@ function _bindCopyMsgBtns(el) {
   });
 }
 
+function _novoBadgeBtn(l) {
+  return `<button class="badge badge-novo badge-novo--btn" data-lid="${l.lead_id}" data-seg="${l.segmento || ''}" title="Marcar como 1º contato">Novo</button>`;
+}
+
+function _bindNovoBadgeBtns(el) {
+  el.querySelectorAll('.badge-novo--btn').forEach(btn => {
+    btn.onclick = async e => {
+      e.stopPropagation();
+      if (btn.dataset.loading) return;
+      btn.dataset.loading = '1';
+      await fetch(`/api/leads/${btn.dataset.lid}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: '1º contato' }),
+      }).catch(() => {});
+      _trackAbEvento(btn.dataset.lid, btn.dataset.seg, 'copiada');
+      const badge = document.createElement('span');
+      badge.className = 'badge badge-1-contato';
+      badge.textContent = '1º contato';
+      btn.replaceWith(badge);
+    };
+  });
+}
+
 function renderTable(leads) {
   const tbody = document.getElementById('leads-tbody');
   tbody.innerHTML = '';
@@ -310,12 +334,13 @@ function renderTable(leads) {
       <td class="text-muted">${esc(l.cidade) || '—'}</td>
       <td class="td-phone">${phoneTd}</td>
       <td class="text-muted">${esc(l.responsavel) || '—'}</td>
-      <td>${statusBadge(l.status, l.status_anterior)}</td>
+      <td>${l.status === 'novo' ? _novoBadgeBtn(l) : statusBadge(l.status, l.status_anterior)}</td>
       <td class="text-muted td-pendencia">${esc(l.pendencia) || '—'}</td>
       <td class="text-muted">${fmtDate(l.ultima_interacao_em)}</td>
       <td>${followupCell(l.proximo_followup_em)}</td>`;
     tr.onclick = () => openLeadModal(l.lead_id);
     _bindCopyMsgBtns(tr);
+    _bindNovoBadgeBtns(tr);
     // Copy phone button — stop propagation so row click doesn't fire
     tr.querySelectorAll('.copy-phone-btn').forEach(btn => {
       btn.onclick = e => {
@@ -359,13 +384,14 @@ function renderCards(leads) {
     card.innerHTML = `
       <div class="lc-top">
         <span class="lc-name">${esc(l.nome) || '—'}</span>
-        <div class="lc-badges">${statusBadge(l.status, l.status_anterior)}${engajamentoBadge(l)}</div>
+        <div class="lc-badges">${l.status === 'novo' ? _novoBadgeBtn(l) : statusBadge(l.status, l.status_anterior)}${engajamentoBadge(l)}</div>
       </div>
       ${meta.length ? `<div class="lc-meta">${meta.map(m => `<span class="lc-meta-item">${m}</span>`).join('')}</div>` : ''}
       ${msgBtnHtml ? `<div class="lc-msg-action">${msgBtnHtml}</div>` : ''}
       ${l.pendencia ? `<div class="lc-pendencia">${esc(l.pendencia)}</div>` : ''}`;
     card.onclick = () => openLeadModal(l.lead_id);
     _bindCopyMsgBtns(card);
+    _bindNovoBadgeBtns(card);
     card.querySelectorAll('.copy-phone-btn').forEach(btn => {
       btn.onclick = e => {
         e.stopPropagation();
