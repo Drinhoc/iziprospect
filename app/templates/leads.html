@@ -90,7 +90,7 @@
     <form id="lead-form" onsubmit="saveLead(event)">
       <input type="hidden" id="form-lead-id" />
 
-      <!-- Mensagem inicial sugerida — visível somente para status Novo / Sem resposta -->
+      <!-- Mensagem inicial sugerida — visível somente para status Novo / Contato feito -->
       <div class="form-section msg-sugerida-section hidden" id="msg-sugerida-section">
         <div class="msg-sugerida-header">
           <div class="msg-sugerida-meta">
@@ -139,14 +139,22 @@
             <label>Status</label>
             <select id="f-status">
               <option value="novo">Novo</option>
-              <option value="1º contato">1º contato</option>
-              <option value="sem resposta">Sem resposta</option>
-              <option value="qualificado">Qualificado</option>
-              <option value="em espera">Em espera</option>
+              <option value="contato feito">Contato feito</option>
+              <option value="conversando">Conversando</option>
               <option value="negociando">Negociando</option>
               <option value="fechado">Fechado</option>
               <option value="perdido">Perdido</option>
               <option value="contato inválido">Contato inválido</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Temperatura</label>
+            <select id="f-temperatura">
+              <option value="frio">🔵 Frio</option>
+              <option value="morno">🟡 Morno</option>
+              <option value="engajado">🟠 Engajado</option>
+              <option value="quente">🔴 Quente</option>
+              <option value="cliente">🟢 Cliente</option>
             </select>
           </div>
           <div class="form-group">
@@ -218,6 +226,11 @@
         <div class="form-group hidden" id="fg-motivo-perda">
           <label>Motivo da perda</label>
           <input type="text" id="f-motivo-perda" placeholder="Ex: Preço alto, cliente escolheu concorrente…" />
+        </div>
+        <div class="form-group hidden" id="fg-data-recontato">
+          <label>Data de recontato</label>
+          <input type="date" id="f-data-recontato" />
+          <span class="field-hint">Quando quiser tentar recontatar este lead perdido</span>
         </div>
       </div>
 
@@ -305,14 +318,23 @@
       <select id="filter-status" onchange="applyFilters()">
         <option value="">Todos</option>
         <option value="novo">Novo</option>
-        <option value="1º contato">1º contato</option>
-        <option value="sem resposta">Sem resposta</option>
-        <option value="qualificado">Qualificado</option>
-        <option value="em espera">Em espera</option>
+        <option value="contato feito">Contato feito</option>
+        <option value="conversando">Conversando</option>
         <option value="negociando">Negociando</option>
         <option value="fechado">Fechado</option>
         <option value="perdido">Perdido</option>
         <option value="contato inválido">Contato inválido</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Temperatura</label>
+      <select id="filter-temperatura" onchange="applyFilters()">
+        <option value="">Todas</option>
+        <option value="frio">🔵 Frio</option>
+        <option value="morno">🟡 Morno</option>
+        <option value="engajado">🟠 Engajado</option>
+        <option value="quente">🔴 Quente</option>
+        <option value="cliente">🟢 Cliente</option>
       </select>
     </div>
     <div class="form-group">

@@ -124,7 +124,11 @@ async def _start_expire_first_contact_loop() -> None:
 
 
 async def _expire_first_contact_loop() -> None:
-    """Diariamente às 3h: leads '1º contato' sem resposta há 5+ dias → 'sem resposta'."""
+    """Diariamente às 3h: baixa temperatura de leads inativos.
+
+    - Leads 'contato feito' sem resposta há 5+ dias → temperatura 'frio'
+    - Todos os leads ativos sem interação há 7+ dias → temperatura desce um nível
+    """
     last_run_date: str = ""
     while True:
         await asyncio.sleep(60)
@@ -142,19 +146,25 @@ async def _expire_first_contact_loop() -> None:
             last_run_date = today_str
 
             db = get_db_service()
+            # Marcar frio os 'contato feito' sem resposta há 5+ dias
             expired = await asyncio.to_thread(db.expire_first_contact, 5)
-            if not expired:
-                logger.info("expire_first_contact: nenhum lead expirado")
+            # Baixar temperatura de qualquer lead ativo sem interação há 7 dias
+            cooled = await asyncio.to_thread(db.cool_down_leads, 7)
+
+            total = len(expired) + len(cooled)
+            if not total:
+                logger.info("cool_down: nenhum lead resfriado")
                 continue
 
-            logger.info("expire_first_contact | count=%d", len(expired))
+            logger.info("cool_down | contato_feito_frio=%d resfriados=%d", len(expired), len(cooled))
             if settings.crm_target_group_id and not settings.disable_evolution_confirmation:
-                names = "\n".join(f"• {l['nome'] or l['lead_id']}" for l in expired)
                 group_id = _normalize_group_id(settings.crm_target_group_id)
-                await evolution_service.send_confirmation(
-                    group_id,
-                    f"⏰ {len(expired)} lead(s) sem resposta após 5 dias → marcados como 'sem resposta':\n{names}",
-                )
+                parts = []
+                if expired:
+                    parts.append(f"🔵 {len(expired)} lead(s) 'contato feito' sem resposta → temperatura frio")
+                if cooled:
+                    parts.append(f"❄️ {len(cooled)} lead(s) resfriados por inatividade")
+                await evolution_service.send_confirmation(group_id, "\n".join(parts))
         except Exception:
             logger.warning("expire_first_contact_loop falhou", exc_info=True)
 

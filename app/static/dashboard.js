@@ -1,22 +1,28 @@
 /* Dashboard JS */
 
 const STATUS_ORDER = [
-  'novo', '1º contato', 'qualificado', 'proposta enviada', 'negociando', 'fechado', 'perdido', 'sem resposta'
+  'novo', 'contato feito', 'conversando', 'negociando', 'fechado', 'perdido', 'contato inválido'
 ];
 
 const STATUS_COLORS = {
   'novo':             '#9ca3af',
-  '1º contato':       '#06b6d4',
-  'qualificado':      '#8b5cf6',
-  'proposta enviada': '#f59e0b',
+  'contato feito':    '#06b6d4',
+  'conversando':      '#8b5cf6',
   'negociando':       '#f97316',
   'fechado':          '#10b981',
   'perdido':          '#ef4444',
-  'sem resposta':     '#4b5563',
+  'contato inválido': '#4b5563',
+};
+
+const TEMP_COLORS = {
+  'frio':     '#94a3b8',
+  'morno':    '#eab308',
+  'engajado': '#f97316',
+  'quente':   '#ef4444',
+  'cliente':  '#10b981',
 };
 
 const SEGMENTO_COLORS = ['#3b82f6','#8b5cf6','#f59e0b','#10b981','#f97316','#6366f1','#14b8a6'];
-const PRIO_COLORS = { alta: '#ef4444', media: '#f59e0b', baixa: '#10b981' };
 
 function fmtDate(s) {
   if (!s) return '—';
@@ -73,9 +79,10 @@ async function loadDashboard() {
     const segData = Object.entries(d.by_segmento).sort((a, b) => b[1] - a[1]);
     buildBars(document.getElementById('chart-segmento'), segData, {});
 
-    // Prioridade chart
-    const prioData = Object.entries(d.by_prioridade).sort((a, b) => b[1] - a[1]);
-    buildBars(document.getElementById('chart-prioridade'), prioData, PRIO_COLORS);
+    // Temperatura chart
+    const tempOrder = ['frio', 'morno', 'engajado', 'quente', 'cliente'];
+    const tempData = tempOrder.filter(t => d.by_temperatura && d.by_temperatura[t]).map(t => [t, d.by_temperatura[t]]);
+    buildBars(document.getElementById('chart-temperatura'), tempData, TEMP_COLORS);
 
     // Follow-ups list
     const fuList = document.getElementById('list-followups');
@@ -112,20 +119,20 @@ async function loadDashboard() {
     }
 
     // Alertas de saúde do pipeline
-    const frios = d.leads_frios || 0;
+    const recontatos = d.recontatos_hoje || 0;
     const nunca = d.leads_nunca_contatados || 0;
     const alertasRow = document.getElementById('alertas-row');
     const alertaFrios = document.getElementById('alerta-frios');
     const alertaEsquecidos = document.getElementById('alerta-esquecidos');
-    if (frios > 0 || nunca > 0) {
+    if (recontatos > 0 || nunca > 0) {
       alertasRow.style.display = '';
-      if (frios > 0) {
-        document.getElementById('stat-frios').textContent = frios;
-        alertaFrios.style.display = '';
+      if (recontatos > 0) {
+        document.getElementById('stat-frios').textContent = recontatos;
+        if (alertaFrios) alertaFrios.style.display = '';
       }
       if (nunca > 0) {
         document.getElementById('stat-nunca').textContent = nunca;
-        alertaEsquecidos.style.display = '';
+        if (alertaEsquecidos) alertaEsquecidos.style.display = '';
       }
     }
 

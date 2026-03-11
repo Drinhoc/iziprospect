@@ -77,30 +77,112 @@ Queria saber se vocês já usam algo assim por aí.`,
   ],
 };
 
+// ===== Follow-up 1 (~5 dias sem resposta) =====
+const FU1_TEMPLATES = {
+  odontologia: [
+    `Oi! Tudo bem? 🙂 Passei aqui só pra confirmar se conseguiu ver minha mensagem sobre a assistente virtual para atendimento no WhatsApp. Se não for algo interessante pra vocês no momento, sem problema!`,
+    `Oi! Pergunta rápida — vocês costumam perder agendamentos porque a mensagem chegou fora do horário e não foi respondida a tempo? Se sim, posso te mostrar em 2 minutos como resolvo isso pra clínicas odontológicas daqui. 🙂`,
+    `Oi! Só passando rapidamente. Estou ajudando algumas clínicas odontológicas da região a automatizar o WhatsApp — queria checar se faria sentido pra vocês. Posso te enviar um vídeo rápido de como funciona?`,
+  ],
+  medicina: [
+    `Oi! Tudo bem? 🙂 Só passando pra confirmar se conseguiu ver minha mensagem sobre automação de atendimento no WhatsApp pra clínicas. Se não for o momento, tudo bem também!`,
+    `Oi! Pergunta rápida — vocês costumam perder consultas por mensagens que chegaram fora do horário e não foram respondidas a tempo? Se sim, posso te mostrar como algumas clínicas médicas daqui resolveram isso. 🙂`,
+    `Oi! Só passando rapidamente. Estou ajudando algumas clínicas da região a automatizar o atendimento no WhatsApp — quis checar se faria sentido pra vocês também. Posso te enviar um vídeo rápido?`,
+  ],
+  estetica: [
+    `Oi! Tudo bem? 🙂 Passando só pra confirmar se conseguiu ver minha mensagem sobre automação de atendimento no WhatsApp pra clínicas de estética. Se não for algo relevante agora, tudo bem!`,
+    `Oi! Pergunta rápida — vocês costumam perder clientes porque a mensagem chegou fora do horário ou demorou pra ser respondida? Posso te mostrar em 2 minutos como estou ajudando clínicas de estética daqui a resolver isso. 🙂`,
+    `Oi! Só passando rapidamente. Estou ajudando algumas clínicas de estética da região com automação de WhatsApp — quis checar se faria sentido conhecer. Posso te enviar um vídeo rápido?`,
+  ],
+  default: [
+    `Oi! Tudo bem? 🙂 Só passando pra confirmar se conseguiu ver minha mensagem sobre automação de atendimento no WhatsApp. Se não for o momento, sem problema!`,
+    `Oi! Pergunta rápida — vocês costumam perder clientes porque a mensagem chegou fora do horário e demorou a ser respondida? Posso te mostrar em 2 minutos como resolvo isso. 🙂`,
+    `Oi! Só passando rapidamente. Estou ajudando alguns negócios da região a automatizar o atendimento no WhatsApp — quis checar se faria sentido pra vocês. Posso te enviar um vídeo rápido?`,
+  ],
+};
+
+// ===== Follow-up 2 (~10 dias — mais curto, baixa pressão) =====
+const FU2_TEMPLATES = {
+  odontologia: [
+    `Oi! Só passando rapidamente pra saber se faz sentido pra vocês conhecer a solução de automação de atendimento no WhatsApp 🙂 Se preferir, posso enviar um vídeo curto mostrando como funciona.`,
+    `Oi! Última mensagem por aqui 🙂 Se o atendimento automatizado no WhatsApp não for prioridade agora, tudo bem — mas se quiser ver como funciona pra clínicas odontológicas, é só falar.`,
+    `Oi! Se surgir interesse em automatizar o atendimento da clínica no WhatsApp no futuro, é só me chamar 🙂 Boa sorte com a agenda!`,
+  ],
+  medicina: [
+    `Oi! Só passando rapidamente pra saber se faz sentido conhecer a solução de automação de atendimento no WhatsApp pra clínicas 🙂 Posso enviar um vídeo curto se preferir.`,
+    `Oi! Última mensagem por aqui 🙂 Se automação de WhatsApp não for prioridade agora, tudo bem — mas se quiser ver como funciona, é só falar.`,
+    `Oi! Se surgir interesse em automatizar o atendimento da clínica no WhatsApp no futuro, é só me chamar 🙂 Boa sorte com a agenda!`,
+  ],
+  estetica: [
+    `Oi! Só passando rapidamente pra saber se faz sentido pra vocês conhecer a automação de atendimento no WhatsApp 🙂 Se preferir, posso enviar um vídeo curto de como funciona.`,
+    `Oi! Última mensagem por aqui 🙂 Se automação de WhatsApp não for prioridade agora, tudo bem — mas se quiser ver como funciona pra clínicas de estética, é só falar.`,
+    `Oi! Se surgir interesse em automatizar o atendimento no futuro, é só me chamar 🙂 Sucesso com a agenda!`,
+  ],
+  default: [
+    `Oi! Só passando rapidamente pra saber se faz sentido pra vocês conhecer a solução de automação de atendimento no WhatsApp 🙂 Posso enviar um vídeo curto se preferir.`,
+    `Oi! Última mensagem por aqui 🙂 Se automação de WhatsApp não for prioridade agora, tudo bem — mas se quiser ver como funciona, é só falar.`,
+    `Oi! Se surgir interesse em automatizar o atendimento no WhatsApp no futuro, é só me chamar 🙂 Boa sorte!`,
+  ],
+};
+
 function _abVariant(leadId) {
   if (!leadId) return 0;
   return leadId.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % 3;
 }
 
-function buildMsgInicial(l) {
-  const seg = l.segmento || '';
-  const templates = MSG_TEMPLATES[seg] || MSG_TEMPLATES.default;
-  const variant = _abVariant(l.lead_id || '');
-  const tpl = templates[variant] || templates[0];
-  return tpl.replace(/{{nome}}/g, (l.nome || 'vocês').trim());
+function _daysSince(dateStr) {
+  if (!dateStr) return 0;
+  const d = new Date(dateStr.slice(0, 10));
+  if (isNaN(d)) return 0;
+  return Math.floor((Date.now() - d.getTime()) / 86400000);
 }
+
+function _getMsgTipo(l) {
+  if (l.status !== 'contato feito') return 'inicial';
+  const ref = l.ultima_interacao_em || l.data_criacao || '';
+  const dias = _daysSince(ref);
+  if (dias >= 10) return 'fu2';
+  if (dias >= 5)  return 'fu1';
+  return 'inicial';
+}
+
+function _buildMsg(l, tipo) {
+  const seg = l.segmento || '';
+  let tpls;
+  if (tipo === 'fu1') tpls = FU1_TEMPLATES[seg] || FU1_TEMPLATES.default;
+  else if (tipo === 'fu2') tpls = FU2_TEMPLATES[seg] || FU2_TEMPLATES.default;
+  else tpls = MSG_TEMPLATES[seg] || MSG_TEMPLATES.default;
+  const variant = _abVariant(l.lead_id || '');
+  return (tpls[variant] || tpls[0]).replace(/{{nome}}/g, (l.nome || 'vocês').trim());
+}
+
+function buildMsgInicial(l) {
+  return _buildMsg(l, 'inicial');
+}
+
+const _MSG_TIPO_LABEL = {
+  inicial: 'Mensagem inicial sugerida',
+  fu1:     'Follow-up 1 (5+ dias sem resposta)',
+  fu2:     'Follow-up 2 (10+ dias sem resposta)',
+};
 
 function updateMsgSugerida(l) {
   const sec = document.getElementById('msg-sugerida-section');
   if (!sec) return;
-  const show = ['novo', 'sem resposta'].includes(l.status);
+  const show = ['novo', 'contato feito'].includes(l.status);
   sec.classList.toggle('hidden', !show);
   if (!show) return;
+
+  const tipo = _getMsgTipo(l);
   const pre = document.getElementById('msg-sugerida-text');
   const variantLabel = document.getElementById('msg-sugerida-variant');
+  const titleEl = sec.querySelector('.msg-sugerida-title');
   const variant = _abVariant(l.lead_id || '');
-  pre.textContent = buildMsgInicial(l);
+
+  pre.textContent = _buildMsg(l, tipo);
   if (variantLabel) variantLabel.textContent = `Variante ${'ABC'[variant]}`;
+  if (titleEl) titleEl.textContent = _MSG_TIPO_LABEL[tipo] || _MSG_TIPO_LABEL.inicial;
+  sec.dataset.msgTipo = tipo;
 }
 
 let state = {
@@ -110,6 +192,7 @@ let state = {
   search: '',
   status: '',
   segmento: '',
+  temperatura: '',
   searchTimer: null,
   currentLeadId: null,
   // A/B tracking: status do lead quando o modal foi aberto
@@ -131,22 +214,32 @@ function segLabel(s) {
   return SEGMENTO_LABEL[s] || (s ? s.charAt(0).toUpperCase() + s.slice(1) : '—');
 }
 
-function statusBadge(s, statusAnterior) {
+function statusBadge(s) {
   const map = {
     'novo':             'badge-novo',
-    '1º contato':       'badge-1-contato',
-    'qualificado':      'badge-qualificado',
-    'em espera':        statusAnterior === 'negociando' ? 'badge-negociando' : 'badge-qualificado',
-    'proposta enviada': 'badge-proposta',
+    'contato feito':    'badge-contato-feito',
+    'conversando':      'badge-conversando',
     'negociando':       'badge-negociando',
     'fechado':          'badge-fechado',
     'perdido':          'badge-perdido',
-    'sem resposta':     'badge-sem-resposta',
-    'contato inválido': 'badge-perdido',
-    'arquivado':        'badge-arquivado',
+    'contato inválido': 'badge-invalido',
   };
   const cls = map[s] || 'badge-novo';
   return `<span class="badge ${cls}">${s || '—'}</span>`;
+}
+
+function temperaturaBadge(l) {
+  if (['contato inválido'].includes(l.status)) return '';
+  const temp = l.temperatura || 'frio';
+  const map = {
+    'frio':     { cls: 'badge-temp-frio',     dot: '🔵', label: 'Frio' },
+    'morno':    { cls: 'badge-temp-morno',    dot: '🟡', label: 'Morno' },
+    'engajado': { cls: 'badge-temp-engajado', dot: '🟠', label: 'Engajado' },
+    'quente':   { cls: 'badge-temp-quente',   dot: '🔴', label: 'Quente' },
+    'cliente':  { cls: 'badge-temp-cliente',  dot: '🟢', label: 'Cliente' },
+  };
+  const t = map[temp] || map['frio'];
+  return `<span class="badge-temp ${t.cls}" title="Temperatura: ${t.label}">${t.dot} ${t.label}</span>`;
 }
 
 function fmtDate(s) {
@@ -172,78 +265,38 @@ function fmtPhone(s) {
   return n.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3').trim();
 }
 
-// ===== Score de Engajamento =====
-// Calculado client-side com dados já disponíveis na listagem.
-// Escala 1-5 baseada em: status atual, recência da última interação, prioridade, followup agendado.
+// ===== Barra de temperatura =====
+// Baseada no campo `temperatura` do DB — sem cálculo client-side.
 
-function calcEngajamento(l) {
-  const STATUS_SCORE = {
-    'fechado': 5, 'negociando': 4.5, 'proposta enviada': 4,
-    'qualificado': 3.5, 'em espera': 3,
-    '1º contato': 2, 'novo': 1.5, 'sem resposta': 1, 'perdido': 0, 'contato inválido': 0, 'arquivado': 0,
-  };
-  let score = STATUS_SCORE[l.status] ?? 1.5;
-
-  // Recência
-  if (l.ultima_interacao_em) {
-    const diasSemInteracao = (Date.now() - new Date(l.ultima_interacao_em)) / 86_400_000;
-    if (diasSemInteracao < 3)       score += 0.5;
-    else if (diasSemInteracao < 7)  score += 0.2;
-    else if (diasSemInteracao > 14) score -= 0.4;
-  }
-
-  // Prioridade
-  if (l.prioridade === 'alta')   score += 0.3;
-  if (l.prioridade === 'baixa')  score -= 0.2;
-
-  // Followup futuro agendado
-  if (l.proximo_followup_em) {
-    const fu = l.proximo_followup_em.slice(0, 10);
-    const today = new Date().toISOString().slice(0, 10);
-    if (fu >= today) score += 0.2;
-  }
-
-  const nivel = Math.min(5, Math.max(1, Math.round(score)));
-  const cores = { 1: '#94a3b8', 2: '#60a5fa', 3: '#a78bfa', 4: '#fb923c', 5: '#10b981' };
-  const labels = { 1: 'Frio', 2: 'Morno', 3: 'Ativo', 4: 'Quente', 5: 'Fechando' };
-  return { nivel, cor: cores[nivel], label: labels[nivel] };
-}
-
-function engajamentoBadge(l) {
-  if (['arquivado', 'perdido'].includes(l.status)) return '';
-  const e = calcEngajamento(l);
-  return `<span class="badge-engaj badge-engaj--${e.nivel}" title="Engajamento: ${e.label} (${e.nivel}/5)"><span class="engaj-dot"></span>${e.label}</span>`;
-}
-
-const ENGAJ_LEVELS = [
-  { nivel: 1, label: 'Frio',     cor: '#94a3b8' },
-  { nivel: 2, label: 'Morno',    cor: '#60a5fa' },
-  { nivel: 3, label: 'Ativo',    cor: '#a78bfa' },
-  { nivel: 4, label: 'Quente',   cor: '#fb923c' },
-  { nivel: 5, label: 'Fechando', cor: '#10b981' },
+const TEMP_LEVELS = [
+  { key: 'frio',     dot: '🔵', label: 'Frio',     cor: '#94a3b8' },
+  { key: 'morno',    dot: '🟡', label: 'Morno',    cor: '#eab308' },
+  { key: 'engajado', dot: '🟠', label: 'Engajado', cor: '#f97316' },
+  { key: 'quente',   dot: '🔴', label: 'Quente',   cor: '#ef4444' },
+  { key: 'cliente',  dot: '🟢', label: 'Cliente',  cor: '#10b981' },
 ];
 
 function updateEngajBar(leads) {
   const bar = document.getElementById('engaj-bar');
   if (!bar) return;
-  const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  const counts = { frio: 0, morno: 0, engajado: 0, quente: 0, cliente: 0 };
   leads.forEach(l => {
-    if (!['arquivado', 'perdido'].includes(l.status)) {
-      counts[calcEngajamento(l).nivel]++;
-    }
+    const t = l.temperatura || 'frio';
+    if (counts[t] !== undefined) counts[t]++;
   });
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
   if (!total) { bar.classList.add('hidden'); return; }
 
-  bar.innerHTML = ENGAJ_LEVELS.map(e => {
-    const n = counts[e.nivel];
-    const pct = total > 0 ? Math.round((n / total) * 100) : 0;
-    return `<span class="engaj-stat" style="--cor:${e.cor}" title="${e.label}: ${n} lead${n !== 1 ? 's' : ''} (${pct}%)">
+  bar.innerHTML = TEMP_LEVELS.map(t => {
+    const n = counts[t.key];
+    if (!n) return '';
+    const pct = Math.round((n / total) * 100);
+    return `<span class="engaj-stat" style="--cor:${t.cor}" title="${t.label}: ${n} lead${n !== 1 ? 's' : ''} (${pct}%)">
       <span class="engaj-stat-dot"></span>
-      <span class="engaj-stat-label">${e.label}</span>
+      <span class="engaj-stat-label">${t.dot} ${t.label}</span>
       <span class="engaj-stat-count">${n}</span>
     </span>`;
-  }).join('<span class="engaj-sep"></span>');
+  }).filter(Boolean).join('<span class="engaj-sep"></span>');
   bar.classList.remove('hidden');
 }
 
@@ -261,6 +314,7 @@ async function loadLeads() {
   if (state.search) params.set('search', state.search);
   if (state.status) params.set('status', state.status);
   if (state.segmento) params.set('segmento', state.segmento);
+  if (state.temperatura) params.set('temperatura', state.temperatura);
 
   try {
     const res = await fetch('/api/leads?' + params);
@@ -289,18 +343,19 @@ async function loadLeads() {
 }
 
 function _copyMsgBtn(l) {
-  if (!['novo', 'sem resposta'].includes(l.status)) return '';
-  return `<button class="copy-msg-btn" data-nome="${esc(l.nome)}" data-seg="${l.segmento || ''}" data-lid="${l.lead_id || ''}" title="Copiar mensagem inicial">
+  if (!['novo', 'contato feito'].includes(l.status)) return '';
+  const tipo = _getMsgTipo(l);
+  return `<button class="copy-msg-btn" data-nome="${esc(l.nome)}" data-seg="${l.segmento || ''}" data-lid="${l.lead_id || ''}" data-tipo="${tipo}" data-ulti="${esc(l.ultima_interacao_em || '')}" data-cria="${esc(l.data_criacao || '')}" title="Copiar mensagem">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
   </button>`;
 }
 
-function _trackAbEvento(leadId, segmento, evento) {
+function _trackAbEvento(leadId, segmento, evento, tipo = 'inicial') {
   const variante = ['A', 'B', 'C'][_abVariant(leadId)];
   fetch('/api/msg-ab/evento', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ lead_id: leadId, variante, segmento, evento }),
+    body: JSON.stringify({ lead_id: leadId, variante, segmento, evento, tipo }),
   }).catch(() => {});
 }
 
@@ -308,18 +363,23 @@ function _bindCopyMsgBtns(el) {
   el.querySelectorAll('.copy-msg-btn').forEach(btn => {
     btn.onclick = e => {
       e.stopPropagation();
-      const msg = buildMsgInicial({ nome: btn.dataset.nome, segmento: btn.dataset.seg, lead_id: btn.dataset.lid });
+      const tipo = btn.dataset.tipo || 'inicial';
+      const msg = _buildMsg(
+        { nome: btn.dataset.nome, segmento: btn.dataset.seg, lead_id: btn.dataset.lid,
+          ultima_interacao_em: btn.dataset.ulti, data_criacao: btn.dataset.cria },
+        tipo
+      );
       navigator.clipboard.writeText(msg).then(() => {
         btn.classList.add('copied');
         setTimeout(() => btn.classList.remove('copied'), 1400);
-        _trackAbEvento(btn.dataset.lid, btn.dataset.seg, 'copiada');
+        _trackAbEvento(btn.dataset.lid, btn.dataset.seg, 'copiada', tipo);
       });
     };
   });
 }
 
 function _novoBadgeBtn(l) {
-  return `<button class="badge badge-novo badge-novo--btn" data-lid="${l.lead_id}" data-seg="${l.segmento || ''}" title="Marcar como 1º contato">Novo</button>`;
+  return `<button class="badge badge-novo badge-novo--btn" data-lid="${l.lead_id}" data-seg="${l.segmento || ''}" title="Marcar como Contato feito">Novo</button>`;
 }
 
 function _bindNovoBadgeBtns(el) {
@@ -331,11 +391,11 @@ function _bindNovoBadgeBtns(el) {
       await fetch(`/api/leads/${btn.dataset.lid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: '1º contato' }),
+        body: JSON.stringify({ status: 'contato feito', temperatura: 'frio' }),
       }).catch(() => {});
       const badge = document.createElement('span');
-      badge.className = 'badge badge-1-contato';
-      badge.textContent = '1º contato';
+      badge.className = 'badge badge-contato-feito';
+      badge.textContent = 'Contato feito';
       btn.replaceWith(badge);
     };
   });
@@ -356,7 +416,7 @@ function renderTable(leads) {
       <td class="text-muted">${esc(l.cidade) || '—'}</td>
       <td class="td-phone">${phoneTd}</td>
       <td class="text-muted">${esc(l.responsavel) || '—'}</td>
-      <td>${l.status === 'novo' ? _novoBadgeBtn(l) : statusBadge(l.status, l.status_anterior)}</td>
+      <td>${l.status === 'novo' ? _novoBadgeBtn(l) : statusBadge(l.status)} ${temperaturaBadge(l)}</td>
       <td class="text-muted td-pendencia">${esc(l.pendencia) || '—'}</td>
       <td class="text-muted">${fmtDate(l.ultima_interacao_em)}</td>
       <td>${followupCell(l.proximo_followup_em)}</td>`;
@@ -389,10 +449,12 @@ function renderCards(leads) {
     const phoneHtml = phone
       ? `📱 ${phone} <button class="copy-phone-btn" data-phone="${esc(fmtPhone(l.whatsapp) || '')}" title="Copiar número">⎘</button>`
       : null;
-    const msgBtnHtml = ['novo', 'sem resposta'].includes(l.status)
-      ? `<button class="copy-msg-btn copy-msg-btn--card" data-nome="${esc(l.nome)}" data-seg="${l.segmento || ''}" data-lid="${l.lead_id || ''}" title="Copiar mensagem inicial">
+    const msgTipo = ['novo', 'contato feito'].includes(l.status) ? _getMsgTipo(l) : null;
+    const msgBtnLabel = msgTipo === 'fu2' ? 'Follow-up 2' : msgTipo === 'fu1' ? 'Follow-up 1' : 'Mensagem inicial';
+    const msgBtnHtml = msgTipo
+      ? `<button class="copy-msg-btn copy-msg-btn--card" data-nome="${esc(l.nome)}" data-seg="${l.segmento || ''}" data-lid="${l.lead_id || ''}" data-tipo="${msgTipo}" data-ulti="${esc(l.ultima_interacao_em || '')}" data-cria="${esc(l.data_criacao || '')}" title="Copiar mensagem">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          Mensagem inicial
+          ${msgBtnLabel}
         </button>`
       : null;
     const meta = [
@@ -406,7 +468,7 @@ function renderCards(leads) {
     card.innerHTML = `
       <div class="lc-top">
         <span class="lc-name">${esc(l.nome) || '—'}</span>
-        <div class="lc-badges">${l.status === 'novo' ? _novoBadgeBtn(l) : statusBadge(l.status, l.status_anterior)}${engajamentoBadge(l)}</div>
+        <div class="lc-badges">${l.status === 'novo' ? _novoBadgeBtn(l) : statusBadge(l.status)} ${temperaturaBadge(l)}</div>
       </div>
       ${meta.length ? `<div class="lc-meta">${meta.map(m => `<span class="lc-meta-item">${m}</span>`).join('')}</div>` : ''}
       ${msgBtnHtml ? `<div class="lc-msg-action">${msgBtnHtml}</div>` : ''}
@@ -470,6 +532,7 @@ function closeFilters() {
 function applyFilters() {
   state.status = document.getElementById('filter-status').value;
   state.segmento = document.getElementById('filter-segmento').value;
+  state.temperatura = document.getElementById('filter-temperatura').value;
   state.page = 1;
   updateFilterChips();
   loadLeads();
@@ -478,8 +541,10 @@ function applyFilters() {
 function clearFilters() {
   state.status = '';
   state.segmento = '';
+  state.temperatura = '';
   document.getElementById('filter-status').value = '';
   document.getElementById('filter-segmento').value = '';
+  document.getElementById('filter-temperatura').value = '';
   state.page = 1;
   updateFilterChips();
   loadLeads();
@@ -492,6 +557,7 @@ function updateFilterChips() {
   const active = [
     state.status && { label: `Status: ${state.status}`, clear: () => { state.status = ''; document.getElementById('filter-status').value = ''; } },
     state.segmento && { label: `Segmento: ${segLabel(state.segmento)}`, clear: () => { state.segmento = ''; document.getElementById('filter-segmento').value = ''; } },
+    state.temperatura && { label: `Temp: ${state.temperatura}`, clear: () => { state.temperatura = ''; document.getElementById('filter-temperatura').value = ''; } },
   ].filter(Boolean);
 
   if (active.length === 0) {
@@ -665,6 +731,8 @@ function fillForm(l) {
   document.getElementById('f-cidade').value = l.cidade || '';
   document.getElementById('f-segmento').value = l.segmento || '';
   document.getElementById('f-status').value = l.status || 'novo';
+  document.getElementById('f-temperatura').value = l.temperatura || 'frio';
+  document.getElementById('f-data-recontato').value = (l.data_recontato || '').slice(0, 10);
   document.getElementById('f-whatsapp').value = l.whatsapp || '';
   document.getElementById('f-email').value = l.email || '';
   document.getElementById('f-instagram').value = l.instagram || '';
@@ -696,15 +764,22 @@ function updateConditionalFields(status) {
   document.getElementById('fg-fechamento').classList.toggle('hidden', !isFechado);
   document.getElementById('fg-data-fechamento').classList.toggle('hidden', !isFechado);
   document.getElementById('fg-motivo-perda').classList.toggle('hidden', !isPerdido);
+  document.getElementById('fg-data-recontato').classList.toggle('hidden', !isPerdido);
+  // Auto-set temperatura para cliente quando fechado
+  if (isFechado) {
+    document.getElementById('f-temperatura').value = 'cliente';
+  }
 }
 
 function clearForm() {
   ['f-nome','f-cidade','f-whatsapp','f-email','f-instagram','f-site','f-responsavel',
-   'f-pendencia','f-observacoes','f-valor-venda','f-data-fechamento','f-motivo-perda','f-data-criacao'].forEach(id => {
+   'f-pendencia','f-observacoes','f-valor-venda','f-data-fechamento','f-motivo-perda',
+   'f-data-criacao','f-data-recontato'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('f-segmento').value = '';
   document.getElementById('f-status').value = 'novo';
+  document.getElementById('f-temperatura').value = 'frio';
   document.getElementById('f-fonte').value = '';
   document.getElementById('f-followup').value = '';
   updateConditionalFields('novo');
@@ -717,6 +792,7 @@ function formData() {
     cidade: document.getElementById('f-cidade').value.trim(),
     segmento: document.getElementById('f-segmento').value,
     status: document.getElementById('f-status').value,
+    temperatura: document.getElementById('f-temperatura').value,
     whatsapp: document.getElementById('f-whatsapp').value.trim(),
     email: document.getElementById('f-email').value.trim(),
     instagram: document.getElementById('f-instagram').value.trim(),
@@ -729,6 +805,7 @@ function formData() {
     valor_venda: document.getElementById('f-valor-venda').value || '',
     data_fechamento: document.getElementById('f-data-fechamento').value || '',
     motivo_perda: document.getElementById('f-motivo-perda').value.trim(),
+    data_recontato: document.getElementById('f-data-recontato').value || '',
     data_criacao: document.getElementById('f-data-criacao').value || '',
   };
 }
@@ -764,10 +841,10 @@ async function saveLead(e) {
       throw new Error(err.detail || 'Erro ao salvar');
     }
 
-    // Rastrear conversão A/B: lead saiu de novo/1º contato/sem resposta para outro status
-    if (!isNew && ['novo', '1º contato', 'sem resposta'].includes(state._modalStatusInicial)) {
+    // Rastrear conversão A/B: lead saiu de novo/contato feito para outro status
+    if (!isNew && ['novo', 'contato feito'].includes(state._modalStatusInicial)) {
       const novoStatus = data.status;
-      if (!['novo', '1º contato', 'sem resposta'].includes(novoStatus)) {
+      if (!['novo', 'contato feito'].includes(novoStatus)) {
         _trackAbEvento(leadId, state._modalSegmento, 'respondeu');
       }
     }
@@ -836,13 +913,15 @@ document.addEventListener('keydown', e => {
 document.getElementById('btn-copy-msg-modal')?.addEventListener('click', () => {
   const pre = document.getElementById('msg-sugerida-text');
   const btn = document.getElementById('btn-copy-msg-modal');
+  const sec = document.getElementById('msg-sugerida-section');
   if (!pre || !btn) return;
   navigator.clipboard.writeText(pre.textContent).then(() => {
     btn.classList.add('copied');
     setTimeout(() => btn.classList.remove('copied'), 1400);
     const leadId = document.getElementById('form-lead-id').value;
     const segmento = document.getElementById('f-segmento').value;
-    _trackAbEvento(leadId, segmento, 'copiada');
+    const tipo = sec?.dataset.msgTipo || 'inicial';
+    _trackAbEvento(leadId, segmento, 'copiada', tipo);
   });
 });
 

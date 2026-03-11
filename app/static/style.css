@@ -308,21 +308,34 @@ label {
   white-space: nowrap;
   text-transform: capitalize;
 }
-.badge-novo         { background: #e5e7eb; color: #374151; }
+/* Status badges — 7 status */
+.badge-novo          { background: #e5e7eb; color: #374151; }
 button.badge-novo--btn { border: none; cursor: pointer; line-height: inherit; }
 button.badge-novo--btn:hover { background: #cffafe; color: #0e7490; }
-.badge-1-contato    { background: #cffafe; color: #0e7490; }
-.badge-qualificado  { background: #ede9fe; color: #6d28d9; }
-.badge-proposta     { background: #fef3c7; color: #92400e; }
-.badge-negociando   { background: #ffedd5; color: #c2410c; }
-.badge-fechado      { background: #d1fae5; color: #065f46; }
-.badge-perdido      { background: #fee2e2; color: #991b1b; }
-.badge-sem-resposta { background: #e5e7eb; color: #4b5563; }
-.badge-arquivado    { background: #e5e7eb; color: #6b7280; }
+.badge-contato-feito { background: #cffafe; color: #0e7490; }
+.badge-conversando   { background: #ede9fe; color: #6d28d9; }
+.badge-negociando    { background: #ffedd5; color: #c2410c; }
+.badge-fechado       { background: #d1fae5; color: #065f46; }
+.badge-perdido       { background: #fee2e2; color: #991b1b; }
+.badge-invalido      { background: #e5e7eb; color: #6b7280; }
 
-.badge-prio-alta   { background: #fee2e2; color: #991b1b; }
-.badge-prio-media  { background: #fef3c7; color: #92400e; }
-.badge-prio-baixa  { background: #d1fae5; color: #065f46; }
+/* Temperatura badges */
+.badge-temp {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 99px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.badge-temp-frio     { background: #f1f5f9; color: #64748b; }
+.badge-temp-morno    { background: #fefce8; color: #854d0e; }
+.badge-temp-engajado { background: #fff7ed; color: #c2410c; }
+.badge-temp-quente   { background: #fef2f2; color: #991b1b; }
+.badge-temp-cliente  { background: #f0fdf4; color: #166534; }
 
 /* ---------- Filter bar ---------- */
 .filter-bar {
@@ -1207,9 +1220,6 @@ button.badge-novo--btn:hover { background: #cffafe; color: #0e7490; }
   .seg-bar-label { font-size: .72rem; }
 }
 
-/* em espera badge — amber */
-.badge-em-espera { background: #fef3c7; color: #92400e; }
-
 /* followup date indicators */
 .followup-hoje    { color: #d97706; font-weight: 600; }
 .followup-vencido { color: #dc2626; font-weight: 600; }
@@ -1652,21 +1662,24 @@ button.badge-novo--btn:hover { background: #cffafe; color: #0e7490; }
 :root.dark .leads-table tbody tr:hover td { color: #f1f5f9; }
 :root.dark .leads-table th { background: #162032; }
 
-/* Dark mode: status/priority badges that use hardcoded light bg */
-/* Dark: status badges */
-:root.dark .badge-novo         { background: #374151; color: #d1d5db; }
+/* Dark mode: status badges */
+:root.dark .badge-novo          { background: #374151; color: #d1d5db; }
 :root.dark button.badge-novo--btn:hover { background: #164e63; color: #67e8f9; }
-:root.dark .badge-1-contato    { background: #164e63; color: #67e8f9; }
-:root.dark .badge-qualificado  { background: #2e1065; color: #c4b5fd; }
-:root.dark .badge-proposta     { background: #451a03; color: #fcd34d; }
-:root.dark .badge-negociando   { background: #431407; color: #fb923c; }
-:root.dark .badge-fechado      { background: #064e3b; color: #6ee7b7; }
-:root.dark .badge-perdido      { background: #450a0a; color: #fca5a5; }
-:root.dark .badge-sem-resposta { background: #1f2937; color: #9ca3af; }
-:root.dark .badge-arquivado    { background: #1f2937; color: #6b7280; }
-:root.dark .badge-em-espera    { background: #451a03; color: #fbbf24; }
+:root.dark .badge-contato-feito { background: #164e63; color: #67e8f9; }
+:root.dark .badge-conversando   { background: #2e1065; color: #c4b5fd; }
+:root.dark .badge-negociando    { background: #431407; color: #fb923c; }
+:root.dark .badge-fechado       { background: #064e3b; color: #6ee7b7; }
+:root.dark .badge-perdido       { background: #450a0a; color: #fca5a5; }
+:root.dark .badge-invalido      { background: #1f2937; color: #6b7280; }
 
-/* Dark: priority badges */
+/* Dark: temperatura badges */
+:root.dark .badge-temp-frio     { background: #1e293b; color: #94a3b8; }
+:root.dark .badge-temp-morno    { background: #422006; color: #fde68a; }
+:root.dark .badge-temp-engajado { background: #431407; color: #fdba74; }
+:root.dark .badge-temp-quente   { background: #450a0a; color: #fca5a5; }
+:root.dark .badge-temp-cliente  { background: #052e16; color: #86efac; }
+
+/* Dark: priority badges (backward compat) */
 :root.dark .badge-prio-alta   { background: #450a0a; color: #fca5a5; }
 :root.dark .badge-prio-media  { background: #451a03; color: #fcd34d; }
 :root.dark .badge-prio-baixa  { background: #064e3b; color: #6ee7b7; }

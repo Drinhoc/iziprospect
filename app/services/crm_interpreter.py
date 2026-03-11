@@ -134,11 +134,10 @@ def detect_followup_command(raw_text: str) -> Optional[tuple]:
 # ---------------------------------------------------------------------------
 
 _STATUS_FOLLOWUP_RULES: dict = {
-    "1º contato":   (5,  "aguardar resposta ou fazer follow-up"),
-    "qualificado":  (2,  "avançar proposta"),
-    "em espera":    (5,  "cobrar retorno"),
-    "negociando":   (2,  "fechar negociação"),
-    "sem resposta": (30, "tentar nova abordagem"),
+    "contato feito": (5, "aguardar resposta ou fazer follow-up"),
+    "conversando":   (2, "avançar proposta ou negociação"),
+    "negociando":    (2, "fechar negociação"),
+    "perdido":       (30, "tentar recontato"),
 }
 
 
@@ -181,18 +180,24 @@ def infer_activity_type(raw_text: str) -> str:
     return "registrar atividade"
 
 
-# Override explícito: usuário pode forçar status entre colchetes, ex: [qualificado]
+# Override explícito: usuário pode forçar status entre colchetes, ex: [conversando]
 _STATUS_OVERRIDE_RE = re.compile(
-    r"\[\s*(novo|1[oº°]\s*contato|qualificado|em espera|negociando|fechado|perdido|sem resposta|contato inv[aá]lido)\s*\]",
+    r"\[\s*(novo|contato\s+feito|conversando|negociando|fechado|perdido|contato\s+inv[aá]lido)\s*\]",
     re.IGNORECASE,
 )
 
 _STATUS_NORMALIZE = {
-    "contato invalido": "contato inválido",
-    "contato inválido": "contato inválido",
-    "1o contato":  "1º contato",
-    "1° contato":  "1º contato",
-    "em contato":  "1º contato",
+    "contato invalido":   "contato inválido",
+    "contato inválido":   "contato inválido",
+    "1o contato":         "contato feito",
+    "1° contato":         "contato feito",
+    "1º contato":         "contato feito",
+    "em contato":         "contato feito",
+    "primeiro contato":   "contato feito",
+    "qualificado":        "conversando",
+    "em espera":          "conversando",
+    "proposta enviada":   "conversando",
+    "sem resposta":       "contato feito",
 }
 
 
@@ -215,18 +220,6 @@ def infer_status(raw_text: str) -> Optional[str]:
     if any(k in text for k in ["numero errado", "numero invalido", "numero incorreto", "nao existe", "nao tem whatsapp", "nao usa whatsapp"]):
         return "contato inválido"
 
-    # Em espera — você enviou proposta/avançou e aguarda retorno (lead estava engajado)
-    if any(k in text for k in ["enviei proposta", "mandei proposta", "proposta enviada", "proposta mandada",
-                                "aguardando retorno da proposta", "nao respondeu a proposta",
-                                "proposta sem resposta", "sem retorno da proposta"]):
-        return "em espera"
-
-    # Sem resposta — verificar ANTES de perdido para evitar falso positivo
-    if any(k in text for k in ["sem resposta", "nao respondeu", "nao responde", "nenhuma resposta",
-                                "ignorando", "sumiu", "ghosting", "nao retornou", "nunca mais",
-                                "nao deu retorno", "sem retorno", "ficou de retornar", "nao viu"]):
-        return "sem resposta"
-
     # Perdido — apenas rejeição explícita e ativa
     if any(k in text for k in ["sem interesse", "nao tem interesse", "nao quer", "descartei", "descartado",
                                 "caiu fora", "rejeitou", "pode tirar", "nao vai comprar", "nao precisa"]):
@@ -236,16 +229,41 @@ def infer_status(raw_text: str) -> Optional[str]:
     if any(k in text for k in ["negociando", "negociacao", "ajustando proposta", "quer desconto", "pediu desconto", "condicao de pagamento", "parcelamento"]):
         return "negociando"
 
-    # Qualificado
-    if any(k in text for k in ["achou interessante", "quer saber mais", "pediu mais info", "quer conhecer", "demonstrou interesse", "interessou", "gostou bastante", "quer ver demo", "pediu demo", "quer demo"]):
-        return "qualificado"
+    # Conversando (interesse demonstrado, proposta enviada, aguardando retorno)
+    if any(k in text for k in ["achou interessante", "quer saber mais", "pediu mais info", "quer conhecer",
+                                "demonstrou interesse", "interessou", "gostou bastante", "quer ver demo",
+                                "pediu demo", "quer demo", "enviei proposta", "mandei proposta",
+                                "proposta enviada", "proposta mandada", "aguardando retorno"]):
+        return "conversando"
 
-    # 1º contato — primeiro contato feito, aguardando resposta
+    # Contato feito — primeiro ou qualquer contato feito, aguardando resposta
     if any(k in text for k in ["primeiro contato", "feito contato", "feito o contato", "fiz o contato",
                                 "mandei mensagem", "enviei mensagem", "contatei", "liguei", "tentei contato",
-                                "respondeu", "me respondeu", "retornou", "falei com", "atendeu"]):
-        return "1º contato"
+                                "respondeu", "me respondeu", "retornou", "falei com", "atendeu",
+                                "sem resposta", "nao respondeu", "sumiu", "ghosting", "nao retornou"]):
+        return "contato feito"
 
+    return None
+
+
+def infer_temperatura(raw_text: str) -> Optional[str]:
+    """Infere temperatura do lead a partir do texto da mensagem.
+
+    Retorna: 'frio', 'morno', 'engajado', 'quente' ou None.
+    """
+    text = normalize_text(raw_text)
+    if any(k in text for k in ["muito interessado", "super interessado", "quer fechar", "animado",
+                                "empolgado", "adorou", "quente", "esta quente"]):
+        return "quente"
+    if any(k in text for k in ["interessado", "quer saber mais", "demonstrou interesse", "interessou",
+                                "quer demo", "quer ver", "curiosidade"]):
+        return "quente"
+    if any(k in text for k in ["engajado", "conversando bem", "respondendo bem", "boa conversa", "avancando"]):
+        return "engajado"
+    if any(k in text for k in ["respondeu", "retornou", "me respondeu", "atendeu", "respondendo"]):
+        return "morno"
+    if any(k in text for k in ["sem resposta", "nao respondeu", "sumiu", "frio", "esfriou", "nao retornou", "ghosting"]):
+        return "frio"
     return None
 
 
@@ -291,9 +309,10 @@ def detect_sales_result(raw_text: str) -> Optional[str]:
 @dataclass
 class MicroUpdate:
     """Resultado de detecção de micro-update conversacional."""
-    candidate_name: str   # Nome do lead a buscar no DB
-    status: str           # Status a aplicar
-    activity_type: str    # Tipo de atividade a registrar
+    candidate_name: str            # Nome do lead a buscar no DB
+    status: str                    # Status a aplicar
+    activity_type: str             # Tipo de atividade a registrar
+    temperatura: Optional[str] = None  # Temperatura a aplicar (opcional)
 
 
 # Campos estruturados: presença indica mensagem rica → deve ir pro LLM
@@ -304,28 +323,30 @@ _STRUCTURED_FIELD_RE = [
     re.compile(r"@[a-zA-Z0-9_]{3,}"),                                      # instagram
 ]
 
-# (regex, índice do grupo com nome-candidato, status, activity_type)
-# Aplicados sobre o texto normalizado (sem acentos, lowercase)
+# (regex, status, activity_type) — aplicados sobre texto normalizado (sem acentos, lowercase)
+# Opcionalmente pode ter 4º elemento: temperatura
 _MICRO_PATTERNS: List[tuple] = [
     # Nome vem antes do verbo
-    (re.compile(r"^(.+?)\s+respondeu\b"),                              "1º contato",       "respondeu"),
-    (re.compile(r"^(.+?)\s+nao\s+(?:usa|tem)\s+whatsapp\b"),          "contato inválido", "número inválido"),
-    (re.compile(r"^(.+?)\s+quer\s+(?:demo|apresentacao|apresentação)\b"), "qualificado",  "demo agendada"),
-    (re.compile(r"^(.+?)\s+(?:esta\s+|está\s+)?interessad[ao]\b"),    "qualificado",      "respondeu"),
-    (re.compile(r"^(.+?)\s+fechou\b"),                                 "fechado",          "venda fechada"),
-    (re.compile(r"^(.+?)\s+nao\s+(?:quer|tem)\s+interesse\b"),        "perdido",          "sem interesse"),
-    (re.compile(r"^(.+?)\s+sem\s+interesse\b"),                        "perdido",          "sem interesse"),
-    (re.compile(r"^(.+?)\s+descartad[ao]\b"),                          "perdido",          "sem interesse"),
-    (re.compile(r"^(.+?)\s+numero\s+(?:errado|invalido|incorreto)\b"), "contato inválido", "número inválido"),
+    (re.compile(r"^(.+?)\s+respondeu\b"),                              "contato feito",    "respondeu",          "morno"),
+    (re.compile(r"^(.+?)\s+nao\s+(?:usa|tem)\s+whatsapp\b"),          "contato inválido", "número inválido",    None),
+    (re.compile(r"^(.+?)\s+quer\s+(?:demo|apresentacao|apresentação)\b"), "conversando",  "demo agendada",      "quente"),
+    (re.compile(r"^(.+?)\s+(?:esta\s+|está\s+)?interessad[ao]\b"),    "conversando",      "respondeu",          "quente"),
+    (re.compile(r"^(.+?)\s+fechou\b"),                                 "fechado",          "venda fechada",      "cliente"),
+    (re.compile(r"^(.+?)\s+nao\s+(?:quer|tem)\s+interesse\b"),        "perdido",          "sem interesse",      None),
+    (re.compile(r"^(.+?)\s+sem\s+interesse\b"),                        "perdido",          "sem interesse",      None),
+    (re.compile(r"^(.+?)\s+descartad[ao]\b"),                          "perdido",          "sem interesse",      None),
+    (re.compile(r"^(.+?)\s+numero\s+(?:errado|invalido|incorreto)\b"), "contato inválido", "número inválido",    None),
+    (re.compile(r"^(.+?)\s+(?:esta\s+)?quente\b"),                     "conversando",      "respondeu",          "quente"),
+    (re.compile(r"^(.+?)\s+esfriou\b"),                                "contato feito",    "sem retorno",        "frio"),
     # Primeiro contato (específico: deve aparecer antes do padrão genérico de mensagem)
-    (re.compile(r"^(?:mandei|enviei)\s+(?:o\s+)?primeiro\s+contato\s+(?:pra|para)\s+(?:o\s+|a\s+)?(.+)"), "1º contato", "primeiro contato"),
-    (re.compile(r"^fiz\s+(?:o\s+)?primeiro\s+contato\s+(?:com|pra|para)\s+(?:o\s+|a\s+)?(.+)"),            "1º contato", "primeiro contato"),
-    (re.compile(r"^1[o°º]\.?\s+contato\s+(?:feito\s+)?(?:pra|para|com)\s+(?:o\s+|a\s+)?(.+)"),            "1º contato", "primeiro contato"),
-    (re.compile(r"^primeiro\s+contato\s+(?:feito\s+)?(?:pra|para|com)\s+(?:o\s+|a\s+)?(.+)"),             "1º contato", "primeiro contato"),
+    (re.compile(r"^(?:mandei|enviei)\s+(?:o\s+)?primeiro\s+contato\s+(?:pra|para)\s+(?:o\s+|a\s+)?(.+)"), "contato feito", "primeiro contato",    "frio"),
+    (re.compile(r"^fiz\s+(?:o\s+)?primeiro\s+contato\s+(?:com|pra|para)\s+(?:o\s+|a\s+)?(.+)"),            "contato feito", "primeiro contato",    "frio"),
+    (re.compile(r"^1[o°º]\.?\s+contato\s+(?:feito\s+)?(?:pra|para|com)\s+(?:o\s+|a\s+)?(.+)"),            "contato feito", "primeiro contato",    "frio"),
+    (re.compile(r"^primeiro\s+contato\s+(?:feito\s+)?(?:pra|para|com)\s+(?:o\s+|a\s+)?(.+)"),             "contato feito", "primeiro contato",    "frio"),
     # Verbo vem antes, nome segue
-    (re.compile(r"^(?:mandei|enviei)\s+mensagem\s+(?:pra|para)\s+(.+)"), "1º contato",    "aguardando resposta"),
-    (re.compile(r"^contatei\s+(?:o\s+|a\s+)?(.+)"),                   "1º contato",       "aguardando resposta"),
-    (re.compile(r"^liguei\s+(?:pra|para)\s+(?:o\s+|a\s+)?(.+)"),     "1º contato",       "aguardando resposta"),
+    (re.compile(r"^(?:mandei|enviei)\s+mensagem\s+(?:pra|para)\s+(.+)"), "contato feito", "aguardando resposta", "frio"),
+    (re.compile(r"^contatei\s+(?:o\s+|a\s+)?(.+)"),                   "contato feito",    "aguardando resposta", "frio"),
+    (re.compile(r"^liguei\s+(?:pra|para)\s+(?:o\s+|a\s+)?(.+)"),     "contato feito",    "aguardando resposta", "frio"),
 ]
 
 
@@ -348,7 +369,9 @@ def detect_micro_update(raw_text: str) -> Optional[MicroUpdate]:
 
     norm = normalize_text(text)
 
-    for pattern, status, activity_type in _MICRO_PATTERNS:
+    for entry in _MICRO_PATTERNS:
+        pattern, status, activity_type = entry[0], entry[1], entry[2]
+        temperatura = entry[3] if len(entry) > 3 else None
         m = pattern.match(norm)
         if m:
             candidate_name = m.group(1).strip()
@@ -358,6 +381,7 @@ def detect_micro_update(raw_text: str) -> Optional[MicroUpdate]:
                     candidate_name=candidate_name,
                     status=status,
                     activity_type=activity_type,
+                    temperatura=temperatura,
                 )
 
     return None
@@ -411,11 +435,12 @@ _QUERY_PATTERNS: List[tuple] = [
     (re.compile(r"\bquem\s+(me\s+)?respondeu\b"),        QueryIntent(type="por_atividade", activity_type="respondeu", days=7)),
     (re.compile(r"\bquem\s+(devo\s+)?contatar\b"),       QueryIntent(type="followup")),
     (re.compile(r"\bfollow[\s-]?up(s)?\b"),              QueryIntent(type="followup")),
-    (re.compile(r"\bleads?\s+qualificados?\b"),           QueryIntent(type="por_status", status="qualificado")),
-    (re.compile(r"\bleads?\s+novos?\b"),                  QueryIntent(type="por_status", status="novo")),
-    (re.compile(r"\bnovos?\s+leads?\b"),                  QueryIntent(type="por_status", status="novo")),
-    (re.compile(r"\bleads?\s+em\s+espera\b"),             QueryIntent(type="por_status", status="em espera")),
-    (re.compile(r"\bpipeline\b"),                         QueryIntent(type="pipeline")),
+    (re.compile(r"\bleads?\s+conversando\b"),              QueryIntent(type="por_status", status="conversando")),
+    (re.compile(r"\bleads?\s+qualificados?\b"),            QueryIntent(type="por_status", status="conversando")),
+    (re.compile(r"\bleads?\s+novos?\b"),                   QueryIntent(type="por_status", status="novo")),
+    (re.compile(r"\bnovos?\s+leads?\b"),                   QueryIntent(type="por_status", status="novo")),
+    (re.compile(r"\bleads?\s+(?:contato\s+feito|em\s+contato)\b"), QueryIntent(type="por_status", status="contato feito")),
+    (re.compile(r"\bpipeline\b"),                          QueryIntent(type="pipeline")),
 ]
 
 

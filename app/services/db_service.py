@@ -30,13 +30,14 @@ CREATE TABLE IF NOT EXISTS leads (
     responsavel          TEXT DEFAULT '',
     fonte                TEXT DEFAULT '',
     status               TEXT DEFAULT 'novo',
-    prioridade           TEXT DEFAULT 'media',
+    temperatura          TEXT DEFAULT 'frio',
     resumo               TEXT DEFAULT '',
     pendencia            TEXT DEFAULT '',
     observacoes          TEXT DEFAULT '',
     data_criacao         TEXT,
     ultima_interacao_em  TEXT,
     proximo_followup_em  TEXT DEFAULT '',
+    data_recontato       TEXT DEFAULT '',
     nome_normalizado     TEXT DEFAULT '',
     cidade_normalizada   TEXT DEFAULT '',
     lead_key             TEXT DEFAULT ''
@@ -224,6 +225,30 @@ class DBService:
                 cur.execute(
                     "ALTER TABLE leads ADD COLUMN IF NOT EXISTS status_anterior TEXT DEFAULT ''"
                 )
+                cur.execute(
+                    "ALTER TABLE leads ADD COLUMN IF NOT EXISTS temperatura TEXT DEFAULT 'frio'"
+                )
+                cur.execute(
+                    "ALTER TABLE leads ADD COLUMN IF NOT EXISTS data_recontato TEXT DEFAULT ''"
+                )
+                # Migrar leads existentes: prioridade → remove dependência, temperatura = frio (default)
+                # Migrar status antigos para novos nomes
+                cur.execute(
+                    "UPDATE leads SET status = 'contato feito' WHERE status IN ('1º contato', 'em contato')"
+                )
+                cur.execute(
+                    "UPDATE leads SET status = 'conversando' WHERE status IN ('qualificado', 'em espera', 'proposta enviada')"
+                )
+                cur.execute(
+                    "UPDATE leads SET status = 'contato feito', temperatura = 'frio' WHERE status = 'sem resposta'"
+                )
+                cur.execute(
+                    "UPDATE leads SET status = 'perdido' WHERE status = 'arquivado'"
+                )
+                # Auto-set temperatura = cliente para fechados
+                cur.execute(
+                    "UPDATE leads SET temperatura = 'cliente' WHERE status = 'fechado' AND temperatura != 'cliente'"
+                )
                 # Rastreamento A/B de mensagem inicial
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS msg_ab_eventos (
@@ -237,6 +262,9 @@ class DBService:
                 """)
                 cur.execute(
                     "CREATE INDEX IF NOT EXISTS idx_msg_ab_lead ON msg_ab_eventos(lead_id)"
+                )
+                cur.execute(
+                    "ALTER TABLE msg_ab_eventos ADD COLUMN IF NOT EXISTS tipo TEXT DEFAULT 'inicial'"
                 )
             conn.commit()
         finally:
@@ -821,7 +849,7 @@ class DBService:
             with conn.cursor() as cur:
                 # Exclui leads definitivamente encerrados da busca
                 cur.execute(
-                    "SELECT * FROM leads WHERE status NOT IN ('arquivado', 'perdido', 'fechado', 'contato inválido')"
+                    "SELECT * FROM leads WHERE status NOT IN ('perdido', 'fechado', 'contato inválido')"
                 )
                 rows = self._fetchall_dict(cur)
         finally:
@@ -864,21 +892,25 @@ class DBService:
 
         return _empty
 
-    def update_lead_status(self, lead_id: str, status: str, when: Optional[datetime] = None) -> None:
+    def update_lead_status(self, lead_id: str, status: str, temperatura: Optional[str] = None, when: Optional[datetime] = None) -> None:
         """Atualiza status e ultima_interacao_em de um lead. Usado por micro-updates."""
         now = (when or datetime.utcnow()).isoformat()
-        prioridade = _priority_from_status(status)
+        # Auto-set temperatura = cliente quando fecha
+        if status == "fechado":
+            temperatura = "cliente"
+        fields: Dict[str, Any] = {"status": status, "ultima_interacao_em": now}
+        if temperatura:
+            fields["temperatura"] = temperatura
+        set_clause = ", ".join(f"{k} = %s" for k in fields)
+        values = list(fields.values()) + [lead_id]
         conn = self._conn()
         try:
             with conn.cursor() as cur:
-                cur.execute(
-                    "UPDATE leads SET status = %s, prioridade = %s, ultima_interacao_em = %s WHERE lead_id = %s",
-                    (status, prioridade, now, lead_id),
-                )
+                cur.execute(f"UPDATE leads SET {set_clause} WHERE lead_id = %s", values)
             conn.commit()
         finally:
             self._put(conn)
-        logger.info("micro_update_status | lead_id=%s status=%s", lead_id, status)
+        logger.info("micro_update_status | lead_id=%s status=%s temperatura=%s", lead_id, status, temperatura)
 
     # ------------------------------------------------------------------
     # Consultas conversacionais (queries do CRM)
@@ -929,7 +961,7 @@ class DBService:
                        FROM leads
                        WHERE proximo_followup_em != ''
                          AND LEFT(proximo_followup_em, 10) <= CURRENT_DATE::text
-                         AND status NOT IN ('fechado', 'perdido', 'arquivado', 'contato inválido')
+                         AND status NOT IN ('fechado', 'perdido', 'contato inválido')
                        ORDER BY proximo_followup_em ASC
                        LIMIT 10"""
                 )
@@ -946,7 +978,7 @@ class DBService:
                     """SELECT lead_id, nome, status, pendencia, proximo_followup_em
                        FROM leads
                        WHERE LEFT(proximo_followup_em, 10) = CURRENT_DATE::text
-                         AND status NOT IN ('fechado', 'perdido', 'arquivado', 'contato inválido')
+                         AND status NOT IN ('fechado', 'perdido', 'contato inválido')
                        ORDER BY nome ASC"""
                 )
                 return self._fetchall_dict(cur)
@@ -971,26 +1003,76 @@ class DBService:
             self._put(conn)
 
     def expire_first_contact(self, days: int = 5) -> List[Dict[str, Any]]:
-        """Leads com status '1º contato' sem resposta há mais de `days` dias.
+        """Leads com status 'contato feito' sem resposta há mais de `days` dias.
 
-        Atualiza esses leads para 'sem resposta' e retorna a lista para log/notificação.
+        Marca temperatura como 'frio' — o status não muda (ainda é 'contato feito'),
+        mas o lead aparece como frio no funil. Retorna lista afetada para log.
         """
         conn = self._conn()
         try:
             with conn.cursor() as cur:
                 cur.execute(
                     """UPDATE leads
-                       SET status = 'sem resposta',
-                           prioridade = 'baixa',
-                           ultima_interacao_em = %s
-                       WHERE status = '1º contato'
+                       SET temperatura = 'frio',
+                           ultima_interacao_em = ultima_interacao_em
+                       WHERE status = 'contato feito'
+                         AND temperatura != 'frio'
                          AND ultima_interacao_em < NOW() - (%s * INTERVAL '1 day')
                        RETURNING lead_id, nome""",
-                    (datetime.utcnow().isoformat(), days),
+                    (days,),
                 )
                 rows = cur.fetchall()
             conn.commit()
             return [{"lead_id": r[0], "nome": r[1]} for r in rows]
+        finally:
+            self._put(conn)
+
+    def cool_down_leads(self, days: int = 7) -> List[Dict[str, Any]]:
+        """Leads ativos sem interação por `days` dias: desce temperatura um nível.
+
+        frio ← morno ← engajado ← quente   (cliente nunca desce)
+        Retorna lista de leads afetados.
+        """
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """UPDATE leads
+                       SET temperatura = CASE temperatura
+                           WHEN 'quente'   THEN 'engajado'
+                           WHEN 'engajado' THEN 'morno'
+                           WHEN 'morno'    THEN 'frio'
+                           ELSE temperatura
+                       END
+                       WHERE ultima_interacao_em IS NOT NULL
+                         AND ultima_interacao_em != ''
+                         AND ultima_interacao_em < NOW() - (%s * INTERVAL '1 day')
+                         AND status NOT IN ('fechado', 'perdido', 'contato inválido')
+                         AND temperatura NOT IN ('frio', 'cliente')
+                       RETURNING lead_id, nome, temperatura""",
+                    (days,),
+                )
+                rows = cur.fetchall()
+            conn.commit()
+            return [{"lead_id": r[0], "nome": r[1], "temperatura": r[2]} for r in rows]
+        finally:
+            self._put(conn)
+
+    def get_recontato_leads(self) -> List[Dict[str, Any]]:
+        """Leads perdidos com data_recontato <= hoje — candidatos a recontato."""
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT lead_id, nome, segmento, cidade, whatsapp, data_recontato, pendencia, motivo_perda
+                       FROM leads
+                       WHERE status = 'perdido'
+                         AND data_recontato != ''
+                         AND LEFT(data_recontato, 10) <= CURRENT_DATE::text
+                       ORDER BY data_recontato ASC
+                       LIMIT 20"""
+                )
+                return self._fetchall_dict(cur)
         finally:
             self._put(conn)
 
@@ -1020,15 +1102,15 @@ class DBService:
     # Rastreamento A/B — Mensagem Inicial
     # ------------------------------------------------------------------
 
-    def registrar_msg_ab_evento(self, lead_id: str, variante: str, segmento: str, evento: str) -> None:
+    def registrar_msg_ab_evento(self, lead_id: str, variante: str, segmento: str, evento: str, tipo: str = 'inicial') -> None:
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc).isoformat()
         conn = self._conn()
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO msg_ab_eventos (lead_id, variante, segmento, evento, data_hora) VALUES (%s,%s,%s,%s,%s)",
-                    (lead_id, variante, segmento, evento, now),
+                    "INSERT INTO msg_ab_eventos (lead_id, variante, segmento, evento, data_hora, tipo) VALUES (%s,%s,%s,%s,%s,%s)",
+                    (lead_id, variante, segmento, evento, now, tipo),
                 )
             conn.commit()
         finally:
@@ -1038,50 +1120,69 @@ class DBService:
         conn = self._conn()
         try:
             with conn.cursor() as cur:
-                # Totais por variante e evento
+                # Totais por tipo + variante + evento
                 cur.execute("""
-                    SELECT variante, evento, COUNT(*) AS n
+                    SELECT COALESCE(tipo, 'inicial') AS tipo, variante, evento, COUNT(*) AS n
                     FROM msg_ab_eventos
-                    GROUP BY variante, evento
-                    ORDER BY variante, evento
+                    GROUP BY tipo, variante, evento
+                    ORDER BY tipo, variante, evento
                 """)
                 rows = self._fetchall_dict(cur)
 
-                # Por segmento + variante + evento
+                # Por segmento + tipo + variante + evento
                 cur.execute("""
-                    SELECT segmento, variante, evento, COUNT(*) AS n
+                    SELECT COALESCE(tipo, 'inicial') AS tipo, segmento, variante, evento, COUNT(*) AS n
                     FROM msg_ab_eventos
                     WHERE segmento != ''
-                    GROUP BY segmento, variante, evento
-                    ORDER BY segmento, variante, evento
+                    GROUP BY tipo, segmento, variante, evento
+                    ORDER BY tipo, segmento, variante, evento
                 """)
                 seg_rows = self._fetchall_dict(cur)
 
-            # Montar estrutura por variante
-            variantes: Dict[str, Any] = {}
+            # Montar estrutura por tipo → variante
+            por_tipo: Dict[str, Dict[str, Any]] = {}
             for r in rows:
+                t = r['tipo']
                 v = r['variante']
-                if v not in variantes:
-                    variantes[v] = {'copiadas': 0, 'responderam': 0}
+                if t not in por_tipo:
+                    por_tipo[t] = {}
+                if v not in por_tipo[t]:
+                    por_tipo[t][v] = {'copiadas': 0, 'responderam': 0}
                 if r['evento'] == 'copiada':
-                    variantes[v]['copiadas'] = r['n']
+                    por_tipo[t][v]['copiadas'] = r['n']
                 elif r['evento'] == 'respondeu':
-                    variantes[v]['responderam'] = r['n']
-            for v, d in variantes.items():
-                d['taxa'] = round(d['responderam'] * 100 / d['copiadas'], 1) if d['copiadas'] else 0
+                    por_tipo[t][v]['responderam'] = r['n']
+            for t in por_tipo:
+                for v, d in por_tipo[t].items():
+                    d['taxa'] = round(d['responderam'] * 100 / d['copiadas'], 1) if d['copiadas'] else 0
 
-            # Montar por segmento
-            seg_map: Dict[str, Dict] = {}
+            # Backward-compat: variantes = totais da mensagem inicial
+            variantes = por_tipo.get('inicial', {})
+
+            # Montar por segmento (grouped by tipo)
+            seg_tipo_map: Dict[str, Dict[str, Dict]] = {}
             for r in seg_rows:
+                t = r['tipo']
                 s = r['segmento']
                 v = r['variante']
-                if s not in seg_map:
-                    seg_map[s] = {}
+                if t not in seg_tipo_map:
+                    seg_tipo_map[t] = {}
+                if s not in seg_tipo_map[t]:
+                    seg_tipo_map[t][s] = {}
                 key = f"{v}_{'copiadas' if r['evento'] == 'copiada' else 'responderam'}"
-                seg_map[s][key] = r['n']
-            por_segmento = [{'segmento': s, **vals} for s, vals in seg_map.items()]
+                seg_tipo_map[t][s][key] = r['n']
 
-            return {'variantes': variantes, 'por_segmento': por_segmento}
+            por_segmento_inicial = [{'segmento': s, **vals} for s, vals in seg_tipo_map.get('inicial', {}).items()]
+            por_segmento_fu1 = [{'segmento': s, **vals} for s, vals in seg_tipo_map.get('fu1', {}).items()]
+            por_segmento_fu2 = [{'segmento': s, **vals} for s, vals in seg_tipo_map.get('fu2', {}).items()]
+
+            return {
+                'variantes': variantes,
+                'por_segmento': por_segmento_inicial,
+                'por_tipo': por_tipo,
+                'followup1': {'variantes': por_tipo.get('fu1', {}), 'por_segmento': por_segmento_fu1},
+                'followup2': {'variantes': por_tipo.get('fu2', {}), 'por_segmento': por_segmento_fu2},
+            }
         finally:
             self._put(conn)
 
@@ -1095,29 +1196,29 @@ class DBService:
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT status, COUNT(*) FROM leads WHERE status != 'arquivado' GROUP BY status ORDER BY COUNT(*) DESC"
+                    "SELECT status, COUNT(*) FROM leads GROUP BY status ORDER BY COUNT(*) DESC"
                 )
                 by_status = {r[0]: r[1] for r in cur.fetchall()}
 
                 cur.execute(
-                    "SELECT segmento, COUNT(*) FROM leads WHERE status != 'arquivado' AND segmento != '' GROUP BY segmento ORDER BY COUNT(*) DESC"
+                    "SELECT segmento, COUNT(*) FROM leads WHERE segmento != '' GROUP BY segmento ORDER BY COUNT(*) DESC"
                 )
                 by_segmento = {r[0]: r[1] for r in cur.fetchall()}
 
                 cur.execute(
-                    "SELECT prioridade, COUNT(*) FROM leads WHERE status != 'arquivado' AND prioridade != '' GROUP BY prioridade ORDER BY COUNT(*) DESC"
+                    "SELECT temperatura, COUNT(*) FROM leads WHERE temperatura != '' GROUP BY temperatura ORDER BY COUNT(*) DESC"
                 )
-                by_prioridade = {r[0]: r[1] for r in cur.fetchall()}
+                by_temperatura = {r[0]: r[1] for r in cur.fetchall()}
 
                 cur.execute(
-                    "SELECT COUNT(*) FROM leads WHERE status NOT IN ('arquivado', 'perdido', 'fechado')"
+                    "SELECT COUNT(*) FROM leads WHERE status NOT IN ('perdido', 'fechado')"
                 )
                 total_ativos = cur.fetchone()[0]
 
                 cur.execute(
                     """SELECT COUNT(*) FROM leads
                        WHERE proximo_followup_em != '' AND LEFT(proximo_followup_em, 10) < CURRENT_DATE::text
-                         AND status NOT IN ('fechado', 'perdido', 'arquivado')"""
+                         AND status NOT IN ('fechado', 'perdido')"""
                 )
                 followups_vencidos = cur.fetchone()[0]
 
@@ -1132,30 +1233,30 @@ class DBService:
                 criados_semana = cur.fetchone()[0]
 
                 cur.execute(
-                    """SELECT lead_id, nome, segmento, status, prioridade, data_criacao FROM leads
-                       WHERE status != 'arquivado' ORDER BY data_criacao DESC LIMIT 5"""
+                    """SELECT lead_id, nome, segmento, status, temperatura, data_criacao FROM leads
+                       ORDER BY data_criacao DESC LIMIT 5"""
                 )
                 cols = [d[0] for d in cur.description]
                 recentes = [dict(zip(cols, r)) for r in cur.fetchall()]
 
                 cur.execute(
-                    """SELECT lead_id, nome, segmento, status, prioridade, proximo_followup_em, pendencia
+                    """SELECT lead_id, nome, segmento, status, temperatura, proximo_followup_em, pendencia
                        FROM leads WHERE proximo_followup_em != ''
                          AND LEFT(proximo_followup_em, 10) >= CURRENT_DATE::text
-                         AND status NOT IN ('fechado', 'perdido', 'arquivado')
+                         AND status NOT IN ('fechado', 'perdido')
                        ORDER BY proximo_followup_em ASC LIMIT 5"""
                 )
                 cols = [d[0] for d in cur.description]
                 proximos_followups = [dict(zip(cols, r)) for r in cur.fetchall()]
 
-                # Leads frios: ativos sem interação há 15+ dias
+                # Leads para recontato: perdidos com data_recontato <= hoje
                 cur.execute(
                     """SELECT COUNT(*) FROM leads
-                       WHERE ultima_interacao_em IS NOT NULL AND ultima_interacao_em != ''
-                         AND ultima_interacao_em < (NOW() - INTERVAL '15 days')::text
-                         AND status NOT IN ('fechado', 'perdido', 'arquivado')"""
+                       WHERE status = 'perdido'
+                         AND data_recontato != ''
+                         AND LEFT(data_recontato, 10) <= CURRENT_DATE::text"""
                 )
-                leads_frios = cur.fetchone()[0]
+                recontatos_hoje = cur.fetchone()[0]
 
                 # Leads nunca contatados: status 'novo' criados há 7+ dias sem nenhuma atividade
                 cur.execute(
@@ -1171,14 +1272,14 @@ class DBService:
             return {
                 "by_status": by_status,
                 "by_segmento": by_segmento,
-                "by_prioridade": by_prioridade,
+                "by_temperatura": by_temperatura,
                 "total_ativos": total_ativos,
                 "followups_vencidos": followups_vencidos,
                 "followups_hoje": followups_hoje,
                 "criados_semana": criados_semana,
                 "recentes": recentes,
                 "proximos_followups": proximos_followups,
-                "leads_frios": leads_frios,
+                "recontatos_hoje": recontatos_hoje,
                 "leads_nunca_contatados": leads_nunca_contatados,
             }
         finally:
@@ -1238,18 +1339,18 @@ class DBService:
                 # Bloco A — KPIs de topo
                 cur.execute("""
                     SELECT
-                        COUNT(*) FILTER (WHERE status != 'arquivado') AS total_leads,
+                        COUNT(*) AS total_leads,
                         COUNT(*) FILTER (WHERE status = 'fechado') AS total_fechados,
                         COUNT(*) FILTER (WHERE status = 'perdido') AS total_perdidos,
-                        COUNT(*) FILTER (WHERE status = 'sem resposta') AS total_sem_resposta,
+                        COUNT(*) FILTER (WHERE temperatura = 'frio' AND status NOT IN ('fechado','perdido','contato inválido')) AS total_frios,
                         COALESCE(SUM(valor_venda) FILTER (WHERE status = 'fechado'), 0) AS valor_total_vendas,
                         COUNT(*) FILTER (
                             WHERE proximo_followup_em != '' AND proximo_followup_em < NOW()::text
-                            AND status NOT IN ('fechado','perdido','arquivado')
+                            AND status NOT IN ('fechado','perdido')
                         ) AS followups_vencidos,
                         ROUND(
                             COUNT(*) FILTER (WHERE status = 'fechado') * 100.0
-                            / NULLIF(COUNT(*) FILTER (WHERE status != 'arquivado'), 0), 1
+                            / NULLIF(COUNT(*), 0), 1
                         ) AS taxa_conversao
                     FROM leads
                 """)
@@ -1258,7 +1359,7 @@ class DBService:
                     "total_leads": krow[0] or 0,
                     "total_fechados": krow[1] or 0,
                     "total_perdidos": krow[2] or 0,
-                    "total_sem_resposta": krow[3] or 0,
+                    "total_frios": krow[3] or 0,
                     "valor_total_vendas": float(krow[4] or 0),
                     "followups_vencidos": krow[5] or 0,
                     "taxa_conversao": float(krow[6]) if krow[6] is not None else 0.0,
@@ -1267,7 +1368,7 @@ class DBService:
                 # Bloco B — Funil por status
                 cur.execute("""
                     SELECT status, COUNT(*) as total
-                    FROM leads WHERE status != 'arquivado'
+                    FROM leads
                     GROUP BY status
                 """)
                 funil_raw = {r[0]: r[1] for r in cur.fetchall()}
@@ -1475,40 +1576,34 @@ class DBService:
             self._put(conn)
 
     def _auto_transition_stale_leads(self) -> None:
-        """Auto-transitions stale leads based on inactivity:
-        - 'qualificado' or 'negociando' 5-7 days → 'em espera' (engaged but went silent)
-        Note: '1º contato' → 'sem resposta' is handled by expire_first_contact() daily job.
+        """Auto-baixa temperatura de leads ativos sem interação recente.
+
+        Leads conversando ou negociando sem interação em 5+ dias → temperatura desce.
+        Status não muda — a temperatura já comunica o estado de engajamento.
         """
         conn = self._conn()
         try:
             with conn.cursor() as cur:
-                # qualificado → em espera (5 days, had interest but went silent)
                 cur.execute("""
-                    UPDATE leads SET status = 'em espera', status_anterior = 'qualificado', prioridade = 'alta'
-                    WHERE status = 'qualificado'
+                    UPDATE leads
+                    SET temperatura = CASE temperatura
+                        WHEN 'quente'   THEN 'engajado'
+                        WHEN 'engajado' THEN 'morno'
+                        WHEN 'morno'    THEN 'frio'
+                        ELSE temperatura
+                    END
+                    WHERE status IN ('conversando', 'negociando')
+                      AND temperatura NOT IN ('frio', 'cliente')
                       AND (
                         ultima_interacao_em IS NULL
                         OR ultima_interacao_em = ''
                         OR LEFT(ultima_interacao_em, 10) < (CURRENT_DATE - INTERVAL '5 days')::text
                       )
                 """)
-                count_espera = cur.rowcount
-
-                # negociando → em espera (7 days, was actively negotiating but went silent)
-                cur.execute("""
-                    UPDATE leads SET status = 'em espera', status_anterior = 'negociando', prioridade = 'alta'
-                    WHERE status = 'negociando'
-                      AND (
-                        ultima_interacao_em IS NULL
-                        OR ultima_interacao_em = ''
-                        OR LEFT(ultima_interacao_em, 10) < (CURRENT_DATE - INTERVAL '7 days')::text
-                      )
-                """)
-                count_espera += cur.rowcount
-
+                count = cur.rowcount
             conn.commit()
-            if count_espera > 0:
-                logger.info("auto_transition | %d leads qualificado/negociando → em espera", count_espera)
+            if count > 0:
+                logger.info("auto_transition | %d leads tiveram temperatura reduzida por inatividade", count)
         except Exception:
             conn.rollback()
             logger.warning("auto_transition_leads falhou", exc_info=True)
@@ -1535,7 +1630,7 @@ class DBService:
         self,
         status: Optional[str] = None,
         segmento: Optional[str] = None,
-        prioridade: Optional[str] = None,
+        temperatura: Optional[str] = None,
         search: Optional[str] = None,
         page: int = 1,
         page_size: int = 50,
@@ -1543,7 +1638,7 @@ class DBService:
         """Returns paginated leads with optional filters."""
         # Auto-transition stale leads before returning results
         self._auto_transition_stale_leads()
-        conditions = ["status != 'arquivado'"]
+        conditions: List[str] = []
         params: List[Any] = []
 
         if status:
@@ -1552,15 +1647,15 @@ class DBService:
         if segmento:
             conditions.append("segmento = %s")
             params.append(segmento)
-        if prioridade:
-            conditions.append("prioridade = %s")
-            params.append(prioridade)
+        if temperatura:
+            conditions.append("temperatura = %s")
+            params.append(temperatura)
         if search:
             conditions.append("(nome ILIKE %s OR cidade ILIKE %s OR responsavel ILIKE %s OR whatsapp ILIKE %s)")
             s = f"%{search}%"
             params.extend([s, s, s, s])
 
-        where = " AND ".join(conditions)
+        where = " AND ".join(conditions) if conditions else "TRUE"
         offset = (page - 1) * page_size
 
         conn = self._conn()
@@ -1595,7 +1690,6 @@ class DBService:
         lead["cidade_normalizada"] = _normalize_text(lead.get("cidade", ""))
         lead["lead_key"] = f"{lead['cidade_normalizada']}:{_canonicalize_name(lead.get('nome', ''))}"
         status = data.get("status", "novo")
-        lead["prioridade"] = _priority_from_status(status)
         return self._create_lead(lead, status, data.get("proximo_followup_em") or None, now)
 
     def update_lead_from_dashboard(self, lead_id: str, data: Dict[str, Any]) -> bool:
@@ -1603,8 +1697,8 @@ class DBService:
         allowed = {
             "nome", "cidade", "segmento", "whatsapp", "email",
             "instagram", "site", "responsavel", "fonte",
-            "status", "observacoes", "proximo_followup_em", "pendencia",
-            "valor_venda", "data_fechamento", "motivo_perda", "data_criacao",
+            "status", "temperatura", "observacoes", "proximo_followup_em", "pendencia",
+            "valor_venda", "data_fechamento", "motivo_perda", "data_criacao", "data_recontato",
         }
         safe_fields: Dict[str, Any] = {
             k: str(v).strip() for k, v in data.items()
@@ -1628,10 +1722,11 @@ class DBService:
                 f"{safe_fields.get('cidade_normalizada', '')}:"
                 f"{_canonicalize_name(safe_fields.get('nome', ''))}"
             )
-        # Auto-calculate priority from status; also stamp ultima_interacao_em
+        # Stamp ultima_interacao_em on status change; auto-set temperatura for fechado
         if "status" in safe_fields:
-            safe_fields["prioridade"] = _priority_from_status(safe_fields["status"])
             safe_fields["ultima_interacao_em"] = datetime.utcnow().isoformat()
+            if safe_fields["status"] == "fechado":
+                safe_fields.setdefault("temperatura", "cliente")
 
         # Convert valor_venda: empty string is invalid for NUMERIC column
         if "valor_venda" in safe_fields:

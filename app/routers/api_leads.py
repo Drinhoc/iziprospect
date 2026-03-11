@@ -42,7 +42,7 @@ def get_estatisticas():
 def list_leads(
     status: Optional[str] = Query(default=None),
     segmento: Optional[str] = Query(default=None),
-    prioridade: Optional[str] = Query(default=None),
+    temperatura: Optional[str] = Query(default=None),
     search: Optional[str] = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
@@ -51,11 +51,18 @@ def list_leads(
     return db.list_leads(
         status=status or None,
         segmento=segmento or None,
-        prioridade=prioridade or None,
+        temperatura=temperatura or None,
         search=search or None,
         page=page,
         page_size=page_size,
     )
+
+
+@router.get("/leads/recontato")
+def get_recontato_leads():
+    """Leads perdidos com data de recontato chegando hoje ou já vencida."""
+    db = _get_db()
+    return db.get_recontato_leads()
 
 
 @router.get("/leads/{lead_id}")
@@ -93,6 +100,7 @@ def registrar_msg_ab_evento(body: dict):
         variante=body.get("variante", ""),
         segmento=body.get("segmento", ""),
         evento=body.get("evento", ""),
+        tipo=body.get("tipo", "inicial"),
     )
     return {"ok": True}
 
