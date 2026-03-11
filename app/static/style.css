@@ -947,6 +947,21 @@ button.badge-novo--btn:hover { background: #cffafe; color: #0e7490; }
 .stat-value.green { color: #10b981; }
 .stat-value.red   { color: #ef4444; }
 
+/* 6-column KPI strip */
+@media (min-width: 768px) {
+  .stat-grid--6 { grid-template-columns: repeat(6, 1fr); }
+}
+.stat-grid--6 .stat-card {
+  padding: 10px 14px;
+}
+.stat-grid--6 .stat-value {
+  font-size: 1.3rem;
+  margin-bottom: 2px;
+}
+.stat-grid--6 .stat-label {
+  font-size: .72rem;
+}
+
 /* Seção genérica */
 .est-section {
   margin: 20px 16px;
