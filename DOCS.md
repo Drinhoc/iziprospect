@@ -31,17 +31,32 @@ Guia rápido para encontrar o que você precisa.
   - Database methods
   - Roadmap
 
+### Botão Salvar no header do modal
+
+O botão **Salvar** fica fixo no header do modal (ao lado do título), acessível sem scroll independente do tamanho do formulário. O rodapé contém apenas as ações secundárias (Cancelar, Deletar).
+
 ### Histórico de atividades no modal de lead
 
-Ao abrir qualquer lead existente, o modal exibe uma seção **📋 Histórico** no rodapé com a timeline completa de interações.
+Ao abrir qualquer lead existente, o modal exibe uma seção **📋 Histórico** com a timeline completa de interações.
 
-**Como funciona:**
-- Endpoint: `GET /api/leads/{lead_id}/atividades` — retorna até 30 atividades, mais recente primeiro
-- Cada item mostra: tipo (💬 texto / 🎙️ áudio / 🖼️ imagem), data/hora, ação executada pela IA, resumo da conversa
-- Timeline visual com dots conectados por linha vertical
-- DB method: `db.get_lead_activities(lead_id, limit=30)` — query em `atividades` filtrada por `lead_id`
+**Cada evento mostra:**
+- Tipo: 💬 texto / 🎙️ áudio / 🖼️ imagem
+- Data/hora
+- Ação executada pela IA (`acao_executada`)
+- Resumo da conversa
+- **Confiança da IA** — badge colorido (🟢 ≥70% / 🟡 40–69% / 🔴 <40%)
+- **Duração** — exibida para eventos de áudio (ex: `2min 30s`)
 
-**Fonte de dados:** tabela `atividades` — registrada automaticamente a cada mensagem recebida via WhatsApp pelo webhook.
+**Perfil de comunicação** (acima da timeline):
+Resume como o lead se comunica — quantidade por tipo e total de áudio enviado. Carregado via `GET /api/leads/{id}/perfil`.
+
+**Endpoints:**
+- `GET /api/leads/{lead_id}/atividades` — até 30 atividades, mais recente primeiro
+- `GET /api/leads/{lead_id}/perfil` — breakdown de tipos + duração total de áudio
+
+**DB methods:**
+- `db.get_lead_activities(lead_id)` — inclui `confianca_ia` e `duracao_audio_s`
+- `db.get_perfil_comunicacao(lead_id)` — agrega por tipo
 
 **URLs:**
 - Local: `http://localhost:8000/dashboard` / `/leads`
@@ -125,7 +140,16 @@ O link "Landing Page" foi adicionado à sidebar do dashboard (`base.html`) e ao 
 → Abra o lead, clique "Deletar", confirme.
 
 #### ...ver estatísticas do dia?
-→ Vá para `/dashboard`, veja cards, gráficos, listas.
+→ Vá para `/dashboard`, veja cards, gráficos, listas e alertas de pipeline.
+
+#### ...identificar leads frios ou esquecidos?
+→ No `/dashboard`, alertas aparecem automaticamente: ❄️ **Leads frios** (sem contato há 15+ dias) e 👻 **Nunca contatados** (status `novo` há 7+ dias sem nenhuma atividade).
+
+#### ...saber o nível de engajamento de um lead?
+→ Em `/leads`, cada card exibe o **Score de Engajamento** (Frio / Morno / Ativo / Quente / Fechando) calculado automaticamente com base em status, recência, prioridade e followup.
+
+#### ...ver o desempenho da IA?
+→ Vá para `/estatisticas` e role até a seção **Inteligência IA** (após a linha divisória). Mostra: mensagens processadas, confiança global, ações mais executadas, confiança por tipo de mensagem e fila de revisão (interpretações incertas <40%).
 
 #### ...filtrar leads por status/segmento?
 → Em `/leads`, clique "Filtrar", selecione os critérios.
@@ -207,10 +231,48 @@ Resumo dos endpoints:
 ### Dashboard stats
 ```
 GET /api/stats
-→ { by_status, by_segmento, by_prioridade, total_ativos, ... }
+→ {
+    by_status, by_segmento, by_prioridade,
+    total_ativos, followups_vencidos, followups_hoje, criados_semana,
+    leads_frios,            ← sem contato há 15+ dias
+    leads_nunca_contatados, ← status 'novo' há 7+ dias, sem atividades
+    recentes: [...],
+    proximos_followups: [...]
+  }
 
 GET /api/analises/stats
 → { total, avg_confianca, distribuicao: {baixa, incerta, promissora, quase_certa}, recentes: [...] }
+```
+
+### Inteligência IA (motor de processamento — separado dos leads)
+```
+GET /api/ia/stats
+→ {
+    totais: {
+      total_processadas,   ← total de mensagens processadas pela IA
+      com_score,           ← quantas têm score de confiança
+      confianca_global,    ← média global (0.0–1.0)
+      baixa_confianca_count, ← interações com confiança < 40%
+      total_audios,
+      duracao_audio_media_s
+    },
+    top_acoes: [{acao, total}],           ← ações mais executadas pela IA
+    confianca_por_tipo: [{tipo, total,    ← confiança média por tipo de msg
+                          confianca_media, confianca_min, confianca_max}],
+    volume_por_dia: [{dia, total,         ← volume de processamento 30 dias
+                      confianca_media}],
+    baixa_confianca: [...]               ← últimas 10 interações <40% para revisão
+  }
+```
+
+### Perfil de comunicação do lead
+```
+GET /api/leads/{lead_id}/perfil
+→ {
+    tipos: [{tipo, total, duracao_total_s, confianca_media}],
+    total_mensagens: int,
+    total_audio_s: float   ← segundos totais de áudio enviados pelo lead
+  }
 ```
 
 ### Bulk import
@@ -227,6 +289,9 @@ GET /api/leads?status=novo&search=clinica&page=1
 
 GET /api/leads/{lead_id}
 → { lead_id, nome, cidade, ... }
+
+GET /api/leads/{lead_id}/atividades
+→ [{ data_hora, tipo, canal, acao_executada, resumo, confianca_ia, duracao_audio_s }]
 
 POST /api/leads
 Body: { nome*, cidade, segmento, whatsapp, ... }
@@ -313,9 +378,17 @@ Veja [DASHBOARD.md — Configuração](./DASHBOARD.md#-configuração) para a li
 - Relatório diário de aprovação definido como feature exclusiva do Pro
 - Landing page acessível via sidebar do dashboard
 
+### ✅ Completo (Fase 1.8 — Aproveitamento de dados + UX)
+- **UX:** Botão Salvar fixo no header do modal (sem precisar de scroll)
+- **Alertas de pipeline:** cards automáticos no dashboard para leads frios (15+ dias) e nunca contatados (7+ dias em `novo` sem atividade)
+- **Score de engajamento:** badge Frio/Morno/Ativo/Quente/Fechando calculado client-side em cada card de lead
+- **Histórico enriquecido:** confiança da IA (badge colorido) e duração de áudio em cada evento
+- **Perfil de comunicação:** resumo de tipos (áudio/texto/imagem) e total de áudio por lead, exibido no topo do histórico
+- **Painel Inteligência IA** em `/estatisticas`: seção dedicada ao motor de processamento (separada dos dados de leads) com KPIs do motor, top ações executadas, confiança por tipo de mensagem e fila de revisão de interpretações incertas
+- **APIs novas:** `GET /api/ia/stats` e `GET /api/leads/{id}/perfil`
+
 ### 🔄 Planejado (Fase 2)
 - Follow-up automático
-- Lead score por lead
 - Tags customizadas
 - Bulk actions (update múltiplos leads)
 - **Relatório diário de aprovação** (backend — já definido no produto)
@@ -353,4 +426,4 @@ Veja [DASHBOARD.md — Roadmap](./DASHBOARD.md#-próximas-features-planejadas-ro
 
 ---
 
-**Última atualização:** 2026-03-09 (Fase 1.7 — Landing + Planos + Relatório diário Pro)
+**Última atualização:** 2026-03-11 (Fase 1.8 — Aproveitamento de dados + Inteligência IA + UX)
