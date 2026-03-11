@@ -305,7 +305,7 @@ function renderTable(leads) {
   leads.forEach(l => {
     const phone = fmtPhone(l.whatsapp);
     const phoneTd = phone
-      ? `${phone} <button class="copy-phone-btn" data-phone="${esc(l.whatsapp)}" title="Copiar">⎘</button>${_copyMsgBtn(l)}`
+      ? `${phone} <button class="copy-phone-btn" data-phone="${esc(fmtPhone(l.whatsapp) || '')}" title="Copiar">⎘</button>${_copyMsgBtn(l)}`
       : _copyMsgBtn(l) || '—';
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -344,7 +344,7 @@ function renderCards(leads) {
     card.className = 'lead-card';
     const phone = fmtPhone(l.whatsapp);
     const phoneHtml = phone
-      ? `📱 ${phone} <button class="copy-phone-btn" data-phone="${esc(l.whatsapp)}" title="Copiar número">⎘</button>`
+      ? `📱 ${phone} <button class="copy-phone-btn" data-phone="${esc(fmtPhone(l.whatsapp) || '')}" title="Copiar número">⎘</button>`
       : null;
     const msgBtnHtml = ['novo', 'sem resposta'].includes(l.status)
       ? `<button class="copy-msg-btn copy-msg-btn--card" data-nome="${esc(l.nome)}" data-seg="${l.segmento || ''}" data-lid="${l.lead_id || ''}" title="Copiar mensagem inicial">
