@@ -79,8 +79,9 @@
 <div class="modal-sheet hidden" id="modal-sheet">
   <div class="sheet-handle"></div>
   <div class="sheet-header">
-    <h2 class="sheet-title" id="sheet-title">Novo Lead</h2>
     <button class="btn-close" onclick="closeModal()">✕</button>
+    <h2 class="sheet-title" id="sheet-title">Novo Lead</h2>
+    <button type="submit" form="lead-form" class="btn-save-header" id="btn-save">Salvar</button>
   </div>
   <div class="sheet-body">
     <form id="lead-form" onsubmit="saveLead(event)">
@@ -230,14 +231,11 @@
         <div id="historico-list"><div class="hist-loading">Carregando…</div></div>
       </div>
 
-      <div class="sheet-actions">
+      <div class="sheet-actions sheet-actions--bottom">
         <button type="button" class="btn-archive hidden" id="btn-archive" onclick="deleteLead()">
           Deletar
         </button>
-        <div class="sheet-actions-right">
-          <button type="button" class="btn-cancel" onclick="closeModal()">Cancelar</button>
-          <button type="submit" class="btn-save" id="btn-save">Salvar</button>
-        </div>
+        <button type="button" class="btn-cancel" onclick="closeModal()">Cancelar</button>
       </div>
     </form>
   </div>
