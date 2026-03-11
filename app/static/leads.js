@@ -309,7 +309,6 @@ function _bindNovoBadgeBtns(el) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: '1º contato' }),
       }).catch(() => {});
-      _trackAbEvento(btn.dataset.lid, btn.dataset.seg, 'copiada');
       const badge = document.createElement('span');
       badge.className = 'badge badge-1-contato';
       badge.textContent = '1º contato';
