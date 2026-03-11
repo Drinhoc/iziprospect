@@ -95,7 +95,7 @@ function calcEngajamento(l) {
   }
 
   const nivel = Math.min(5, Math.max(1, Math.round(score)));
-  const cores = { 1: '#9ca3af', 2: '#60a5fa', 3: '#a78bfa', 4: '#fb923c', 5: '#10b981' };
+  const cores = { 1: '#94a3b8', 2: '#60a5fa', 3: '#a78bfa', 4: '#fb923c', 5: '#10b981' };
   const labels = { 1: 'Frio', 2: 'Morno', 3: 'Ativo', 4: 'Quente', 5: 'Fechando' };
   return { nivel, cor: cores[nivel], label: labels[nivel] };
 }
@@ -103,7 +103,39 @@ function calcEngajamento(l) {
 function engajamentoBadge(l) {
   if (['arquivado', 'perdido'].includes(l.status)) return '';
   const e = calcEngajamento(l);
-  return `<span class="badge-engaj" style="background:${e.cor}22;color:${e.cor};border-color:${e.cor}44" title="Engajamento: ${e.label}">${'●'.repeat(e.nivel)}${'○'.repeat(5 - e.nivel)} ${e.label}</span>`;
+  return `<span class="badge-engaj badge-engaj--${e.nivel}" title="Engajamento: ${e.label} (${e.nivel}/5)"><span class="engaj-dot"></span>${e.label}</span>`;
+}
+
+const ENGAJ_LEVELS = [
+  { nivel: 1, label: 'Frio',     cor: '#94a3b8' },
+  { nivel: 2, label: 'Morno',    cor: '#60a5fa' },
+  { nivel: 3, label: 'Ativo',    cor: '#a78bfa' },
+  { nivel: 4, label: 'Quente',   cor: '#fb923c' },
+  { nivel: 5, label: 'Fechando', cor: '#10b981' },
+];
+
+function updateEngajBar(leads) {
+  const bar = document.getElementById('engaj-bar');
+  if (!bar) return;
+  const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  leads.forEach(l => {
+    if (!['arquivado', 'perdido'].includes(l.status)) {
+      counts[calcEngajamento(l).nivel]++;
+    }
+  });
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  if (!total) { bar.classList.add('hidden'); return; }
+
+  bar.innerHTML = ENGAJ_LEVELS.map(e => {
+    const n = counts[e.nivel];
+    const pct = total > 0 ? Math.round((n / total) * 100) : 0;
+    return `<span class="engaj-stat" style="--cor:${e.cor}" title="${e.label}: ${n} lead${n !== 1 ? 's' : ''} (${pct}%)">
+      <span class="engaj-stat-dot"></span>
+      <span class="engaj-stat-label">${e.label}</span>
+      <span class="engaj-stat-count">${n}</span>
+    </span>`;
+  }).join('<span class="engaj-sep"></span>');
+  bar.classList.remove('hidden');
 }
 
 // ===== Load leads =====
@@ -133,9 +165,11 @@ async function loadLeads() {
 
     if (data.leads.length === 0) {
       document.getElementById('empty-state').classList.remove('hidden');
+      document.getElementById('engaj-bar')?.classList.add('hidden');
     } else {
       renderTable(data.leads);
       renderCards(data.leads);
+      updateEngajBar(data.leads);
     }
 
     renderPagination(data.total, data.page, data.page_size);

@@ -1709,20 +1709,97 @@ label {
 .alerta-sub   { display: block; font-size: .72rem; color: var(--text-muted); font-weight: 400; }
 
 /* ═══════════════════════════════════════════════
-   SCORE DE ENGAJAMENTO — Cards de Leads
+   SCORE DE ENGAJAMENTO — Badge + Barra de Stats
    ═══════════════════════════════════════════════ */
+
+/* Badge individual no card */
 .badge-engaj {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: .68rem;
+  gap: 5px;
+  font-size: .7rem;
   font-weight: 600;
-  border-radius: 99px;
-  padding: 2px 8px;
-  border: 1px solid;
+  border-radius: 6px;
+  padding: 2px 8px 2px 6px;
   white-space: nowrap;
-  letter-spacing: .02em;
+  letter-spacing: .01em;
 }
+/* Cores por nível — via classe */
+.badge-engaj--1 { background: #f1f5f9; color: #64748b; }
+.badge-engaj--2 { background: #eff6ff; color: #2563eb; }
+.badge-engaj--3 { background: #f5f3ff; color: #7c3aed; }
+.badge-engaj--4 { background: #fff7ed; color: #ea580c; }
+.badge-engaj--5 { background: #f0fdf4; color: #16a34a; }
+/* Dot colorido */
+.badge-engaj .engaj-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.badge-engaj--1 .engaj-dot { background: #94a3b8; }
+.badge-engaj--2 .engaj-dot { background: #60a5fa; }
+.badge-engaj--3 .engaj-dot { background: #a78bfa; }
+.badge-engaj--4 .engaj-dot { background: #fb923c; }
+.badge-engaj--5 .engaj-dot { background: #10b981; }
+
+/* Barra de stats de engajamento — desktop, acima do filtro */
+.engaj-bar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  margin-bottom: 10px;
+  width: fit-content;
+  box-shadow: var(--shadow);
+}
+.engaj-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 5px;
+  cursor: default;
+  transition: background .12s;
+}
+.engaj-stat:hover { background: var(--bg); }
+.engaj-stat-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--cor);
+  flex-shrink: 0;
+}
+.engaj-stat-label {
+  font-size: .75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.engaj-stat-count {
+  font-size: .78rem;
+  font-weight: 700;
+  color: var(--cor);
+  min-width: 14px;
+  text-align: center;
+}
+.engaj-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--border);
+  flex-shrink: 0;
+  margin: 0 2px;
+}
+
+/* Dark mode */
+:root.dark .badge-engaj--1 { background: #1e293b; color: #94a3b8; }
+:root.dark .badge-engaj--2 { background: #1e3a5f; color: #93c5fd; }
+:root.dark .badge-engaj--3 { background: #2e1065; color: #c4b5fd; }
+:root.dark .badge-engaj--4 { background: #431407; color: #fdba74; }
+:root.dark .badge-engaj--5 { background: #052e16; color: #86efac; }
+:root.dark .engaj-bar { background: var(--card); }
 
 /* ═══════════════════════════════════════════════
    HISTÓRICO: confiança IA + duração áudio
