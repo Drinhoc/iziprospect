@@ -8,56 +8,56 @@ const MSG_TEMPLATES = {
 
 Vi a *{{nome}}* e quis entrar em contato.
 
-Tenho ajudado clínicas odontológicas a nunca perder um paciente que entra em contato fora do horário — uma assistente de WhatsApp que responde, agenda e confirma consultas automaticamente, 24h por dia.
+Estou desenvolvendo uma assistente de WhatsApp para clínicas odontológicas — ela responde, agenda e confirma consultas automaticamente, 24h por dia, mesmo fora do horário da recepção.
 
 Faz sentido conversarmos alguns minutinhos?`,
     `Olá! Tudo bem por aí na *{{nome}}*? 😊
 
-Queria apresentar algo que tem feito diferença em clínicas de odontologia: uma secretária virtual no WhatsApp que atende, agenda e confirma consultas — sem precisar contratar mais recepcionistas.
+Queria apresentar uma ideia para vocês: uma secretária virtual no WhatsApp que atende, agenda e confirma consultas — sem precisar contratar mais recepcionistas.
 
-Vale uma conversa rápida?`,
+Ainda estou validando a solução e gostaria muito de entender se faz sentido para o contexto de vocês. Vale uma conversa rápida?`,
   ],
   medicina: [
     `Oi, tudo bem? 😊
 
 Vi a *{{nome}}* e gostaria de me apresentar rapidinho.
 
-Uma coisa comum em clínicas médicas é perder pacientes porque a equipe não consegue responder o WhatsApp fora do horário. A gente resolve isso com uma assistente virtual que atende, agenda e confirma consultas automaticamente — 24h, sem custo de funcionário extra.
+Estou trabalhando em uma solução para um problema que parece comum em clínicas: perder pacientes porque a equipe não consegue responder o WhatsApp fora do horário. A ideia é uma assistente virtual que atende, agenda e confirma consultas automaticamente.
 
 Faz sentido trocarmos uma ideia?`,
     `Olá! Tudo bem? 😊
 
-Gostaria de apresentar algo para a *{{nome}}*: uma secretária virtual no WhatsApp que atende seus pacientes a qualquer hora, agenda consultas e envia lembretes de confirmação — tudo sem você precisar estar disponível o tempo todo.
+Gostaria de apresentar uma proposta para a *{{nome}}*: uma secretária virtual no WhatsApp que atende pacientes a qualquer hora, agenda consultas e envia lembretes de confirmação — sem precisar estar disponível o tempo todo.
 
-Vale cinco minutinhos de conversa?`,
+Ainda estou validando com primeiros clientes. Vale cinco minutinhos de conversa?`,
   ],
   estetica: [
     `Oi, tudo bem? 😊
 
 Vi a *{{nome}}* e achei que faria sentido entrar em contato.
 
-Uma coisa que a gente vê muito em clínicas de estética é a perda de clientes por demora na resposta do WhatsApp — especialmente fora do horário comercial. Temos uma assistente virtual que resolve exatamente isso: agenda procedimentos, responde dúvidas e confirma tudo automaticamente.
+Estou desenvolvendo uma assistente virtual para clínicas de estética — ela agenda procedimentos, responde dúvidas no WhatsApp e confirma tudo automaticamente, mesmo fora do horário comercial.
 
 Posso te contar mais em uma conversa rápida?`,
     `Olá! Tudo bem? 😊
 
-Trabalho com clínicas de estética e queria apresentar algo que tem dado muito resultado: uma assistente de WhatsApp que agenda procedimentos, responde clientes e manda confirmações — tudo no automático, sem custo de recepcionista extra.
+Queria apresentar uma ideia para a *{{nome}}*: uma assistente de WhatsApp que agenda procedimentos, responde clientes e manda confirmações no automático.
 
-Vale uma conversa rápida?`,
+Estou buscando os primeiros parceiros para validar a solução — vale uma conversa rápida?`,
   ],
   default: [
     `Oi, tudo bem? 😊
 
-Vi a *{{nome}}* e gostaria de apresentar algo que pode fazer diferença no seu atendimento.
+Vi a *{{nome}}* e gostaria de apresentar uma ideia que pode fazer sentido para o atendimento de vocês.
 
-Uma assistente virtual no WhatsApp que responde, agenda e confirma clientes automaticamente — 24h por dia, sem precisar de ninguém disponível o tempo todo.
+Estou desenvolvendo uma assistente virtual no WhatsApp que responde, agenda e confirma clientes automaticamente — 24h por dia, sem precisar de ninguém disponível o tempo todo.
 
 Faz sentido conversar alguns minutinhos?`,
     `Olá! Tudo bem? 😊
 
-Gostaria de apresentar algo para a *{{nome}}*: uma secretária virtual no WhatsApp que atende seus clientes a qualquer hora, agenda e confirma atendimentos automaticamente.
+Gostaria de apresentar uma proposta para a *{{nome}}*: uma secretária virtual no WhatsApp que atende clientes a qualquer hora e confirma atendimentos automaticamente.
 
-Vale uma conversa rápida?`,
+Ainda estou validando a solução com os primeiros parceiros. Vale uma conversa rápida?`,
   ],
 };
 
