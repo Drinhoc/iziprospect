@@ -1953,6 +1953,7 @@ button.badge-novo--btn:hover { background: #cffafe; color: #0e7490; }
 }
 .ab-variant-A { background: #eff6ff; color: #2563eb; }
 .ab-variant-B { background: #f5f3ff; color: #7c3aed; }
+.ab-variant-C { background: #f0fdf4; color: #16a34a; }
 .ab-taxa {
   font-size: 1.35rem;
   font-weight: 800;
@@ -2022,6 +2023,7 @@ button.badge-novo--btn:hover { background: #cffafe; color: #0e7490; }
 /* Dark */
 :root.dark .ab-variant-A { background: #1e3a5f; color: #93c5fd; }
 :root.dark .ab-variant-B { background: #2e1065; color: #c4b5fd; }
+:root.dark .ab-variant-C { background: #14532d; color: #86efac; }
 
 /* ═══════════════════════════════════════════════
    HISTÓRICO: confiança IA + duração áudio

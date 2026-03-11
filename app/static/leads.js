@@ -1,7 +1,7 @@
 /* Leads page JS */
 
 // ===== Mensagem inicial sugerida =====
-// Templates A/B por segmento. Variante determinada pelo lead_id (consistente por lead).
+// Templates A/B/C por segmento. Variante determinada pelo lead_id (consistente por lead).
 const MSG_TEMPLATES = {
   odontologia: [
     `Oi, tudo bem? Me chamo Pedro e estou estruturando um assistente virtual voltado para clínicas odontológicas aqui na região, com foco em resposta rápida e organização dos agendamentos pelo WhatsApp.
@@ -14,6 +14,11 @@ Posso explicar em 2 minutos como funciona?`,
 Vi o perfil da *{{nome}}* e achei que o contexto de vocês faz sentido pra gente conversar.
 
 Consigo explicar em 2 minutos, se tiver interesse.`,
+    `Olá! Tudo bem? 🙂
+
+Estou conversando com algumas clínicas odontológicas aqui da região sobre automação de atendimento no WhatsApp (agendamento, confirmação de consultas, etc).
+
+Posso te explicar rapidinho em 2 minutos como funciona?`,
   ],
   medicina: [
     `Oi, tudo bem? Me chamo Pedro e estou estruturando um assistente virtual voltado para clínicas médicas aqui na região, com foco em resposta rápida e organização dos agendamentos pelo WhatsApp.
@@ -26,6 +31,11 @@ Posso explicar em 2 minutos como funciona?`,
 Vi o perfil da *{{nome}}* e achei que pode fazer sentido conversar.
 
 Consigo explicar em 2 minutos, se quiser.`,
+    `Olá! Tudo bem? 🙂
+
+Estou conversando com algumas clínicas aqui da região sobre automação de atendimento no WhatsApp (agendamento, confirmação de consultas, etc).
+
+Posso te explicar rapidinho em 2 minutos como funciona?`,
   ],
   estetica: [
     `Oi, tudo bem? Me chamo Pedro e estou estruturando um assistente virtual voltado para clínicas de estética aqui na região, com foco em resposta rápida e agendamento pelo WhatsApp.
@@ -38,6 +48,11 @@ Posso explicar em 2 minutos como funciona?`,
 Vi o perfil da *{{nome}}* e achei que o contexto de vocês faz sentido pra gente conversar.
 
 Consigo explicar em 2 minutos, se tiver interesse.`,
+    `Olá! Tudo bem? 🙂
+
+Estou ajudando algumas clínicas de estética a automatizar o atendimento no WhatsApp (agendamentos, confirmação de consultas e respostas rápidas).
+
+Queria saber se vocês já usam algo assim por aí.`,
   ],
   default: [
     `Oi, tudo bem? Me chamo Pedro e estou estruturando um assistente virtual de atendimento pelo WhatsApp — com foco em resposta rápida e organização de agendamentos.
@@ -50,12 +65,17 @@ Posso explicar em 2 minutos como funciona?`,
 Vi o perfil da *{{nome}}* e achei que pode fazer sentido conversar.
 
 Consigo explicar em 2 minutos, se quiser.`,
+    `Olá! Tudo bem? 🙂
+
+Estou ajudando algumas clínicas a automatizar o atendimento no WhatsApp (agendamentos, confirmação de consultas e respostas rápidas).
+
+Queria saber se vocês já usam algo assim por aí.`,
   ],
 };
 
 function _abVariant(leadId) {
   if (!leadId) return 0;
-  return leadId.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % 2;
+  return leadId.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % 3;
 }
 
 function buildMsgInicial(l) {
@@ -76,7 +96,7 @@ function updateMsgSugerida(l) {
   const variantLabel = document.getElementById('msg-sugerida-variant');
   const variant = _abVariant(l.lead_id || '');
   pre.textContent = buildMsgInicial(l);
-  if (variantLabel) variantLabel.textContent = `Variante ${variant === 0 ? 'A' : 'B'}`;
+  if (variantLabel) variantLabel.textContent = `Variante ${'ABC'[variant]}`;
 }
 
 let state = {
@@ -272,7 +292,7 @@ function _copyMsgBtn(l) {
 }
 
 function _trackAbEvento(leadId, segmento, evento) {
-  const variante = _abVariant(leadId) === 0 ? 'A' : 'B';
+  const variante = ['A', 'B', 'C'][_abVariant(leadId)];
   fetch('/api/msg-ab/evento', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
