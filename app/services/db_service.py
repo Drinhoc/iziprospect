@@ -1389,8 +1389,8 @@ class DBService:
                     SELECT
                         COUNT(*) FILTER (WHERE status != 'arquivado') AS total,
                         COUNT(*) FILTER (WHERE status NOT IN ('arquivado', 'novo')) AS contatados,
-                        COUNT(*) FILTER (WHERE status NOT IN ('arquivado', 'novo', '1º contato', 'sem resposta', 'contato inválido')) AS responderam,
-                        COUNT(*) FILTER (WHERE status IN ('qualificado', 'em espera', 'negociando', 'fechado')) AS conversas_reais,
+                        COUNT(*) FILTER (WHERE status NOT IN ('arquivado', 'novo', 'contato feito', 'contato inválido')) AS responderam,
+                        COUNT(*) FILTER (WHERE status IN ('conversando', 'negociando', 'fechado')) AS conversas_reais,
                         COUNT(*) FILTER (WHERE status = 'fechado') AS fechados
                     FROM leads
                 """)
