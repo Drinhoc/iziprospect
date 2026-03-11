@@ -27,6 +27,24 @@
   </div>
 </div>
 
+<!-- Alertas de saúde do pipeline -->
+<div class="alertas-row" id="alertas-row" style="display:none">
+  <div class="alerta-card alerta-card--frio" id="alerta-frios" style="display:none">
+    <div class="alerta-icon">❄️</div>
+    <div class="alerta-body">
+      <div class="alerta-value" id="stat-frios">0</div>
+      <div class="alerta-label">Leads frios <span class="alerta-sub">sem contato há 15+ dias</span></div>
+    </div>
+  </div>
+  <div class="alerta-card alerta-card--esquecido" id="alerta-esquecidos" style="display:none">
+    <div class="alerta-icon">👻</div>
+    <div class="alerta-body">
+      <div class="alerta-value" id="stat-nunca">0</div>
+      <div class="alerta-label">Nunca contatados <span class="alerta-sub">em novo há 7+ dias</span></div>
+    </div>
+  </div>
+</div>
+
 <!-- Charts row -->
 <div class="charts-row">
   <!-- Pipeline por status -->

@@ -159,6 +159,73 @@
   <div id="seg-detalhe-list"></div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════════════
+     INTELIGÊNCIA IA — dados do motor de processamento, não dos leads
+     ═══════════════════════════════════════════════════════════════ -->
+<div class="ia-divider">
+  <span>Inteligência IA</span>
+</div>
+
+<!-- IA KPIs -->
+<div class="est-section" id="ia-kpis-section" style="display:none">
+  <h2 class="section-title">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 4v4l3 3"/></svg>
+    Desempenho do Motor IA
+  </h2>
+  <div class="ia-kpis-grid">
+    <div class="ia-kpi-card">
+      <div class="ia-kpi-value" id="ia-total-proc">—</div>
+      <div class="ia-kpi-label">Mensagens processadas</div>
+    </div>
+    <div class="ia-kpi-card">
+      <div class="ia-kpi-value" id="ia-conf-global">—</div>
+      <div class="ia-kpi-label">Confiança global</div>
+    </div>
+    <div class="ia-kpi-card ia-kpi-card--alert">
+      <div class="ia-kpi-value" id="ia-baixa-conf">—</div>
+      <div class="ia-kpi-label">Interpretações incertas</div>
+    </div>
+    <div class="ia-kpi-card">
+      <div class="ia-kpi-value" id="ia-total-audio">—</div>
+      <div class="ia-kpi-label">Áudios processados</div>
+    </div>
+    <div class="ia-kpi-card">
+      <div class="ia-kpi-value" id="ia-dur-audio">—</div>
+      <div class="ia-kpi-label">Duração média de áudio</div>
+    </div>
+  </div>
+</div>
+
+<!-- Top ações executadas pela IA -->
+<div class="est-section" id="ia-acoes-section" style="display:none">
+  <h2 class="section-title">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+    Ações Mais Executadas pela IA
+  </h2>
+  <p style="font-size:.8rem;color:var(--text-muted);margin:-4px 0 12px">O que a IA fez em cada interação processada</p>
+  <div id="ia-acoes-chart"></div>
+</div>
+
+<!-- Confiança por tipo de mensagem -->
+<div class="est-section" id="ia-conf-tipo-section" style="display:none">
+  <h2 class="section-title">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+    Confiança da IA por Tipo de Mensagem
+  </h2>
+  <p style="font-size:.8rem;color:var(--text-muted);margin:-4px 0 12px">Quão segura a IA ficou ao interpretar cada tipo</p>
+  <div id="ia-conf-tipo-list"></div>
+</div>
+
+<!-- Mensagens com baixa confiança — para revisão -->
+<div class="est-section" id="ia-revisao-section" style="display:none">
+  <h2 class="section-title">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    Interpretações Incertas — Revisar
+  </h2>
+  <p style="font-size:.8rem;color:var(--text-muted);margin:-4px 0 12px">Mensagens onde a IA teve confiança abaixo de 40% — podem precisar de correção manual</p>
+  <div id="ia-revisao-list"></div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}

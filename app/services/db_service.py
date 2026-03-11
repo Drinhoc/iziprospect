@@ -675,7 +675,8 @@ class DBService:
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    """SELECT data_hora, tipo, canal, acao_executada, resumo
+                    """SELECT data_hora, tipo, canal, acao_executada, resumo,
+                              confianca_ia, duracao_audio_s
                        FROM atividades
                        WHERE lead_id = %s
                        ORDER BY data_hora DESC LIMIT %s""",
@@ -689,9 +690,48 @@ class DBService:
                         "canal": r[2],
                         "acao_executada": r[3],
                         "resumo": r[4],
+                        "confianca_ia": float(r[5]) if r[5] is not None else None,
+                        "duracao_audio_s": float(r[6]) if r[6] is not None else None,
                     }
                     for r in rows
                 ]
+        finally:
+            self._put(conn)
+
+    def get_perfil_comunicacao(self, lead_id: str) -> Dict[str, Any]:
+        """Retorna perfil de comunicação do lead: breakdown de tipos, duração total de áudio."""
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT
+                           tipo,
+                           COUNT(*) as total,
+                           COALESCE(SUM(duracao_audio_s), 0) as duracao_total,
+                           COALESCE(AVG(confianca_ia) FILTER (WHERE confianca_ia > 0), 0) as confianca_media
+                       FROM atividades
+                       WHERE lead_id = %s AND tipo IS NOT NULL AND tipo != ''
+                       GROUP BY tipo
+                       ORDER BY total DESC""",
+                    (lead_id,),
+                )
+                rows = cur.fetchall()
+                tipos = [
+                    {
+                        "tipo": r[0],
+                        "total": r[1],
+                        "duracao_total_s": float(r[2]),
+                        "confianca_media": round(float(r[3]), 2),
+                    }
+                    for r in rows
+                ]
+                total_msgs = sum(t["total"] for t in tipos)
+                total_audio_s = sum(t["duracao_total_s"] for t in tipos if t["tipo"] == "audio")
+                return {
+                    "tipos": tipos,
+                    "total_mensagens": total_msgs,
+                    "total_audio_s": total_audio_s,
+                }
         finally:
             self._put(conn)
 
@@ -980,6 +1020,26 @@ class DBService:
                 cols = [d[0] for d in cur.description]
                 proximos_followups = [dict(zip(cols, r)) for r in cur.fetchall()]
 
+                # Leads frios: ativos sem interação há 15+ dias
+                cur.execute(
+                    """SELECT COUNT(*) FROM leads
+                       WHERE ultima_interacao_em IS NOT NULL AND ultima_interacao_em != ''
+                         AND ultima_interacao_em < (NOW() - INTERVAL '15 days')::text
+                         AND status NOT IN ('fechado', 'perdido', 'arquivado')"""
+                )
+                leads_frios = cur.fetchone()[0]
+
+                # Leads nunca contatados: status 'novo' criados há 7+ dias sem nenhuma atividade
+                cur.execute(
+                    """SELECT COUNT(*) FROM leads l
+                       WHERE l.status = 'novo'
+                         AND l.data_criacao < (NOW() - INTERVAL '7 days')::text
+                         AND NOT EXISTS (
+                             SELECT 1 FROM atividades a WHERE a.lead_id = l.lead_id
+                         )"""
+                )
+                leads_nunca_contatados = cur.fetchone()[0]
+
             return {
                 "by_status": by_status,
                 "by_segmento": by_segmento,
@@ -990,6 +1050,8 @@ class DBService:
                 "criados_semana": criados_semana,
                 "recentes": recentes,
                 "proximos_followups": proximos_followups,
+                "leads_frios": leads_frios,
+                "leads_nunca_contatados": leads_nunca_contatados,
             }
         finally:
             self._put(conn)
@@ -1807,3 +1869,110 @@ class DBService:
         finally:
             self._put(conn)
         return True
+
+    def get_ia_stats(self) -> Dict[str, Any]:
+        """Estatísticas da Inteligência IA — separado dos dados dos leads.
+        Agrega: ações mais executadas, confiança média por tipo de msg,
+        volume de processamento por dia e score médio de interpretação.
+        """
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                # Top ações executadas pela IA
+                cur.execute(
+                    """SELECT acao_executada, COUNT(*) as total
+                       FROM atividades
+                       WHERE acao_executada IS NOT NULL AND acao_executada != ''
+                       GROUP BY acao_executada
+                       ORDER BY total DESC
+                       LIMIT 10"""
+                )
+                top_acoes = [{"acao": r[0], "total": r[1]} for r in cur.fetchall()]
+
+                # Confiança média da IA por tipo de mensagem
+                cur.execute(
+                    """SELECT tipo,
+                              COUNT(*) as total,
+                              ROUND(AVG(confianca_ia)::numeric, 2) as confianca_media,
+                              ROUND(MIN(confianca_ia)::numeric, 2) as confianca_min,
+                              ROUND(MAX(confianca_ia)::numeric, 2) as confianca_max
+                       FROM atividades
+                       WHERE confianca_ia > 0 AND tipo IS NOT NULL AND tipo != ''
+                       GROUP BY tipo
+                       ORDER BY total DESC"""
+                )
+                confianca_por_tipo = [
+                    {
+                        "tipo": r[0],
+                        "total": r[1],
+                        "confianca_media": float(r[2]) if r[2] else 0,
+                        "confianca_min": float(r[3]) if r[3] else 0,
+                        "confianca_max": float(r[4]) if r[4] else 0,
+                    }
+                    for r in cur.fetchall()
+                ]
+
+                # Volume de processamento por dia (últimos 30 dias)
+                cur.execute(
+                    """SELECT LEFT(data_hora, 10) as dia, COUNT(*) as total,
+                              ROUND(AVG(confianca_ia)::numeric, 2) as confianca_media
+                       FROM atividades
+                       WHERE data_hora >= (NOW() - INTERVAL '30 days')::text
+                         AND lead_id != ''
+                       GROUP BY dia
+                       ORDER BY dia ASC"""
+                )
+                volume_por_dia = [
+                    {
+                        "dia": r[0],
+                        "total": r[1],
+                        "confianca_media": float(r[2]) if r[2] else 0,
+                    }
+                    for r in cur.fetchall()
+                ]
+
+                # Mensagens com baixa confiança (IA ficou insegura) — para revisão
+                cur.execute(
+                    """SELECT a.data_hora, a.lead_id, l.nome, a.tipo,
+                              a.acao_executada, a.confianca_ia, a.resumo
+                       FROM atividades a
+                       LEFT JOIN leads l ON a.lead_id = l.lead_id
+                       WHERE a.confianca_ia > 0 AND a.confianca_ia < 0.4
+                         AND a.lead_id != ''
+                       ORDER BY a.data_hora DESC
+                       LIMIT 10"""
+                )
+                cols = [d[0] for d in cur.description]
+                baixa_confianca = [dict(zip(cols, r)) for r in cur.fetchall()]
+
+                # Totais gerais de processamento IA
+                cur.execute(
+                    """SELECT
+                           COUNT(*) as total_processadas,
+                           COUNT(*) FILTER (WHERE confianca_ia > 0) as com_score,
+                           ROUND(AVG(confianca_ia) FILTER (WHERE confianca_ia > 0)::numeric, 2) as confianca_global,
+                           COUNT(*) FILTER (WHERE confianca_ia > 0 AND confianca_ia < 0.4) as baixa_confianca_count,
+                           COUNT(*) FILTER (WHERE duracao_audio_s IS NOT NULL) as total_audios,
+                           ROUND(AVG(duracao_audio_s) FILTER (WHERE duracao_audio_s IS NOT NULL)::numeric, 1) as duracao_audio_media
+                       FROM atividades
+                       WHERE lead_id != ''"""
+                )
+                totais_row = cur.fetchone()
+                totais = {
+                    "total_processadas": totais_row[0] or 0,
+                    "com_score": totais_row[1] or 0,
+                    "confianca_global": float(totais_row[2]) if totais_row[2] else None,
+                    "baixa_confianca_count": totais_row[3] or 0,
+                    "total_audios": totais_row[4] or 0,
+                    "duracao_audio_media_s": float(totais_row[5]) if totais_row[5] else None,
+                }
+
+            return {
+                "totais": totais,
+                "top_acoes": top_acoes,
+                "confianca_por_tipo": confianca_por_tipo,
+                "volume_por_dia": volume_por_dia,
+                "baixa_confianca": baixa_confianca,
+            }
+        finally:
+            self._put(conn)

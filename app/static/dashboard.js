@@ -111,6 +111,24 @@ async function loadDashboard() {
       });
     }
 
+    // Alertas de saúde do pipeline
+    const frios = d.leads_frios || 0;
+    const nunca = d.leads_nunca_contatados || 0;
+    const alertasRow = document.getElementById('alertas-row');
+    const alertaFrios = document.getElementById('alerta-frios');
+    const alertaEsquecidos = document.getElementById('alerta-esquecidos');
+    if (frios > 0 || nunca > 0) {
+      alertasRow.style.display = '';
+      if (frios > 0) {
+        document.getElementById('stat-frios').textContent = frios;
+        alertaFrios.style.display = '';
+      }
+      if (nunca > 0) {
+        document.getElementById('stat-nunca').textContent = nunca;
+        alertaEsquecidos.style.display = '';
+      }
+    }
+
     // Timestamp
     document.getElementById('last-update').textContent =
       'Atualizado às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });

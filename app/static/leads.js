@@ -63,6 +63,49 @@ function fmtPhone(s) {
   return s.replace(/^\+55/, '').replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3').trim();
 }
 
+// ===== Score de Engajamento =====
+// Calculado client-side com dados já disponíveis na listagem.
+// Escala 1-5 baseada em: status atual, recência da última interação, prioridade, followup agendado.
+
+function calcEngajamento(l) {
+  const STATUS_SCORE = {
+    'fechado': 5, 'negociando': 4.5, 'proposta enviada': 4,
+    'qualificado': 3.5, 'em espera': 3, 'em contato': 2.5,
+    'novo': 1.5, 'sem resposta': 1, 'perdido': 0, 'contato inválido': 0, 'arquivado': 0,
+  };
+  let score = STATUS_SCORE[l.status] ?? 1.5;
+
+  // Recência
+  if (l.ultima_interacao_em) {
+    const diasSemInteracao = (Date.now() - new Date(l.ultima_interacao_em)) / 86_400_000;
+    if (diasSemInteracao < 3)       score += 0.5;
+    else if (diasSemInteracao < 7)  score += 0.2;
+    else if (diasSemInteracao > 14) score -= 0.4;
+  }
+
+  // Prioridade
+  if (l.prioridade === 'alta')   score += 0.3;
+  if (l.prioridade === 'baixa')  score -= 0.2;
+
+  // Followup futuro agendado
+  if (l.proximo_followup_em) {
+    const fu = l.proximo_followup_em.slice(0, 10);
+    const today = new Date().toISOString().slice(0, 10);
+    if (fu >= today) score += 0.2;
+  }
+
+  const nivel = Math.min(5, Math.max(1, Math.round(score)));
+  const cores = { 1: '#9ca3af', 2: '#60a5fa', 3: '#a78bfa', 4: '#fb923c', 5: '#10b981' };
+  const labels = { 1: 'Frio', 2: 'Morno', 3: 'Ativo', 4: 'Quente', 5: 'Fechando' };
+  return { nivel, cor: cores[nivel], label: labels[nivel] };
+}
+
+function engajamentoBadge(l) {
+  if (['arquivado', 'perdido'].includes(l.status)) return '';
+  const e = calcEngajamento(l);
+  return `<span class="badge-engaj" style="background:${e.cor}22;color:${e.cor};border-color:${e.cor}44" title="Engajamento: ${e.label}">${'●'.repeat(e.nivel)}${'○'.repeat(5 - e.nivel)} ${e.label}</span>`;
+}
+
 // ===== Load leads =====
 
 async function loadLeads() {
@@ -159,7 +202,7 @@ function renderCards(leads) {
     card.innerHTML = `
       <div class="lc-top">
         <span class="lc-name">${esc(l.nome) || '—'}</span>
-        <div class="lc-badges">${statusBadge(l.status, l.status_anterior)}</div>
+        <div class="lc-badges">${statusBadge(l.status, l.status_anterior)}${engajamentoBadge(l)}</div>
       </div>
       ${meta.length ? `<div class="lc-meta">${meta.map(m => `<span class="lc-meta-item">${m}</span>`).join('')}</div>` : ''}
       ${l.pendencia ? `<div class="lc-pendencia">${esc(l.pendencia)}</div>` : ''}`;
@@ -309,12 +352,26 @@ async function openLeadModal(leadId) {
 async function loadHistorico(leadId) {
   const list = document.getElementById('historico-list');
   const count = document.getElementById('hist-count');
+  const perfilEl = document.getElementById('perfil-comunicacao');
   list.innerHTML = '<div class="hist-loading">Carregando…</div>';
   try {
-    const res = await fetch(`/api/leads/${leadId}/atividades`);
-    if (!res.ok) throw new Error();
-    const ativs = await res.json();
+    const [resAtiv, resPerfil] = await Promise.all([
+      fetch(`/api/leads/${leadId}/atividades`),
+      fetch(`/api/leads/${leadId}/perfil`),
+    ]);
+    const ativs = resAtiv.ok ? await resAtiv.json() : [];
+    const perfil = resPerfil.ok ? await resPerfil.json() : null;
+
     count.textContent = ativs.length ? `${ativs.length} eventos` : '';
+
+    // Perfil de comunicação
+    if (perfil && perfil.total_mensagens > 0) {
+      perfilEl.style.display = '';
+      perfilEl.innerHTML = renderPerfilComunicacao(perfil);
+    } else {
+      perfilEl.style.display = 'none';
+    }
+
     if (!ativs.length) {
       list.innerHTML = '<div class="hist-empty">Nenhuma atividade registrada ainda.</div>';
       return;
@@ -325,6 +382,28 @@ async function loadHistorico(leadId) {
   }
 }
 
+function renderPerfilComunicacao(perfil) {
+  const tipoEmoji = { audio: '🎙️', text: '💬', image: '🖼️', texto: '💬' };
+  const tipoLabel = { audio: 'Áudio', text: 'Texto', image: 'Imagem', texto: 'Texto' };
+  const chips = (perfil.tipos || []).map(t => {
+    const emoji = tipoEmoji[t.tipo] || '📩';
+    const label = tipoLabel[t.tipo] || t.tipo;
+    const extra = t.tipo === 'audio' && t.duracao_total_s > 0
+      ? ` · ${fmtAudioDur(t.duracao_total_s)}` : '';
+    return `<span class="perfil-chip">${emoji} ${label} <strong>${t.total}</strong>${extra}</span>`;
+  }).join('');
+  const audioTotal = perfil.total_audio_s > 0
+    ? `<span class="perfil-audio-total">Total em áudio: ${fmtAudioDur(perfil.total_audio_s)}</span>` : '';
+  return `<div class="perfil-chips">${chips}</div>${audioTotal}`;
+}
+
+function fmtAudioDur(s) {
+  if (!s) return '';
+  const m = Math.floor(s / 60);
+  const sec = Math.round(s % 60);
+  return m > 0 ? `${m}min ${sec}s` : `${sec}s`;
+}
+
 function renderHistItem(a) {
   const data = a.data_hora ? a.data_hora.slice(0, 16).replace('T', ' ') : '—';
   const [datePart, timePart] = data.split(' ');
@@ -332,6 +411,21 @@ function renderHistItem(a) {
   const acao = esc(a.acao_executada || '');
   const resumo = esc(a.resumo || '');
   const tipo = a.tipo === 'audio' ? '🎙️' : a.tipo === 'image' ? '🖼️' : '💬';
+
+  // Confiança IA — só exibe se existir e for relevante
+  let confiancaBadge = '';
+  if (a.confianca_ia !== null && a.confianca_ia !== undefined) {
+    const pct = Math.round(a.confianca_ia * 100);
+    const cls = a.confianca_ia >= 0.7 ? 'conf-alta' : a.confianca_ia >= 0.4 ? 'conf-media' : 'conf-baixa';
+    confiancaBadge = `<span class="hist-conf ${cls}" title="Confiança da IA: ${pct}%">${pct}%</span>`;
+  }
+
+  // Duração de áudio
+  let duracaoTag = '';
+  if (a.tipo === 'audio' && a.duracao_audio_s) {
+    duracaoTag = `<span class="hist-duracao">${fmtAudioDur(a.duracao_audio_s)}</span>`;
+  }
+
   return `
     <div class="hist-item">
       <div class="hist-dot"></div>
@@ -339,7 +433,9 @@ function renderHistItem(a) {
         <div class="hist-meta">
           <span class="hist-tipo">${tipo}</span>
           <span class="hist-data">${dateF}${timePart ? ' ' + timePart : ''}</span>
+          ${duracaoTag}
           ${acao ? `<span class="hist-acao">${acao}</span>` : ''}
+          ${confiancaBadge}
         </div>
         ${resumo ? `<div class="hist-resumo">${resumo}</div>` : ''}
       </div>

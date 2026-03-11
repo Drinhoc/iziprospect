@@ -442,3 +442,98 @@ async function loadEstatisticas() {
 
 loadEstatisticas();
 setInterval(loadEstatisticas, 120_000);
+
+// ═══════════════════════════════════════════════════════════════
+// INTELIGÊNCIA IA — carregado via endpoint separado /api/ia/stats
+// ═══════════════════════════════════════════════════════════════
+
+function fmtAudioDurEst(s) {
+  if (!s) return '—';
+  const m = Math.floor(s / 60);
+  const sec = Math.round(s % 60);
+  return m > 0 ? `${m}min ${sec}s` : `${sec}s`;
+}
+
+function confBar(valor, max) {
+  const pct = max > 0 ? Math.round((valor / max) * 100) : 0;
+  const cor = valor >= 0.7 ? '#10b981' : valor >= 0.4 ? '#f59e0b' : '#ef4444';
+  return `<div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${cor}"></div></div>`;
+}
+
+async function loadIaStats() {
+  try {
+    const res = await fetch('/api/ia/stats');
+    if (!res.ok) return;
+    const d = await res.json();
+
+    if (!d.totais || d.totais.total_processadas === 0) return;
+
+    const t = d.totais;
+
+    // KPIs
+    document.getElementById('ia-kpis-section').style.display = '';
+    document.getElementById('ia-total-proc').textContent = t.total_processadas.toLocaleString('pt-BR');
+    document.getElementById('ia-conf-global').textContent =
+      t.confianca_global !== null ? `${Math.round(t.confianca_global * 100)}%` : '—';
+    document.getElementById('ia-baixa-conf').textContent = t.baixa_confianca_count;
+    document.getElementById('ia-total-audio').textContent = t.total_audios.toLocaleString('pt-BR');
+    document.getElementById('ia-dur-audio').textContent = fmtAudioDurEst(t.duracao_audio_media_s);
+
+    // Top ações
+    if (d.top_acoes && d.top_acoes.length > 0) {
+      document.getElementById('ia-acoes-section').style.display = '';
+      const maxAcao = d.top_acoes[0].total;
+      document.getElementById('ia-acoes-chart').innerHTML = d.top_acoes.map(a => {
+        const pct = maxAcao > 0 ? Math.round((a.total / maxAcao) * 100) : 0;
+        return `<div class="bar-item">
+          <div class="bar-label-row"><strong>${a.acao}</strong><span>${a.total}</span></div>
+          <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:#6366f1"></div></div>
+        </div>`;
+      }).join('');
+    }
+
+    // Confiança por tipo
+    if (d.confianca_por_tipo && d.confianca_por_tipo.length > 0) {
+      document.getElementById('ia-conf-tipo-section').style.display = '';
+      const tipoEmoji = { audio: '🎙️', text: '💬', image: '🖼️', texto: '💬' };
+      document.getElementById('ia-conf-tipo-list').innerHTML = d.confianca_por_tipo.map(c => {
+        const emoji = tipoEmoji[c.tipo] || '📩';
+        const pct = Math.round(c.confianca_media * 100);
+        const cor = c.confianca_media >= 0.7 ? '#10b981' : c.confianca_media >= 0.4 ? '#f59e0b' : '#ef4444';
+        return `<div class="ia-conf-row">
+          <span class="ia-conf-tipo">${emoji} ${c.tipo}</span>
+          <span class="ia-conf-n">${c.total} msgs</span>
+          <div class="ia-conf-bar-wrap">
+            <div class="bar-track" style="flex:1"><div class="bar-fill" style="width:${pct}%;background:${cor}"></div></div>
+            <span class="ia-conf-pct" style="color:${cor}">${pct}%</span>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    // Baixa confiança — para revisão
+    if (d.baixa_confianca && d.baixa_confianca.length > 0) {
+      document.getElementById('ia-revisao-section').style.display = '';
+      const fmtData = s => s ? s.slice(0, 16).replace('T', ' ') : '—';
+      document.getElementById('ia-revisao-list').innerHTML = `
+        <div class="ia-revisao-table">
+          ${d.baixa_confianca.map(r => {
+            const pct = r.confianca_ia !== null ? Math.round(r.confianca_ia * 100) : 0;
+            const tipoEmoji = r.tipo === 'audio' ? '🎙️' : r.tipo === 'image' ? '🖼️' : '💬';
+            return `<div class="ia-revisao-row">
+              <span class="ia-rev-tipo">${tipoEmoji}</span>
+              <span class="ia-rev-nome">${r.nome || r.lead_id || '—'}</span>
+              <span class="ia-rev-acao">${r.acao_executada || '—'}</span>
+              <span class="ia-rev-conf" style="color:#ef4444">${pct}%</span>
+              <span class="ia-rev-data">${fmtData(r.data_hora)}</span>
+            </div>`;
+          }).join('')}
+        </div>`;
+    }
+  } catch (e) {
+    console.error('loadIaStats error:', e);
+  }
+}
+
+loadIaStats();
+setInterval(loadIaStats, 120_000);

@@ -75,6 +75,22 @@ def get_lead_activities(lead_id: str):
     return db.get_lead_activities(lead_id)
 
 
+@router.get("/leads/{lead_id}/perfil")
+def get_lead_perfil(lead_id: str):
+    """Perfil de comunicação do lead: breakdown de tipos de mensagem e uso de áudio."""
+    db = _get_db()
+    if db.get_lead(lead_id) is None:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    return db.get_perfil_comunicacao(lead_id)
+
+
+@router.get("/ia/stats")
+def get_ia_stats():
+    """Estatísticas da Inteligência IA — independente dos dados dos leads."""
+    db = _get_db()
+    return db.get_ia_stats()
+
+
 @router.post("/leads", status_code=201)
 def create_lead(body: dict):
     if not body.get("nome"):
