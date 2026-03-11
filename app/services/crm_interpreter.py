@@ -310,6 +310,11 @@ _MICRO_PATTERNS: List[tuple] = [
     (re.compile(r"^(.+?)\s+sem\s+interesse\b"),                        "perdido",          "sem interesse"),
     (re.compile(r"^(.+?)\s+descartad[ao]\b"),                          "perdido",          "sem interesse"),
     (re.compile(r"^(.+?)\s+numero\s+(?:errado|invalido|incorreto)\b"), "contato inválido", "número inválido"),
+    # Primeiro contato (específico: deve aparecer antes do padrão genérico de mensagem)
+    (re.compile(r"^(?:mandei|enviei)\s+(?:o\s+)?primeiro\s+contato\s+(?:pra|para)\s+(?:o\s+|a\s+)?(.+)"), "1º contato", "primeiro contato"),
+    (re.compile(r"^fiz\s+(?:o\s+)?primeiro\s+contato\s+(?:com|pra|para)\s+(?:o\s+|a\s+)?(.+)"),            "1º contato", "primeiro contato"),
+    (re.compile(r"^1[o°º]\.?\s+contato\s+(?:feito\s+)?(?:pra|para|com)\s+(?:o\s+|a\s+)?(.+)"),            "1º contato", "primeiro contato"),
+    (re.compile(r"^primeiro\s+contato\s+(?:feito\s+)?(?:pra|para|com)\s+(?:o\s+|a\s+)?(.+)"),             "1º contato", "primeiro contato"),
     # Verbo vem antes, nome segue
     (re.compile(r"^(?:mandei|enviei)\s+mensagem\s+(?:pra|para)\s+(.+)"), "em contato",    "aguardando resposta"),
     (re.compile(r"^contatei\s+(?:o\s+|a\s+)?(.+)"),                   "em contato",       "aguardando resposta"),

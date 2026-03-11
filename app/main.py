@@ -355,6 +355,7 @@ async def sync_sheets_to_db(x_webhook_secret: str | None = Header(default=None))
 # Tabela de fallback: quando OpenAI não extrai pendência mas o status implica ação
 _STATUS_PENDENCIA: Dict[str, str] = {
     "novo": "Fazer primeiro contato",
+    "1º contato": "Aguardar resposta ou fazer follow-up",
     "em contato": "Fazer follow-up",
     "qualificado": "Enviar proposta",
     "proposta enviada": "Aguardar retorno",
@@ -415,7 +416,7 @@ async def _execute_crm_query(intent, db: DBService) -> str:
         if not by_status:
             return "Pipeline vazio."
         lines = ["Pipeline atual:"]
-        order = ["novo", "em contato", "qualificado", "negociando", "em espera", "sem resposta", "fechado", "perdido"]
+        order = ["novo", "1º contato", "em contato", "qualificado", "negociando", "em espera", "sem resposta", "fechado", "perdido"]
         for st in order:
             if st in by_status:
                 lines.append(f"• {st}: {by_status[st]}")

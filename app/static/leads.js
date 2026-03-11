@@ -110,6 +110,7 @@ function segLabel(s) {
 function statusBadge(s, statusAnterior) {
   const map = {
     'novo':             'badge-novo',
+    '1º contato':       'badge-1-contato',
     'em contato':       'badge-em-contato',
     'qualificado':      'badge-qualificado',
     'em espera':        statusAnterior === 'negociando' ? 'badge-negociando' : 'badge-qualificado',
@@ -153,7 +154,7 @@ function calcEngajamento(l) {
   const STATUS_SCORE = {
     'fechado': 5, 'negociando': 4.5, 'proposta enviada': 4,
     'qualificado': 3.5, 'em espera': 3, 'em contato': 2.5,
-    'novo': 1.5, 'sem resposta': 1, 'perdido': 0, 'contato inválido': 0, 'arquivado': 0,
+    '1º contato': 2, 'novo': 1.5, 'sem resposta': 1, 'perdido': 0, 'contato inválido': 0, 'arquivado': 0,
   };
   let score = STATUS_SCORE[l.status] ?? 1.5;
 
@@ -712,10 +713,10 @@ async function saveLead(e) {
       throw new Error(err.detail || 'Erro ao salvar');
     }
 
-    // Rastrear conversão A/B: lead saiu de novo/sem resposta para outro status
-    if (!isNew && ['novo', 'sem resposta'].includes(state._modalStatusInicial)) {
+    // Rastrear conversão A/B: lead saiu de novo/1º contato/sem resposta para outro status
+    if (!isNew && ['novo', '1º contato', 'sem resposta'].includes(state._modalStatusInicial)) {
       const novoStatus = data.status;
-      if (!['novo', 'sem resposta'].includes(novoStatus)) {
+      if (!['novo', '1º contato', 'sem resposta'].includes(novoStatus)) {
         _trackAbEvento(leadId, state._modalSegmento, 'respondeu');
       }
     }
