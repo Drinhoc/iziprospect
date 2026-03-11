@@ -103,7 +103,7 @@ REV_COL_WIDTHS = [155, 300, 110, 180, 260, 160, 140]
 # Cores de status (RGB 0-1 float) — fundo da linha inteira
 STATUS_COLORS = {
     "novo":             (0.89, 0.95, 1.0),   # azul claro
-    "em contato":       (1.0,  0.98, 0.77),  # amarelo
+    "1º contato":       (0.88, 0.97, 0.99),  # ciano claro
     "qualificado":      (0.91, 0.96, 0.91),  # verde claro
     "proposta enviada": (1.0,  0.88, 0.70),  # laranja claro
     "negociando":       (1.0,  0.95, 0.88),  # âmbar
@@ -596,7 +596,7 @@ class SheetsService:
 
         # Fórmulas do pipeline por status
         status_list = [
-            "novo", "em contato", "qualificado", "proposta enviada",
+            "novo", "1º contato", "qualificado", "proposta enviada",
             "negociando", "fechado", "perdido", "sem resposta", "contato inválido",
         ]
 

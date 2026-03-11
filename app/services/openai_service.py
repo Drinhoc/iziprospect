@@ -60,7 +60,7 @@ Regras:
 - lead.email: endereço de e-mail se mencionado. null se ausente.
 - followup_em: data/hora de próximo contato se mencionada (ISO 8601 ou texto como "amanhã 10h").
 - pendencia: próxima ação comercial concreta. Preencha sempre que houver contexto suficiente.
-  Por status: "novo"→"Fazer primeiro contato", "em contato"→"Fazer follow-up",
+  Por status: "novo"→"Fazer primeiro contato", "1º contato"→"Aguardar resposta / fazer follow-up",
   "qualificado"→"Enviar proposta", "negociando"→"Fechar contrato", "fechado"→"Emitir contrato/NF".
   null APENAS para mensagens de nota pura sem ação decorrente.
 - activity.tipo: contato inicial | respondeu | pediu proposta | sem interesse | número inválido | retorno agendado | aguardando resposta | demo agendada | nota
@@ -71,8 +71,8 @@ Regras:
 
 Guia de status_sugerido — escolha o que melhor descreve o ESTÁGIO ATUAL do lead:
 - "novo": contato adicionado, mas nenhuma mensagem foi enviada ainda.
-- "em contato": primeiro contato feito, mas sem nada concreto ainda. Prospect pode não ter respondido ou respondeu superficialmente.
-- "sem resposta": nunca retornou o primeiro contato. Atribuído automaticamente após 5 dias sem resposta. Lead frio mas retomável.
+- "1º contato": primeiro contato feito (mensagem enviada, ligação feita). Aguardando resposta. Use SEMPRE que o primeiro contato foi realizado mas sem retorno concreto ainda.
+- "sem resposta": não retornou após 5+ dias. Atribuído automaticamente pelo sistema. Lead frio mas retomável.
 - "qualificado": demonstrou interesse genuíno (fez perguntas, pediu mais info, quer conhecer, achou interessante). Alta prioridade.
 - "em espera": estava qualificado mas deixou de responder. Você aguarda retorno. Atribuído automaticamente após 5 dias sem resposta do qualificado. Diferente de "sem resposta" — este já tinha demonstrado interesse antes.
 - "negociando": prospect gostou e está ativamente discutindo fechar — preço, condições, prazo, ajustes.
@@ -89,7 +89,7 @@ Entrada: "Clínica Vida, Campinas, sem interesse por enquanto"
 Saída: {"intent":"perdido","lead":{"nome":"Clínica Vida","cidade":"Campinas","segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"perdido","followup_em":null,"pendencia":null,"activity":{"tipo":"sem interesse","resumo":"Clínica Vida (Campinas) não tem interesse no momento."}}
 
 Entrada: "Clínica Sorrir SP, liguei hoje, vai pensar e me liga semana que vem"
-Saída: {"intent":"update","lead":{"nome":"Clínica Sorrir","cidade":"SP","segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"em contato","followup_em":"semana que vem","pendencia":"Aguardar retorno da clínica","activity":{"tipo":"aguardando resposta","resumo":"Clínica Sorrir (SP): contato feito, aguardando retorno semana que vem."}}
+Saída: {"intent":"update","lead":{"nome":"Clínica Sorrir","cidade":"SP","segmento":null,"whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":null,"fonte":null},"status_sugerido":"1º contato","followup_em":"semana que vem","pendencia":"Aguardar retorno da clínica","activity":{"tipo":"aguardando resposta","resumo":"Clínica Sorrir (SP): contato feito, aguardando retorno semana que vem."}}
 
 Entrada: "Studio Beleza BH, falei com a dona hoje, achou interessante, quer saber mais sobre os resultados"
 Saída: {"intent":"update","lead":{"nome":"Studio Beleza","cidade":"BH","segmento":"estetica","whatsapp":null,"email":null,"instagram":null,"site":null,"responsavel":"dona","fonte":null},"status_sugerido":"qualificado","followup_em":null,"pendencia":"Enviar proposta","activity":{"tipo":"respondeu","resumo":"Studio Beleza (BH): dona demonstrou interesse genuíno, quer conhecer mais."}}
@@ -144,7 +144,7 @@ Schema:
     "responsavel": null,
     "fonte": null
   },
-  "status_sugerido": "novo|em contato|sem resposta|qualificado|em espera|negociando|fechado|perdido|contato inválido",
+  "status_sugerido": "novo|1º contato|sem resposta|qualificado|em espera|negociando|fechado|perdido|contato inválido",
   "resumo_conversa": "Resumo factual do fluxo da conversa. Máx 300 chars.",
   "confianca": 6,
   "confianca_razao": "Explicação direta e honesta do score.",

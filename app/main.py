@@ -81,6 +81,16 @@ def get_sheets_service() -> SheetsService:
 
 
 @app.on_event("startup")
+async def _migrate_em_contato() -> None:
+    """One-time migration: 'em contato' → '1º contato'."""
+    try:
+        db = get_db_service()
+        await asyncio.to_thread(db.migrate_em_contato_to_primeiro_contato)
+    except Exception:
+        logger.warning("migrate_em_contato falhou — não crítico", exc_info=True)
+
+
+@app.on_event("startup")
 async def _seed_db_from_sheets() -> None:
     """Na primeira subida, importa leads e atividades existentes do Sheets → PostgreSQL."""
     try:
@@ -398,7 +408,6 @@ async def sync_sheets_to_db(x_webhook_secret: str | None = Header(default=None))
 _STATUS_PENDENCIA: Dict[str, str] = {
     "novo": "Fazer primeiro contato",
     "1º contato": "Aguardar resposta ou fazer follow-up",
-    "em contato": "Fazer follow-up",
     "qualificado": "Enviar proposta",
     "proposta enviada": "Aguardar retorno",
     "negociando": "Fechar contrato",
@@ -458,7 +467,7 @@ async def _execute_crm_query(intent, db: DBService) -> str:
         if not by_status:
             return "Pipeline vazio."
         lines = ["Pipeline atual:"]
-        order = ["novo", "1º contato", "em contato", "qualificado", "negociando", "em espera", "sem resposta", "fechado", "perdido"]
+        order = ["novo", "1º contato", "qualificado", "negociando", "em espera", "sem resposta", "fechado", "perdido"]
         for st in order:
             if st in by_status:
                 lines.append(f"• {st}: {by_status[st]}")

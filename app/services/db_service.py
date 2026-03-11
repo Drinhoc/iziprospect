@@ -149,7 +149,7 @@ def _priority_from_status(status: str) -> str:
     """Auto-calculate lead priority based on current status."""
     if status in ("negociando", "qualificado", "em espera"):
         return "alta"
-    if status in ("em contato", "novo", "1º contato"):
+    if status in ("novo", "1º contato"):
         return "media"
     return "baixa"
 
@@ -1474,26 +1474,14 @@ class DBService:
         finally:
             self._put(conn)
 
-    def _auto_transition_em_contato(self) -> None:
+    def _auto_transition_stale_leads(self) -> None:
         """Auto-transitions stale leads based on inactivity:
-        - 'em contato' 5+ days → 'sem resposta' (never really engaged)
-        - 'qualificado' or 'negociando' 7+ days → 'em espera' (engaged but went silent)
+        - 'qualificado' or 'negociando' 5-7 days → 'em espera' (engaged but went silent)
+        Note: '1º contato' → 'sem resposta' is handled by expire_first_contact() daily job.
         """
         conn = self._conn()
         try:
             with conn.cursor() as cur:
-                # em contato → sem resposta (5 days, lead never really engaged)
-                cur.execute("""
-                    UPDATE leads SET status = 'sem resposta', prioridade = 'baixa'
-                    WHERE status = 'em contato'
-                      AND (
-                        ultima_interacao_em IS NULL
-                        OR ultima_interacao_em = ''
-                        OR LEFT(ultima_interacao_em, 10) < (CURRENT_DATE - INTERVAL '5 days')::text
-                      )
-                """)
-                count_frio = cur.rowcount
-
                 # qualificado → em espera (5 days, had interest but went silent)
                 cur.execute("""
                     UPDATE leads SET status = 'em espera', status_anterior = 'qualificado', prioridade = 'alta'
@@ -1519,13 +1507,27 @@ class DBService:
                 count_espera += cur.rowcount
 
             conn.commit()
-            if count_frio > 0:
-                logger.info("auto_transition | %d leads em contato → sem resposta", count_frio)
             if count_espera > 0:
                 logger.info("auto_transition | %d leads qualificado/negociando → em espera", count_espera)
         except Exception:
             conn.rollback()
             logger.warning("auto_transition_leads falhou", exc_info=True)
+        finally:
+            self._put(conn)
+
+    def migrate_em_contato_to_primeiro_contato(self) -> int:
+        """One-time migration: moves all 'em contato' leads to '1º contato'."""
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE leads SET status = '1º contato', prioridade = 'media' WHERE status = 'em contato'"
+                )
+                count = cur.rowcount
+            conn.commit()
+            if count:
+                logger.info("migration | %d leads 'em contato' → '1º contato'", count)
+            return count
         finally:
             self._put(conn)
 
@@ -1539,8 +1541,8 @@ class DBService:
         page_size: int = 50,
     ) -> Dict[str, Any]:
         """Returns paginated leads with optional filters."""
-        # Auto-transition stale 'em contato' leads before returning results
-        self._auto_transition_em_contato()
+        # Auto-transition stale leads before returning results
+        self._auto_transition_stale_leads()
         conditions = ["status != 'arquivado'"]
         params: List[Any] = []
 

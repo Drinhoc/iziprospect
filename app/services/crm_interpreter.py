@@ -135,7 +135,6 @@ def detect_followup_command(raw_text: str) -> Optional[tuple]:
 
 _STATUS_FOLLOWUP_RULES: dict = {
     "1º contato":   (5,  "aguardar resposta ou fazer follow-up"),
-    "em contato":   (2,  "retomar contato"),
     "qualificado":  (2,  "avançar proposta"),
     "em espera":    (5,  "cobrar retorno"),
     "negociando":   (2,  "fechar negociação"),
@@ -184,15 +183,16 @@ def infer_activity_type(raw_text: str) -> str:
 
 # Override explícito: usuário pode forçar status entre colchetes, ex: [qualificado]
 _STATUS_OVERRIDE_RE = re.compile(
-    r"\[\s*(novo|1[oº°]\s*contato|em contato|qualificado|em espera|negociando|fechado|perdido|sem resposta|contato inv[aá]lido)\s*\]",
+    r"\[\s*(novo|1[oº°]\s*contato|qualificado|em espera|negociando|fechado|perdido|sem resposta|contato inv[aá]lido)\s*\]",
     re.IGNORECASE,
 )
 
 _STATUS_NORMALIZE = {
     "contato invalido": "contato inválido",
     "contato inválido": "contato inválido",
-    "1o contato": "1º contato",
-    "1° contato": "1º contato",
+    "1o contato":  "1º contato",
+    "1° contato":  "1º contato",
+    "em contato":  "1º contato",
 }
 
 
@@ -240,10 +240,11 @@ def infer_status(raw_text: str) -> Optional[str]:
     if any(k in text for k in ["achou interessante", "quer saber mais", "pediu mais info", "quer conhecer", "demonstrou interesse", "interessou", "gostou bastante", "quer ver demo", "pediu demo", "quer demo"]):
         return "qualificado"
 
-    # Em contato
-    if any(k in text for k in ["respondeu", "me respondeu", "retornou", "falei com", "liguei", "atendeu",
-                                "mandei mensagem", "enviei mensagem", "contatei"]):
-        return "em contato"
+    # 1º contato — primeiro contato feito, aguardando resposta
+    if any(k in text for k in ["primeiro contato", "feito contato", "feito o contato", "fiz o contato",
+                                "mandei mensagem", "enviei mensagem", "contatei", "liguei", "tentei contato",
+                                "respondeu", "me respondeu", "retornou", "falei com", "atendeu"]):
+        return "1º contato"
 
     return None
 
@@ -307,7 +308,7 @@ _STRUCTURED_FIELD_RE = [
 # Aplicados sobre o texto normalizado (sem acentos, lowercase)
 _MICRO_PATTERNS: List[tuple] = [
     # Nome vem antes do verbo
-    (re.compile(r"^(.+?)\s+respondeu\b"),                              "em contato",       "respondeu"),
+    (re.compile(r"^(.+?)\s+respondeu\b"),                              "1º contato",       "respondeu"),
     (re.compile(r"^(.+?)\s+nao\s+(?:usa|tem)\s+whatsapp\b"),          "contato inválido", "número inválido"),
     (re.compile(r"^(.+?)\s+quer\s+(?:demo|apresentacao|apresentação)\b"), "qualificado",  "demo agendada"),
     (re.compile(r"^(.+?)\s+(?:esta\s+|está\s+)?interessad[ao]\b"),    "qualificado",      "respondeu"),
@@ -322,9 +323,9 @@ _MICRO_PATTERNS: List[tuple] = [
     (re.compile(r"^1[o°º]\.?\s+contato\s+(?:feito\s+)?(?:pra|para|com)\s+(?:o\s+|a\s+)?(.+)"),            "1º contato", "primeiro contato"),
     (re.compile(r"^primeiro\s+contato\s+(?:feito\s+)?(?:pra|para|com)\s+(?:o\s+|a\s+)?(.+)"),             "1º contato", "primeiro contato"),
     # Verbo vem antes, nome segue
-    (re.compile(r"^(?:mandei|enviei)\s+mensagem\s+(?:pra|para)\s+(.+)"), "em contato",    "aguardando resposta"),
-    (re.compile(r"^contatei\s+(?:o\s+|a\s+)?(.+)"),                   "em contato",       "aguardando resposta"),
-    (re.compile(r"^liguei\s+(?:pra|para)\s+(?:o\s+|a\s+)?(.+)"),     "em contato",       "aguardando resposta"),
+    (re.compile(r"^(?:mandei|enviei)\s+mensagem\s+(?:pra|para)\s+(.+)"), "1º contato",    "aguardando resposta"),
+    (re.compile(r"^contatei\s+(?:o\s+|a\s+)?(.+)"),                   "1º contato",       "aguardando resposta"),
+    (re.compile(r"^liguei\s+(?:pra|para)\s+(?:o\s+|a\s+)?(.+)"),     "1º contato",       "aguardando resposta"),
 ]
 
 

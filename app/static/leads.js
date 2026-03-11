@@ -111,7 +111,6 @@ function statusBadge(s, statusAnterior) {
   const map = {
     'novo':             'badge-novo',
     '1º contato':       'badge-1-contato',
-    'em contato':       'badge-em-contato',
     'qualificado':      'badge-qualificado',
     'em espera':        statusAnterior === 'negociando' ? 'badge-negociando' : 'badge-qualificado',
     'proposta enviada': 'badge-proposta',
@@ -156,7 +155,7 @@ function fmtPhone(s) {
 function calcEngajamento(l) {
   const STATUS_SCORE = {
     'fechado': 5, 'negociando': 4.5, 'proposta enviada': 4,
-    'qualificado': 3.5, 'em espera': 3, 'em contato': 2.5,
+    'qualificado': 3.5, 'em espera': 3,
     '1º contato': 2, 'novo': 1.5, 'sem resposta': 1, 'perdido': 0, 'contato inválido': 0, 'arquivado': 0,
   };
   let score = STATUS_SCORE[l.status] ?? 1.5;

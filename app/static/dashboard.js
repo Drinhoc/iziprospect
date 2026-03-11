@@ -1,13 +1,12 @@
 /* Dashboard JS */
 
 const STATUS_ORDER = [
-  'novo', '1º contato', 'em contato', 'qualificado', 'proposta enviada', 'negociando', 'fechado', 'perdido', 'sem resposta'
+  'novo', '1º contato', 'qualificado', 'proposta enviada', 'negociando', 'fechado', 'perdido', 'sem resposta'
 ];
 
 const STATUS_COLORS = {
   'novo':             '#9ca3af',
   '1º contato':       '#06b6d4',
-  'em contato':       '#3b82f6',
   'qualificado':      '#8b5cf6',
   'proposta enviada': '#f59e0b',
   'negociando':       '#f97316',
