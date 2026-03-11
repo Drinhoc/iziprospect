@@ -1802,6 +1802,122 @@ label {
 :root.dark .engaj-bar { background: var(--card); }
 
 /* ═══════════════════════════════════════════════
+   MENSAGEM INICIAL SUGERIDA
+   ═══════════════════════════════════════════════ */
+
+/* Botão ícone na tabela e nos cards */
+.copy-msg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 3px 5px;
+  line-height: 1;
+  transition: color .12s, border-color .12s, background .12s;
+  vertical-align: middle;
+}
+.copy-msg-btn svg { width: 13px; height: 13px; }
+.copy-msg-btn:hover { color: var(--primary); border-color: var(--primary); background: var(--primary-10, #eff6ff); }
+.copy-msg-btn.copied { color: #16a34a; border-color: #16a34a; background: #f0fdf4; }
+
+/* Botão no card mobile — com label */
+.copy-msg-btn--card {
+  gap: 5px;
+  font-size: .72rem;
+  font-weight: 600;
+  padding: 4px 10px 4px 8px;
+  color: var(--primary);
+  border-color: var(--primary);
+  background: var(--primary-10, #eff6ff);
+}
+.copy-msg-btn--card svg { width: 13px; height: 13px; }
+.lc-msg-action { margin-top: 6px; }
+
+/* Bloco no modal */
+.msg-sugerida-section {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin-bottom: 4px;
+}
+.msg-sugerida-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  gap: 8px;
+}
+.msg-sugerida-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.msg-sugerida-meta svg { width: 15px; height: 15px; color: var(--primary); flex-shrink: 0; }
+.msg-sugerida-title {
+  font-size: .78rem;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+.msg-sugerida-variant {
+  font-size: .68rem;
+  font-weight: 600;
+  background: #e0f2fe;
+  color: #0369a1;
+  border-radius: 4px;
+  padding: 1px 6px;
+  flex-shrink: 0;
+}
+.btn-copy-msg-modal {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: .75rem;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--primary);
+  background: var(--primary-10, #eff6ff);
+  color: var(--primary);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background .12s, color .12s;
+}
+.btn-copy-msg-modal svg { width: 13px; height: 13px; }
+.btn-copy-msg-modal:hover { background: var(--primary); color: #fff; }
+.btn-copy-msg-modal.copied { background: #f0fdf4; color: #16a34a; border-color: #16a34a; }
+.msg-sugerida-text {
+  font-family: inherit;
+  font-size: .8rem;
+  line-height: 1.6;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin: 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+/* Dark mode */
+:root.dark .msg-sugerida-section { background: #1e293b; border-color: var(--border); }
+:root.dark .msg-sugerida-text { background: #0f172a; border-color: var(--border); }
+:root.dark .msg-sugerida-variant { background: #0c4a6e; color: #7dd3fc; }
+:root.dark .btn-copy-msg-modal { background: #1e3a5f; }
+:root.dark .copy-msg-btn:hover { background: #1e3a5f; }
+:root.dark .copy-msg-btn--card { background: #1e3a5f; }
+
+/* ═══════════════════════════════════════════════
    HISTÓRICO: confiança IA + duração áudio
    ═══════════════════════════════════════════════ */
 .hist-conf {

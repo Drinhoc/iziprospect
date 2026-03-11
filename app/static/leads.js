@@ -1,5 +1,92 @@
 /* Leads page JS */
 
+// ===== Mensagem inicial sugerida =====
+// Templates A/B por segmento. Variante determinada pelo lead_id (consistente por lead).
+const MSG_TEMPLATES = {
+  odontologia: [
+    `Oi, tudo bem? 😊
+
+Vi a *{{nome}}* e quis entrar em contato.
+
+Tenho ajudado clínicas odontológicas a nunca perder um paciente que entra em contato fora do horário — uma assistente de WhatsApp que responde, agenda e confirma consultas automaticamente, 24h por dia.
+
+Faz sentido conversarmos alguns minutinhos?`,
+    `Olá! Tudo bem por aí na *{{nome}}*? 😊
+
+Queria apresentar algo que tem feito diferença em clínicas de odontologia: uma secretária virtual no WhatsApp que atende, agenda e confirma consultas — sem precisar contratar mais recepcionistas.
+
+Vale uma conversa rápida?`,
+  ],
+  medicina: [
+    `Oi, tudo bem? 😊
+
+Vi a *{{nome}}* e gostaria de me apresentar rapidinho.
+
+Uma coisa comum em clínicas médicas é perder pacientes porque a equipe não consegue responder o WhatsApp fora do horário. A gente resolve isso com uma assistente virtual que atende, agenda e confirma consultas automaticamente — 24h, sem custo de funcionário extra.
+
+Faz sentido trocarmos uma ideia?`,
+    `Olá! Tudo bem? 😊
+
+Gostaria de apresentar algo para a *{{nome}}*: uma secretária virtual no WhatsApp que atende seus pacientes a qualquer hora, agenda consultas e envia lembretes de confirmação — tudo sem você precisar estar disponível o tempo todo.
+
+Vale cinco minutinhos de conversa?`,
+  ],
+  estetica: [
+    `Oi, tudo bem? 😊
+
+Vi a *{{nome}}* e achei que faria sentido entrar em contato.
+
+Uma coisa que a gente vê muito em clínicas de estética é a perda de clientes por demora na resposta do WhatsApp — especialmente fora do horário comercial. Temos uma assistente virtual que resolve exatamente isso: agenda procedimentos, responde dúvidas e confirma tudo automaticamente.
+
+Posso te contar mais em uma conversa rápida?`,
+    `Olá! Tudo bem? 😊
+
+Trabalho com clínicas de estética e queria apresentar algo que tem dado muito resultado: uma assistente de WhatsApp que agenda procedimentos, responde clientes e manda confirmações — tudo no automático, sem custo de recepcionista extra.
+
+Vale uma conversa rápida?`,
+  ],
+  default: [
+    `Oi, tudo bem? 😊
+
+Vi a *{{nome}}* e gostaria de apresentar algo que pode fazer diferença no seu atendimento.
+
+Uma assistente virtual no WhatsApp que responde, agenda e confirma clientes automaticamente — 24h por dia, sem precisar de ninguém disponível o tempo todo.
+
+Faz sentido conversar alguns minutinhos?`,
+    `Olá! Tudo bem? 😊
+
+Gostaria de apresentar algo para a *{{nome}}*: uma secretária virtual no WhatsApp que atende seus clientes a qualquer hora, agenda e confirma atendimentos automaticamente.
+
+Vale uma conversa rápida?`,
+  ],
+};
+
+function _abVariant(leadId) {
+  if (!leadId) return 0;
+  return leadId.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % 2;
+}
+
+function buildMsgInicial(l) {
+  const seg = l.segmento || '';
+  const templates = MSG_TEMPLATES[seg] || MSG_TEMPLATES.default;
+  const variant = _abVariant(l.lead_id || '');
+  const tpl = templates[variant] || templates[0];
+  return tpl.replace(/{{nome}}/g, (l.nome || 'vocês').trim());
+}
+
+function updateMsgSugerida(l) {
+  const sec = document.getElementById('msg-sugerida-section');
+  if (!sec) return;
+  const show = ['novo', 'sem resposta'].includes(l.status);
+  sec.classList.toggle('hidden', !show);
+  if (!show) return;
+  const pre = document.getElementById('msg-sugerida-text');
+  const variantLabel = document.getElementById('msg-sugerida-variant');
+  const variant = _abVariant(l.lead_id || '');
+  pre.textContent = buildMsgInicial(l);
+  if (variantLabel) variantLabel.textContent = `Variante ${variant === 0 ? 'A' : 'B'}`;
+}
+
 let state = {
   page: 1,
   pageSize: 50,
@@ -179,14 +266,34 @@ async function loadLeads() {
   }
 }
 
+function _copyMsgBtn(l) {
+  if (!['novo', 'sem resposta'].includes(l.status)) return '';
+  return `<button class="copy-msg-btn" data-nome="${esc(l.nome)}" data-seg="${l.segmento || ''}" data-lid="${l.lead_id || ''}" title="Copiar mensagem inicial">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+  </button>`;
+}
+
+function _bindCopyMsgBtns(el) {
+  el.querySelectorAll('.copy-msg-btn').forEach(btn => {
+    btn.onclick = e => {
+      e.stopPropagation();
+      const msg = buildMsgInicial({ nome: btn.dataset.nome, segmento: btn.dataset.seg, lead_id: btn.dataset.lid });
+      navigator.clipboard.writeText(msg).then(() => {
+        btn.classList.add('copied');
+        setTimeout(() => btn.classList.remove('copied'), 1400);
+      });
+    };
+  });
+}
+
 function renderTable(leads) {
   const tbody = document.getElementById('leads-tbody');
   tbody.innerHTML = '';
   leads.forEach(l => {
     const phone = fmtPhone(l.whatsapp);
     const phoneTd = phone
-      ? `${phone} <button class="copy-phone-btn" data-phone="${esc(l.whatsapp)}" title="Copiar">⎘</button>`
-      : '—';
+      ? `${phone} <button class="copy-phone-btn" data-phone="${esc(l.whatsapp)}" title="Copiar">⎘</button>${_copyMsgBtn(l)}`
+      : _copyMsgBtn(l) || '—';
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><span class="lead-name">${esc(l.nome)}</span></td>
@@ -199,6 +306,7 @@ function renderTable(leads) {
       <td class="text-muted">${fmtDate(l.ultima_interacao_em)}</td>
       <td>${followupCell(l.proximo_followup_em)}</td>`;
     tr.onclick = () => openLeadModal(l.lead_id);
+    _bindCopyMsgBtns(tr);
     // Copy phone button — stop propagation so row click doesn't fire
     tr.querySelectorAll('.copy-phone-btn').forEach(btn => {
       btn.onclick = e => {
@@ -225,6 +333,12 @@ function renderCards(leads) {
     const phoneHtml = phone
       ? `📱 ${phone} <button class="copy-phone-btn" data-phone="${esc(l.whatsapp)}" title="Copiar número">⎘</button>`
       : null;
+    const msgBtnHtml = ['novo', 'sem resposta'].includes(l.status)
+      ? `<button class="copy-msg-btn copy-msg-btn--card" data-nome="${esc(l.nome)}" data-seg="${l.segmento || ''}" data-lid="${l.lead_id || ''}" title="Copiar mensagem inicial">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          Mensagem inicial
+        </button>`
+      : null;
     const meta = [
       l.segmento ? `🏥 ${segLabel(l.segmento)}` : null,
       l.cidade ? `📍 ${esc(l.cidade)}` : null,
@@ -239,8 +353,10 @@ function renderCards(leads) {
         <div class="lc-badges">${statusBadge(l.status, l.status_anterior)}${engajamentoBadge(l)}</div>
       </div>
       ${meta.length ? `<div class="lc-meta">${meta.map(m => `<span class="lc-meta-item">${m}</span>`).join('')}</div>` : ''}
+      ${msgBtnHtml ? `<div class="lc-msg-action">${msgBtnHtml}</div>` : ''}
       ${l.pendencia ? `<div class="lc-pendencia">${esc(l.pendencia)}</div>` : ''}`;
     card.onclick = () => openLeadModal(l.lead_id);
+    _bindCopyMsgBtns(card);
     card.querySelectorAll('.copy-phone-btn').forEach(btn => {
       btn.onclick = e => {
         e.stopPropagation();
@@ -506,6 +622,7 @@ function fillForm(l) {
   document.getElementById('f-motivo-perda').value = l.motivo_perda || '';
   document.getElementById('f-data-criacao').value = (l.data_criacao || '').slice(0, 10);
   updateConditionalFields(l.status || 'novo');
+  updateMsgSugerida(l);
 
   // Readonly
   document.getElementById('ro-lead-id').textContent = l.lead_id || '';
@@ -531,6 +648,7 @@ function clearForm() {
   document.getElementById('f-fonte').value = '';
   document.getElementById('f-followup').value = '';
   updateConditionalFields('novo');
+  document.getElementById('msg-sugerida-section')?.classList.add('hidden');
 }
 
 function formData() {
@@ -644,6 +762,17 @@ document.addEventListener('keydown', e => {
     closeFilters();
     closeImportModal();
   }
+});
+
+// Copy button inside modal
+document.getElementById('btn-copy-msg-modal')?.addEventListener('click', () => {
+  const pre = document.getElementById('msg-sugerida-text');
+  const btn = document.getElementById('btn-copy-msg-modal');
+  if (!pre || !btn) return;
+  navigator.clipboard.writeText(pre.textContent).then(() => {
+    btn.classList.add('copied');
+    setTimeout(() => btn.classList.remove('copied'), 1400);
+  });
 });
 
 // ===== Import =====

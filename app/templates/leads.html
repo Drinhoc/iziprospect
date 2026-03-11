@@ -90,6 +90,22 @@
     <form id="lead-form" onsubmit="saveLead(event)">
       <input type="hidden" id="form-lead-id" />
 
+      <!-- Mensagem inicial sugerida — visível somente para status Novo / Sem resposta -->
+      <div class="form-section msg-sugerida-section hidden" id="msg-sugerida-section">
+        <div class="msg-sugerida-header">
+          <div class="msg-sugerida-meta">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <span class="msg-sugerida-title">Mensagem inicial sugerida</span>
+            <span class="msg-sugerida-variant" id="msg-sugerida-variant"></span>
+          </div>
+          <button type="button" class="btn-copy-msg-modal" id="btn-copy-msg-modal">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copiar
+          </button>
+        </div>
+        <pre class="msg-sugerida-text" id="msg-sugerida-text"></pre>
+      </div>
+
       <div class="form-section">
         <div class="form-group required">
           <label>Nome / Clínica</label>
