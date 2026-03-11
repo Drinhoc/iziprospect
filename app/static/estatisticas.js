@@ -1,8 +1,9 @@
 /* estatisticas.js — Página /estatisticas */
 
-const FUNIL_ORDER = ['novo','em contato','sem resposta','qualificado','em espera','negociando','fechado'];
+const FUNIL_ORDER = ['novo','1º contato','em contato','sem resposta','qualificado','em espera','negociando','fechado'];
 const FUNIL_COLORS = {
   'novo':             '#9ca3af',
+  '1º contato':       '#06b6d4',
   'em contato':       '#3b82f6',
   'sem resposta':     '#6b7280',
   'qualificado':      '#8b5cf6',

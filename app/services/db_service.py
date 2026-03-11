@@ -149,7 +149,7 @@ def _priority_from_status(status: str) -> str:
     """Auto-calculate lead priority based on current status."""
     if status in ("negociando", "qualificado", "em espera"):
         return "alta"
-    if status in ("em contato", "novo"):
+    if status in ("em contato", "novo", "1º contato"):
         return "media"
     return "baixa"
 
@@ -970,6 +970,30 @@ class DBService:
         finally:
             self._put(conn)
 
+    def expire_first_contact(self, days: int = 5) -> List[Dict[str, Any]]:
+        """Leads com status '1º contato' sem resposta há mais de `days` dias.
+
+        Atualiza esses leads para 'sem resposta' e retorna a lista para log/notificação.
+        """
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """UPDATE leads
+                       SET status = 'sem resposta',
+                           prioridade = 'baixa',
+                           ultima_interacao_em = %s
+                       WHERE status = '1º contato'
+                         AND ultima_interacao_em < NOW() - (%s * INTERVAL '1 day')
+                       RETURNING lead_id, nome""",
+                    (datetime.utcnow().isoformat(), days),
+                )
+                rows = cur.fetchall()
+            conn.commit()
+            return [{"lead_id": r[0], "nome": r[1]} for r in rows]
+        finally:
+            self._put(conn)
+
     def get_recent_novo_leads(self, limit: int = 10, minutes: int = 30) -> List[Dict[str, Any]]:
         """Leads criados recentemente ainda com status 'novo', ordenados do mais recente."""
         conn = self._conn()
@@ -1253,7 +1277,7 @@ class DBService:
                     SELECT
                         COUNT(*) FILTER (WHERE status != 'arquivado') AS total,
                         COUNT(*) FILTER (WHERE status NOT IN ('arquivado', 'novo')) AS contatados,
-                        COUNT(*) FILTER (WHERE status NOT IN ('arquivado', 'novo', 'sem resposta', 'contato inválido')) AS responderam,
+                        COUNT(*) FILTER (WHERE status NOT IN ('arquivado', 'novo', '1º contato', 'sem resposta', 'contato inválido')) AS responderam,
                         COUNT(*) FILTER (WHERE status IN ('qualificado', 'em espera', 'negociando', 'fechado')) AS conversas_reais,
                         COUNT(*) FILTER (WHERE status = 'fechado') AS fechados
                     FROM leads
@@ -1602,9 +1626,10 @@ class DBService:
                 f"{safe_fields.get('cidade_normalizada', '')}:"
                 f"{_canonicalize_name(safe_fields.get('nome', ''))}"
             )
-        # Auto-calculate priority from status
+        # Auto-calculate priority from status; also stamp ultima_interacao_em
         if "status" in safe_fields:
             safe_fields["prioridade"] = _priority_from_status(safe_fields["status"])
+            safe_fields["ultima_interacao_em"] = datetime.utcnow().isoformat()
 
         # Convert valor_venda: empty string is invalid for NUMERIC column
         if "valor_venda" in safe_fields:

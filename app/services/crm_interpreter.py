@@ -134,6 +134,7 @@ def detect_followup_command(raw_text: str) -> Optional[tuple]:
 # ---------------------------------------------------------------------------
 
 _STATUS_FOLLOWUP_RULES: dict = {
+    "1º contato":   (5,  "aguardar resposta ou fazer follow-up"),
     "em contato":   (2,  "retomar contato"),
     "qualificado":  (2,  "avançar proposta"),
     "em espera":    (5,  "cobrar retorno"),
@@ -183,13 +184,15 @@ def infer_activity_type(raw_text: str) -> str:
 
 # Override explícito: usuário pode forçar status entre colchetes, ex: [qualificado]
 _STATUS_OVERRIDE_RE = re.compile(
-    r"\[\s*(novo|em contato|qualificado|em espera|negociando|fechado|perdido|sem resposta|contato inv[aá]lido)\s*\]",
+    r"\[\s*(novo|1[oº°]\s*contato|em contato|qualificado|em espera|negociando|fechado|perdido|sem resposta|contato inv[aá]lido)\s*\]",
     re.IGNORECASE,
 )
 
 _STATUS_NORMALIZE = {
     "contato invalido": "contato inválido",
     "contato inválido": "contato inválido",
+    "1o contato": "1º contato",
+    "1° contato": "1º contato",
 }
 
 

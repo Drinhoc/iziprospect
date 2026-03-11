@@ -108,6 +108,47 @@ async def _start_followup_reminder_loop() -> None:
     asyncio.create_task(_followup_reminder_loop())
 
 
+@app.on_event("startup")
+async def _start_expire_first_contact_loop() -> None:
+    asyncio.create_task(_expire_first_contact_loop())
+
+
+async def _expire_first_contact_loop() -> None:
+    """Diariamente às 3h: leads '1º contato' sem resposta há 5+ dias → 'sem resposta'."""
+    last_run_date: str = ""
+    while True:
+        await asyncio.sleep(60)
+        try:
+            from zoneinfo import ZoneInfo
+            from datetime import datetime as _dt
+            now = _dt.now(ZoneInfo(settings.default_timezone))
+
+            if now.hour != 3 or now.minute != 0:
+                continue
+
+            today_str = now.date().isoformat()
+            if last_run_date == today_str:
+                continue
+            last_run_date = today_str
+
+            db = get_db_service()
+            expired = await asyncio.to_thread(db.expire_first_contact, 5)
+            if not expired:
+                logger.info("expire_first_contact: nenhum lead expirado")
+                continue
+
+            logger.info("expire_first_contact | count=%d", len(expired))
+            if settings.crm_target_group_id and not settings.disable_evolution_confirmation:
+                names = "\n".join(f"• {l['nome'] or l['lead_id']}" for l in expired)
+                group_id = _normalize_group_id(settings.crm_target_group_id)
+                await evolution_service.send_confirmation(
+                    group_id,
+                    f"⏰ {len(expired)} lead(s) sem resposta após 5 dias → marcados como 'sem resposta':\n{names}",
+                )
+        except Exception:
+            logger.warning("expire_first_contact_loop falhou", exc_info=True)
+
+
 async def _followup_reminder_loop() -> None:
     """Envia às 9h a lista de follow-ups do dia para o grupo CRM."""
     if not settings.crm_target_group_id:
