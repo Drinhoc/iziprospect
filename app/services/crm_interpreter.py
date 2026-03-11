@@ -31,6 +31,9 @@ def norm_phone(value: str | None) -> str:
     if not value:
         return ""
     digits = "".join(ch for ch in value if ch.isdigit())
+    # Strip spurious leading zero (old PSTN prefix: 0 + DDD + number)
+    if digits.startswith("0") and not digits.startswith("00"):
+        digits = digits[1:]
     if digits and not digits.startswith("55") and len(digits) >= 10:
         digits = f"55{digits}"
     return f"+{digits}" if digits else ""
@@ -354,6 +357,34 @@ def detect_micro_update(raw_text: str) -> Optional[MicroUpdate]:
                 )
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# Bulk first-contact detection
+# ---------------------------------------------------------------------------
+
+_BULK_FIRST_CONTACT_RE = re.compile(
+    r"contato\s+inicial\s+realizado|"
+    r"primeiro\s+contato\s+realizado|"
+    r"1[o°º]\.?\s+contato\s+realizado|"
+    r"fiz\s+(?:o\s+)?(?:1[o°º]\.?\s+)?(?:primeiro\s+)?contato\s+(?:inicial\s+)?(?:nesses?|com\s+esses?|nos?)\s+\d",
+    re.IGNORECASE,
+)
+
+_BULK_COUNT_RE = re.compile(r"\b(\d+)\b")
+
+
+def detect_bulk_first_contact(raw_text: str) -> Optional[int]:
+    """Detecta mensagem de bulk 'contato inicial realizado nesses N contatos'.
+
+    Retorna o número N de leads a atualizar, ou None se não detectado.
+    Se detectado sem número explícito, retorna 0 (significa: atualiza todos recentes).
+    """
+    if not _BULK_FIRST_CONTACT_RE.search(raw_text or ""):
+        return None
+    norm = normalize_text(raw_text)
+    m = _BULK_COUNT_RE.search(norm)
+    return int(m.group(1)) if m else 0
 
 
 # ---------------------------------------------------------------------------

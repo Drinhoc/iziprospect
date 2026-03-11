@@ -13,6 +13,7 @@ from openai import APIError, RateLimitError
 
 from app.config import settings
 from app.services.crm_interpreter import (
+    detect_bulk_first_contact,
     detect_followup_command,
     detect_micro_update,
     detect_query_intent,
@@ -743,6 +744,42 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
                 "confianca": conf,
                 "status_sugerido": analysis.status_sugerido,
             }
+
+        # Bulk first-contact branch: "contato inicial realizado nesses N contatos"
+        bulk_count = detect_bulk_first_contact(raw_text)
+        if bulk_count is not None:
+            limit = bulk_count if bulk_count > 0 else 10
+            recent = await asyncio.to_thread(db.get_recent_novo_leads, limit, 60)
+            if not recent:
+                if not settings.disable_evolution_confirmation:
+                    await evolution_service.send_confirmation(
+                        event.chat_id,
+                        ". Nenhum lead 'novo' encontrado na última hora para atualizar.",
+                    )
+                return {"ok": True, "action": "bulk_first_contact_no_leads"}
+            updated = []
+            for lead in recent:
+                lead_id = lead["lead_id"]
+                await asyncio.to_thread(db.update_lead_status, lead_id, "1º contato", event.timestamp)
+                await asyncio.to_thread(
+                    db.add_activity,
+                    event.timestamp, event.msg_id or "", lead_id,
+                    "primeiro contato", "whatsapp_group", "atualizar_lead",
+                    0.9, event.audio_seconds, raw_text,
+                    "bulk: 1º contato", None,
+                )
+                lead_dict = await asyncio.to_thread(db.get_lead, lead_id)
+                if lead_dict:
+                    await asyncio.to_thread(sheets.sync_lead, lead_dict)
+                updated.append(f"{lead['nome'] or lead_id} ({lead_id})")
+            logger.info("bulk_first_contact_ok | count=%d", len(updated))
+            if not settings.disable_evolution_confirmation:
+                names = "\n".join(f"• {n}" for n in updated)
+                await evolution_service.send_confirmation(
+                    event.chat_id,
+                    f". {len(updated)} lead(s) → 1º contato:\n{names}",
+                )
+            return {"ok": True, "action": "bulk_first_contact", "count": len(updated)}
 
         # Micro-update branch: padrão verbal simples sem campos estruturados.
         # Se detectado mas sem match confiante → encerra aqui (não cria lead novo).

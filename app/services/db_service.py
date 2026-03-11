@@ -130,6 +130,9 @@ def _norm_phone(value: Any) -> str:
     if not value:
         return ""
     digits = "".join(ch for ch in value if ch.isdigit())
+    # Strip spurious leading zero (old PSTN prefix: 0 + DDD + number)
+    if digits.startswith("0") and not digits.startswith("00"):
+        digits = digits[1:]
     if digits and not digits.startswith("55") and len(digits) >= 10:
         digits = f"55{digits}"
     return f"+{digits}" if digits else ""
@@ -962,6 +965,24 @@ class DBService:
                        ORDER BY ultima_interacao_em DESC NULLS LAST
                        LIMIT %s""",
                     (status, limit),
+                )
+                return self._fetchall_dict(cur)
+        finally:
+            self._put(conn)
+
+    def get_recent_novo_leads(self, limit: int = 10, minutes: int = 30) -> List[Dict[str, Any]]:
+        """Leads criados recentemente ainda com status 'novo', ordenados do mais recente."""
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT lead_id, nome, segmento, cidade, status
+                       FROM leads
+                       WHERE status = 'novo'
+                         AND criado_em >= NOW() - (%s * INTERVAL '1 minute')
+                       ORDER BY criado_em DESC
+                       LIMIT %s""",
+                    (minutes, limit),
                 )
                 return self._fetchall_dict(cur)
         finally:

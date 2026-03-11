@@ -143,7 +143,10 @@ function followupCell(s) {
 
 function fmtPhone(s) {
   if (!s) return null;
-  return s.replace(/^\+55/, '').replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3').trim();
+  let n = s.replace(/^\+55/, '');
+  // Strip spurious leading zero (old PSTN long-distance prefix: 0 + DDD + number)
+  if (/^0\d{10,11}$/.test(n)) n = n.slice(1);
+  return n.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3').trim();
 }
 
 // ===== Score de Engajamento =====
