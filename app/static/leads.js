@@ -274,6 +274,7 @@ async function openLeadModal(leadId) {
   document.getElementById('form-lead-id').value = leadId || '';
   document.getElementById('btn-archive').classList.toggle('hidden', isNew);
   document.getElementById('readonly-section').classList.toggle('hidden', isNew);
+  document.getElementById('historico-section').classList.toggle('hidden', isNew);
 
   if (!isNew) {
     try {
@@ -285,6 +286,7 @@ async function openLeadModal(leadId) {
       console.error('fetch lead error:', e);
       return;
     }
+    loadHistorico(leadId);
   } else {
     clearForm();
   }
@@ -302,6 +304,46 @@ async function openLeadModal(leadId) {
     const body = sheet.querySelector('.sheet-body');
     if (body) body.scrollTop = 0;
   }, 50);
+}
+
+async function loadHistorico(leadId) {
+  const list = document.getElementById('historico-list');
+  const count = document.getElementById('hist-count');
+  list.innerHTML = '<div class="hist-loading">Carregando…</div>';
+  try {
+    const res = await fetch(`/api/leads/${leadId}/atividades`);
+    if (!res.ok) throw new Error();
+    const ativs = await res.json();
+    count.textContent = ativs.length ? `${ativs.length} eventos` : '';
+    if (!ativs.length) {
+      list.innerHTML = '<div class="hist-empty">Nenhuma atividade registrada ainda.</div>';
+      return;
+    }
+    list.innerHTML = ativs.map(a => renderHistItem(a)).join('');
+  } catch {
+    list.innerHTML = '<div class="hist-empty">Não foi possível carregar o histórico.</div>';
+  }
+}
+
+function renderHistItem(a) {
+  const data = a.data_hora ? a.data_hora.slice(0, 16).replace('T', ' ') : '—';
+  const [datePart, timePart] = data.split(' ');
+  const dateF = datePart ? datePart.split('-').reverse().join('/') : '—';
+  const acao = esc(a.acao_executada || '');
+  const resumo = esc(a.resumo || '');
+  const tipo = a.tipo === 'audio' ? '🎙️' : a.tipo === 'image' ? '🖼️' : '💬';
+  return `
+    <div class="hist-item">
+      <div class="hist-dot"></div>
+      <div class="hist-content">
+        <div class="hist-meta">
+          <span class="hist-tipo">${tipo}</span>
+          <span class="hist-data">${dateF}${timePart ? ' ' + timePart : ''}</span>
+          ${acao ? `<span class="hist-acao">${acao}</span>` : ''}
+        </div>
+        ${resumo ? `<div class="hist-resumo">${resumo}</div>` : ''}
+      </div>
+    </div>`;
 }
 
 function closeModal() {

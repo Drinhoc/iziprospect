@@ -669,6 +669,32 @@ class DBService:
         finally:
             self._put(conn)
 
+    def get_lead_activities(self, lead_id: str, limit: int = 30) -> List[Dict[str, Any]]:
+        """Retorna histórico de atividades de um lead, mais recente primeiro."""
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT data_hora, tipo, canal, acao_executada, resumo
+                       FROM atividades
+                       WHERE lead_id = %s
+                       ORDER BY data_hora DESC LIMIT %s""",
+                    (lead_id, limit),
+                )
+                rows = cur.fetchall()
+                return [
+                    {
+                        "data_hora": r[0],
+                        "tipo": r[1],
+                        "canal": r[2],
+                        "acao_executada": r[3],
+                        "resumo": r[4],
+                    }
+                    for r in rows
+                ]
+        finally:
+            self._put(conn)
+
     def update_lead_resumo_pendencia(
         self,
         lead_id: str,

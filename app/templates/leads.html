@@ -221,6 +221,15 @@
         </div>
       </div>
 
+      <!-- Histórico de atividades (só em leads existentes) -->
+      <div class="form-section hist-section hidden" id="historico-section">
+        <div class="hist-header">
+          <span class="hist-title">📋 Histórico</span>
+          <span class="hist-count" id="hist-count"></span>
+        </div>
+        <div id="historico-list"><div class="hist-loading">Carregando…</div></div>
+      </div>
+
       <div class="sheet-actions">
         <button type="button" class="btn-archive hidden" id="btn-archive" onclick="deleteLead()">
           Deletar

@@ -67,6 +67,14 @@ def get_lead(lead_id: str):
     return lead
 
 
+@router.get("/leads/{lead_id}/atividades")
+def get_lead_activities(lead_id: str):
+    db = _get_db()
+    if db.get_lead(lead_id) is None:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    return db.get_lead_activities(lead_id)
+
+
 @router.post("/leads", status_code=201)
 def create_lead(body: dict):
     if not body.get("nome"):

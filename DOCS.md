@@ -31,6 +31,18 @@ Guia rápido para encontrar o que você precisa.
   - Database methods
   - Roadmap
 
+### Histórico de atividades no modal de lead
+
+Ao abrir qualquer lead existente, o modal exibe uma seção **📋 Histórico** no rodapé com a timeline completa de interações.
+
+**Como funciona:**
+- Endpoint: `GET /api/leads/{lead_id}/atividades` — retorna até 30 atividades, mais recente primeiro
+- Cada item mostra: tipo (💬 texto / 🎙️ áudio / 🖼️ imagem), data/hora, ação executada pela IA, resumo da conversa
+- Timeline visual com dots conectados por linha vertical
+- DB method: `db.get_lead_activities(lead_id, limit=30)` — query em `atividades` filtrada por `lead_id`
+
+**Fonte de dados:** tabela `atividades` — registrada automaticamente a cada mensagem recebida via WhatsApp pelo webhook.
+
 **URLs:**
 - Local: `http://localhost:8000/dashboard` / `/leads`
 - Produção: `https://iziprospect-production.up.railway.app/dashboard`
