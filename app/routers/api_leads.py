@@ -84,6 +84,26 @@ def get_lead_perfil(lead_id: str):
     return db.get_perfil_comunicacao(lead_id)
 
 
+@router.post("/msg-ab/evento", status_code=201)
+def registrar_msg_ab_evento(body: dict):
+    """Registra um evento de A/B (copiada / respondeu)."""
+    db = _get_db()
+    db.registrar_msg_ab_evento(
+        lead_id=body.get("lead_id", ""),
+        variante=body.get("variante", ""),
+        segmento=body.get("segmento", ""),
+        evento=body.get("evento", ""),
+    )
+    return {"ok": True}
+
+
+@router.get("/msg-ab/stats")
+def get_msg_ab_stats():
+    """Estatísticas do teste A/B de mensagem inicial."""
+    db = _get_db()
+    return db.get_msg_ab_stats()
+
+
 @router.get("/ia/stats")
 def get_ia_stats():
     """Estatísticas da Inteligência IA — independente dos dados dos leads."""

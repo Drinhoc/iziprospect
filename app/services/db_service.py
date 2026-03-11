@@ -221,6 +221,20 @@ class DBService:
                 cur.execute(
                     "ALTER TABLE leads ADD COLUMN IF NOT EXISTS status_anterior TEXT DEFAULT ''"
                 )
+                # Rastreamento A/B de mensagem inicial
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS msg_ab_eventos (
+                        id        SERIAL PRIMARY KEY,
+                        lead_id   TEXT DEFAULT '',
+                        variante  TEXT DEFAULT '',
+                        segmento  TEXT DEFAULT '',
+                        evento    TEXT DEFAULT '',
+                        data_hora TEXT
+                    )
+                """)
+                cur.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_msg_ab_lead ON msg_ab_eventos(lead_id)"
+                )
             conn.commit()
         finally:
             self._put(conn)
@@ -956,6 +970,75 @@ class DBService:
     # ------------------------------------------------------------------
     # Sync Sheets → DB (edições manuais do usuário)
     # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # Rastreamento A/B — Mensagem Inicial
+    # ------------------------------------------------------------------
+
+    def registrar_msg_ab_evento(self, lead_id: str, variante: str, segmento: str, evento: str) -> None:
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO msg_ab_eventos (lead_id, variante, segmento, evento, data_hora) VALUES (%s,%s,%s,%s,%s)",
+                    (lead_id, variante, segmento, evento, now),
+                )
+            conn.commit()
+        finally:
+            self._put(conn)
+
+    def get_msg_ab_stats(self) -> Dict[str, Any]:
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                # Totais por variante e evento
+                cur.execute("""
+                    SELECT variante, evento, COUNT(*) AS n
+                    FROM msg_ab_eventos
+                    GROUP BY variante, evento
+                    ORDER BY variante, evento
+                """)
+                rows = self._fetchall_dict(cur)
+
+                # Por segmento + variante + evento
+                cur.execute("""
+                    SELECT segmento, variante, evento, COUNT(*) AS n
+                    FROM msg_ab_eventos
+                    WHERE segmento != ''
+                    GROUP BY segmento, variante, evento
+                    ORDER BY segmento, variante, evento
+                """)
+                seg_rows = self._fetchall_dict(cur)
+
+            # Montar estrutura por variante
+            variantes: Dict[str, Any] = {}
+            for r in rows:
+                v = r['variante']
+                if v not in variantes:
+                    variantes[v] = {'copiadas': 0, 'responderam': 0}
+                if r['evento'] == 'copiada':
+                    variantes[v]['copiadas'] = r['n']
+                elif r['evento'] == 'respondeu':
+                    variantes[v]['responderam'] = r['n']
+            for v, d in variantes.items():
+                d['taxa'] = round(d['responderam'] * 100 / d['copiadas'], 1) if d['copiadas'] else 0
+
+            # Montar por segmento
+            seg_map: Dict[str, Dict] = {}
+            for r in seg_rows:
+                s = r['segmento']
+                v = r['variante']
+                if s not in seg_map:
+                    seg_map[s] = {}
+                key = f"{v}_{'copiadas' if r['evento'] == 'copiada' else 'responderam'}"
+                seg_map[s][key] = r['n']
+            por_segmento = [{'segmento': s, **vals} for s, vals in seg_map.items()]
+
+            return {'variantes': variantes, 'por_segmento': por_segmento}
+        finally:
+            self._put(conn)
 
     # ------------------------------------------------------------------
     # Dashboard API methods

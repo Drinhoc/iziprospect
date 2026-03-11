@@ -96,6 +96,9 @@ let state = {
   segmento: '',
   searchTimer: null,
   currentLeadId: null,
+  // A/B tracking: status do lead quando o modal foi aberto
+  _modalStatusInicial: null,
+  _modalSegmento: null,
 };
 
 // ===== Badges =====
@@ -273,6 +276,15 @@ function _copyMsgBtn(l) {
   </button>`;
 }
 
+function _trackAbEvento(leadId, segmento, evento) {
+  const variante = _abVariant(leadId) === 0 ? 'A' : 'B';
+  fetch('/api/msg-ab/evento', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lead_id: leadId, variante, segmento, evento }),
+  }).catch(() => {});
+}
+
 function _bindCopyMsgBtns(el) {
   el.querySelectorAll('.copy-msg-btn').forEach(btn => {
     btn.onclick = e => {
@@ -281,6 +293,7 @@ function _bindCopyMsgBtns(el) {
       navigator.clipboard.writeText(msg).then(() => {
         btn.classList.add('copied');
         setTimeout(() => btn.classList.remove('copied'), 1400);
+        _trackAbEvento(btn.dataset.lid, btn.dataset.seg, 'copiada');
       });
     };
   });
@@ -623,6 +636,9 @@ function fillForm(l) {
   document.getElementById('f-data-criacao').value = (l.data_criacao || '').slice(0, 10);
   updateConditionalFields(l.status || 'novo');
   updateMsgSugerida(l);
+  // Guarda o estado inicial pra rastrear conversão A/B
+  state._modalStatusInicial = l.status || 'novo';
+  state._modalSegmento = l.segmento || '';
 
   // Readonly
   document.getElementById('ro-lead-id').textContent = l.lead_id || '';
@@ -704,6 +720,14 @@ async function saveLead(e) {
       throw new Error(err.detail || 'Erro ao salvar');
     }
 
+    // Rastrear conversão A/B: lead saiu de novo/sem resposta para outro status
+    if (!isNew && ['novo', 'sem resposta'].includes(state._modalStatusInicial)) {
+      const novoStatus = data.status;
+      if (!['novo', 'sem resposta'].includes(novoStatus)) {
+        _trackAbEvento(leadId, state._modalSegmento, 'respondeu');
+      }
+    }
+
     closeModal();
     loadLeads();
   } catch (err) {
@@ -772,6 +796,9 @@ document.getElementById('btn-copy-msg-modal')?.addEventListener('click', () => {
   navigator.clipboard.writeText(pre.textContent).then(() => {
     btn.classList.add('copied');
     setTimeout(() => btn.classList.remove('copied'), 1400);
+    const leadId = document.getElementById('form-lead-id').value;
+    const segmento = document.getElementById('f-segmento').value;
+    _trackAbEvento(leadId, segmento, 'copiada');
   });
 });
 

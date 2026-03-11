@@ -537,3 +537,88 @@ async function loadIaStats() {
 
 loadIaStats();
 setInterval(loadIaStats, 120_000);
+
+/* ═══════════════════════════════════════════════
+   TESTE A/B — MENSAGEM INICIAL
+   ═══════════════════════════════════════════════ */
+
+const SEG_LABEL = {
+  odontologia: 'Odontologia', medicina: 'Medicina',
+  estetica: 'Estética', psicologia: 'Psicologia',
+  nutricionista: 'Nutricionista', fisioterapia: 'Fisioterapia',
+  veterinaria: 'Veterinária', outros: 'Outros',
+};
+
+function renderAbStats(d) {
+  const section = document.getElementById('ab-section');
+  const el = document.getElementById('ab-stats-content');
+  if (!d || !d.variantes || Object.keys(d.variantes).length === 0) return;
+
+  section.classList.remove('hidden');
+  const variantes = d.variantes;
+  const vars = ['A', 'B'].filter(v => variantes[v]);
+
+  // Cards por variante
+  const varCards = vars.map(v => {
+    const info = variantes[v] || { copiadas: 0, responderam: 0, taxa: 0 };
+    const taxaColor = info.taxa >= 30 ? '#10b981' : info.taxa >= 15 ? '#f59e0b' : '#ef4444';
+    return `
+      <div class="ab-card">
+        <div class="ab-card-header">
+          <span class="ab-variant-badge ab-variant-${v}">Variante ${v}</span>
+          <span class="ab-taxa" style="color:${taxaColor}">${info.taxa}%</span>
+        </div>
+        <div class="ab-metrics">
+          <div class="ab-metric">
+            <span class="ab-metric-val">${info.copiadas}</span>
+            <span class="ab-metric-label">Enviadas</span>
+          </div>
+          <div class="ab-metric">
+            <span class="ab-metric-val">${info.responderam}</span>
+            <span class="ab-metric-label">Responderam</span>
+          </div>
+        </div>
+        <div class="ab-bar-track">
+          <div class="ab-bar-fill" style="width:${Math.min(info.taxa, 100)}%;background:${taxaColor}"></div>
+        </div>
+      </div>`;
+  }).join('');
+
+  // Tabela por segmento
+  let segTable = '';
+  if (d.por_segmento && d.por_segmento.length) {
+    const rows = d.por_segmento.map(s => {
+      const aC = s['A_copiadas'] || 0, aR = s['A_responderam'] || 0;
+      const bC = s['B_copiadas'] || 0, bR = s['B_responderam'] || 0;
+      const aTaxa = aC ? Math.round(aR * 100 / aC) : 0;
+      const bTaxa = bC ? Math.round(bR * 100 / bC) : 0;
+      const winner = aTaxa > bTaxa ? 'A' : bTaxa > aTaxa ? 'B' : '';
+      return `<tr>
+        <td>${SEG_LABEL[s.segmento] || s.segmento}</td>
+        <td>${aC} / ${aR} <span class="ab-taxa-sm">(${aTaxa}%)</span>${winner === 'A' ? ' <span class="ab-winner">↑</span>' : ''}</td>
+        <td>${bC} / ${bR} <span class="ab-taxa-sm">(${bTaxa}%)</span>${winner === 'B' ? ' <span class="ab-winner">↑</span>' : ''}</td>
+      </tr>`;
+    }).join('');
+    segTable = `
+      <h3 class="ab-sub-title">Por segmento <span style="font-weight:400;font-size:.75rem">(enviadas / responderam)</span></h3>
+      <div class="ab-table-wrap">
+        <table class="ab-table">
+          <thead><tr><th>Segmento</th><th>Variante A</th><th>Variante B</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }
+
+  el.innerHTML = `<div class="ab-cards-row">${varCards}</div>${segTable}`;
+}
+
+async function loadAbStats() {
+  try {
+    const res = await fetch('/api/msg-ab/stats');
+    if (!res.ok) return;
+    renderAbStats(await res.json());
+  } catch {}
+}
+
+loadAbStats();
+setInterval(loadAbStats, 60_000);
