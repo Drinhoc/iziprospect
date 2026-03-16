@@ -902,14 +902,19 @@ class DBService:
             self._put(conn)
 
     def count_auto_sent_today(self, today_iso: str) -> int:
-        """Quantos envios automáticos já foram feitos hoje (YYYY-MM-DD)."""
+        """Quantos envios automáticos já foram feitos hoje (YYYY-MM-DD).
+
+        Conta diretamente na tabela leads pelo mensagem_enviada_em — fonte de
+        verdade primária. Mais robusto que contar msg_ab_eventos, que pode
+        falhar silenciosamente sem afetar o envio real.
+        """
         conn = self._conn()
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    """SELECT COUNT(*) FROM msg_ab_eventos
-                       WHERE evento = 'auto_enviada'
-                         AND data_hora >= %s""",
+                    """SELECT COUNT(*) FROM leads
+                       WHERE origem_primeiro_contato = 'automatico'
+                         AND mensagem_enviada_em >= %s""",
                     (today_iso,),
                 )
                 row = cur.fetchone()
