@@ -123,6 +123,53 @@ async def _start_expire_first_contact_loop() -> None:
     asyncio.create_task(_expire_first_contact_loop())
 
 
+@app.on_event("startup")
+async def _start_auto_sender_loop() -> None:
+    asyncio.create_task(_auto_sender_loop())
+
+
+async def _auto_sender_loop() -> None:
+    """Envia 1 lead por ciclo respeitando janela horária e limite diário.
+
+    Ciclo:
+    1. Dorme 60s base entre verificações.
+    2. Verifica se AUTO_SEND_ENABLED=true.
+    3. Verifica se está dentro da janela horária configurada.
+    4. Tenta enviar 1 lead via AutoSender.
+    5. Se enviou: dorme intervalo aleatório (MIN–MAX segundos) antes da próxima tentativa.
+    """
+    from app.services.auto_sender import AutoSender
+    import random
+
+    while True:
+        await asyncio.sleep(60)
+        try:
+            if not settings.auto_send_enabled:
+                continue
+
+            from zoneinfo import ZoneInfo
+            from datetime import datetime as _dt
+            now = _dt.now(ZoneInfo(settings.default_timezone))
+
+            if not (settings.auto_send_hora_inicio <= now.hour < settings.auto_send_hora_fim):
+                continue
+
+            db = get_db_service()
+            sender = AutoSender(db, evolution_service, settings)
+            sent = await sender.send_one()
+
+            if sent:
+                jitter = random.uniform(
+                    settings.auto_send_intervalo_min_s,
+                    settings.auto_send_intervalo_max_s,
+                )
+                logger.info("auto_sender_loop | aguardando %.0fs antes do próximo envio", jitter)
+                await asyncio.sleep(jitter)
+
+        except Exception:
+            logger.exception("auto_sender_loop: erro inesperado")
+
+
 async def _expire_first_contact_loop() -> None:
     """Diariamente às 3h: baixa temperatura de leads inativos.
 

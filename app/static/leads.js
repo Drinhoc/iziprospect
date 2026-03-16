@@ -399,7 +399,7 @@ function _bindNovoBadgeBtns(el) {
       await fetch(`/api/leads/${btn.dataset.lid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'contato feito', temperatura: 'frio' }),
+        body: JSON.stringify({ status: 'contato feito', temperatura: 'frio', origem_primeiro_contato: 'manual' }),
       }).catch(() => {});
       const badge = document.createElement('span');
       badge.className = 'badge badge-contato-feito';

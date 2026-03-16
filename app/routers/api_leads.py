@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+from datetime import date
+
 from fastapi import APIRouter, HTTPException, Query
 
 logger = logging.getLogger(__name__)
@@ -209,3 +211,58 @@ def bulk_create_leads(body: dict):
         "review": needs_review,
         "failed": errors,
     }
+
+
+# ---------------------------------------------------------------------------
+# Auto-send: status e histórico
+# ---------------------------------------------------------------------------
+
+@router.get("/auto-send/status")
+def get_auto_send_status():
+    """Retorna status atual do auto-send: habilitado, limite, enviados hoje, próximos elegíveis."""
+    from app.config import settings as _settings
+    db = _get_db()
+    today = date.today().isoformat()
+    sent_today = db.count_auto_sent_today(today)
+    next_candidates = db.get_leads_for_auto_send(limit=5)
+    return {
+        "enabled": _settings.auto_send_enabled,
+        "diario_max": _settings.auto_send_diario_max,
+        "hora_inicio": _settings.auto_send_hora_inicio,
+        "hora_fim": _settings.auto_send_hora_fim,
+        "intervalo_min_s": _settings.auto_send_intervalo_min_s,
+        "intervalo_max_s": _settings.auto_send_intervalo_max_s,
+        "enviados_hoje": sent_today,
+        "restantes_hoje": max(0, _settings.auto_send_diario_max - sent_today),
+        "proximos_leads": [
+            {
+                "lead_id": l["lead_id"],
+                "nome": l.get("nome"),
+                "segmento": l.get("segmento"),
+                "data_criacao": l.get("data_criacao"),
+            }
+            for l in next_candidates
+        ],
+    }
+
+
+@router.get("/auto-send/historico")
+def get_auto_send_historico():
+    """Retorna os últimos envios automáticos (via msg_ab_eventos evento=auto_enviada)."""
+    db = _get_db()
+    conn = db._conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT e.lead_id, l.nome, l.segmento, e.variante, e.data_hora
+                   FROM msg_ab_eventos e
+                   LEFT JOIN leads l ON l.lead_id = e.lead_id
+                   WHERE e.evento = 'auto_enviada'
+                   ORDER BY e.data_hora DESC
+                   LIMIT 50""",
+            )
+            cols = [d[0] for d in cur.description]
+            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+    finally:
+        db._put(conn)
+    return {"historico": rows, "total": len(rows)}

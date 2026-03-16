@@ -280,6 +280,16 @@ class DBService:
                 cur.execute(
                     "ALTER TABLE leads ADD COLUMN IF NOT EXISTS acao_followup TEXT DEFAULT ''"
                 )
+                # Auto-send: rastreamento de envio automático de primeiro contato
+                cur.execute(
+                    "ALTER TABLE leads ADD COLUMN IF NOT EXISTS mensagem_enviada_em TEXT DEFAULT ''"
+                )
+                cur.execute(
+                    "ALTER TABLE leads ADD COLUMN IF NOT EXISTS auto_send_variante TEXT DEFAULT ''"
+                )
+                cur.execute(
+                    "ALTER TABLE leads ADD COLUMN IF NOT EXISTS origem_primeiro_contato TEXT DEFAULT ''"
+                )
             conn.commit()
         finally:
             self._put(conn)
@@ -811,6 +821,92 @@ class DBService:
             with conn.cursor() as cur:
                 cur.execute(f"UPDATE leads SET {set_clause} WHERE lead_id = %s", values)
             conn.commit()
+        finally:
+            self._put(conn)
+
+    # ---------------------------------------------------------------------------
+    # Auto-send helpers
+    # ---------------------------------------------------------------------------
+
+    def get_leads_for_auto_send(self, limit: int = 1) -> List[Dict[str, Any]]:
+        """Retorna leads elegíveis para envio automático de primeiro contato.
+
+        Critérios:
+        - status = 'novo'
+        - whatsapp preenchido
+        - mensagem_enviada_em vazio (nunca recebeu envio automático)
+        - origem_primeiro_contato vazio (nenhum contato registrado ainda)
+        Ordenação: data_criacao ASC (FIFO — leads mais antigos primeiro).
+        Leads com segmento preenchido têm prioridade.
+        """
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT lead_id, nome, segmento, whatsapp, cidade, data_criacao
+                       FROM leads
+                       WHERE status = 'novo'
+                         AND whatsapp != ''
+                         AND mensagem_enviada_em = ''
+                         AND origem_primeiro_contato = ''
+                       ORDER BY
+                         CASE WHEN segmento != '' THEN 0 ELSE 1 END,
+                         data_criacao ASC
+                       LIMIT %s""",
+                    (limit,),
+                )
+                return self._fetchall_dict(cur)
+        finally:
+            self._put(conn)
+
+    def mark_auto_sent(
+        self,
+        lead_id: str,
+        variante: str,
+        mensagem: str,
+        when_iso: str,
+    ) -> None:
+        """Registra que o envio automático foi feito para este lead.
+
+        Atualiza:
+        - mensagem_enviada_em → timestamp do envio
+        - auto_send_variante  → 'A', 'B' ou 'C'
+        - origem_primeiro_contato → 'automatico'
+        - status → 'contato feito'
+        - temperatura → 'frio'
+        - ultima_interacao_em → agora
+        """
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """UPDATE leads
+                       SET mensagem_enviada_em    = %s,
+                           auto_send_variante     = %s,
+                           origem_primeiro_contato = 'automatico',
+                           status                 = 'contato feito',
+                           temperatura            = 'frio',
+                           ultima_interacao_em    = %s
+                       WHERE lead_id = %s""",
+                    (when_iso, variante, when_iso, lead_id),
+                )
+            conn.commit()
+        finally:
+            self._put(conn)
+
+    def count_auto_sent_today(self, today_iso: str) -> int:
+        """Quantos envios automáticos já foram feitos hoje (YYYY-MM-DD)."""
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT COUNT(*) FROM msg_ab_eventos
+                       WHERE evento = 'auto_enviada'
+                         AND data_hora >= %s""",
+                    (today_iso,),
+                )
+                row = cur.fetchone()
+                return int(row[0]) if row else 0
         finally:
             self._put(conn)
 

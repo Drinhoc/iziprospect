@@ -99,6 +99,14 @@ GROUP_ID_CRM_CONFIGURADO=
 GROUP_ID_CRM=
 CRM_GROUP_ID=
 DEFAULT_TIMEZONE=UTC
+
+# Auto-send (desligado por padrão — ativar explicitamente)
+AUTO_SEND_ENABLED=false
+AUTO_SEND_DIARIO_MAX=7
+AUTO_SEND_HORA_INICIO=9
+AUTO_SEND_HORA_FIM=18
+AUTO_SEND_INTERVALO_MIN_S=180
+AUTO_SEND_INTERVALO_MAX_S=720
 ```
 
 ## Rodando localmente
@@ -261,3 +269,154 @@ Entrada: `"Retornar amanhã"`
 Entrada: `"Número errado"`
 - Ação esperada: `registrar_atividade`
 - Resultado: atividade `número inválido`, status sugerido de contato inválido
+
+---
+
+## Auto-Send: Envio Automático de Primeiro Contato
+
+O sistema pode enviar automaticamente a primeira mensagem de prospecção para
+leads com status `novo`. O envio é **desligado por padrão** e precisa ser
+ativado explicitamente.
+
+### Como funciona
+
+```
+Lead status='novo' + whatsapp preenchido
+    │
+    ▼ (a cada ~1 min o loop verifica)
+Dentro da janela horária? (09h–18h) ──► não → aguarda
+    │ sim
+    ▼
+Limite diário atingido? (padrão: 7/dia) ──► sim → aguarda amanhã
+    │ não
+    ▼
+Seleciona 1 lead elegível (FIFO por data_criacao, preferência com segmento)
+    │
+    ▼
+Gera mensagem personalizada (A/B/C determinístico por lead_id)
+    │
+    ▼
+Envia via Evolution API (WhatsApp)
+    │
+    ├── Sucesso:
+    │     • status → 'contato feito', temperatura → 'frio'
+    │     • mensagem_enviada_em = agora
+    │     • origem_primeiro_contato = 'automatico'
+    │     • Registrado em atividades (tipo='auto_envio')
+    │     • Registrado em msg_ab_eventos (evento='auto_enviada')
+    │     • Loop dorme 3–12 min antes do próximo envio
+    │
+    └── Falha (API offline, número inválido):
+          • Nada é alterado no lead
+          • Retenta no próximo ciclo (60s)
+```
+
+### Como ativar
+
+Defina no `.env`:
+
+```bash
+AUTO_SEND_ENABLED=true
+AUTO_SEND_DIARIO_MAX=7        # quantos envios por dia
+AUTO_SEND_HORA_INICIO=9       # hora de início (formato 24h)
+AUTO_SEND_HORA_FIM=18         # hora de fim
+AUTO_SEND_INTERVALO_MIN_S=180 # intervalo mínimo entre envios (segundos)
+AUTO_SEND_INTERVALO_MAX_S=720 # intervalo máximo entre envios (segundos)
+```
+
+Reinicie a aplicação após alterar o `.env`. O loop começa imediatamente
+na janela horária configurada.
+
+### Quais leads são selecionados?
+
+Um lead entra na fila de auto-send quando:
+
+| Critério | Valor |
+|---|---|
+| `status` | `novo` |
+| `whatsapp` | preenchido |
+| `mensagem_enviada_em` | vazio (nunca enviado automaticamente) |
+| `origem_primeiro_contato` | vazio (sem contato registrado) |
+
+**Ordenação:** leads com `segmento` preenchido primeiro (para melhor
+personalização da mensagem), depois por `data_criacao ASC` (mais antigos
+na frente — FIFO).
+
+Isso significa que leads sem WhatsApp, leads já contatados (manual ou
+automaticamente), ou leads em qualquer status que não seja `novo` são
+**automaticamente ignorados**.
+
+### Variantes de mensagem (A/B/C)
+
+Cada lead recebe sempre a mesma variante (determinística pelo `lead_id`):
+
+| Variante | Estratégia |
+|---|---|
+| A | Apresentação pessoal casual ("Sou o Pedro...") |
+| B | Dor-primeiro (abre com pergunta sobre o problema deles) |
+| C | Prova social leve (menciona clínicas da região) |
+
+Os templates são personalizados por segmento: `odontologia`, `medicina`,
+`estetica`, `default` (demais casos).
+
+### APIs de monitoramento
+
+```bash
+# Status atual do auto-send
+GET /api/auto-send/status
+
+# Histórico dos últimos 50 envios automáticos
+GET /api/auto-send/historico
+```
+
+Exemplo de resposta de `/api/auto-send/status`:
+```json
+{
+  "enabled": true,
+  "diario_max": 7,
+  "hora_inicio": 9,
+  "hora_fim": 18,
+  "enviados_hoje": 3,
+  "restantes_hoje": 4,
+  "proximos_leads": [
+    { "lead_id": "L042", "nome": "Clínica Sorriso", "segmento": "odontologia" }
+  ]
+}
+```
+
+### Rastreamento e auditoria
+
+Cada envio automático gera **3 registros**:
+
+1. **`atividades`** — `tipo='auto_envio'`, `mensagem_bruta` contém o texto
+   enviado, `canal='whatsapp_direto'`
+2. **`msg_ab_eventos`** — `evento='auto_enviada'`, `variante=A/B/C`,
+   permite medir taxa de resposta por variante
+3. **`leads`** — campos `mensagem_enviada_em`, `auto_send_variante`,
+   `origem_primeiro_contato='automatico'`
+
+### Como pausar
+
+Para pausar sem reiniciar a aplicação, basta mudar `AUTO_SEND_ENABLED=false`
+e reiniciar. Leads com `mensagem_enviada_em` preenchido **não** serão
+re-enviados.
+
+### Diferença entre envio manual e automático
+
+| | Manual | Automático |
+|---|---|---|
+| Quem dispara | Usuário copia a mensagem e envia no WhatsApp | Sistema envia direto |
+| `origem_primeiro_contato` | `manual` | `automatico` |
+| `mensagem_enviada_em` | não preenchido | preenchido com timestamp |
+| Rastreado em `msg_ab_eventos` | sim (`evento='copiada'`) | sim (`evento='auto_enviada'`) |
+
+### Logs
+
+Procure no log da aplicação por:
+
+```
+auto_sender | enviando para lead_id=L042 nome='Clínica Sorriso' variante=B
+auto_sender | OK | lead_id=L042 variante=B (3/7 hoje)
+auto_sender_loop | aguardando 347s antes do próximo envio
+auto_sender | limite diário atingido (7/7), aguardando amanhã
+```

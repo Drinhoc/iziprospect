@@ -36,6 +36,16 @@ class Settings:
     daily_summary_hour: int = 18
     daily_summary_minute: int = 30
     disable_daily_summary: bool = False
+    # ---------------------------------------------------------------------------
+    # Auto-send: envio automático de primeiro contato
+    # Desligado por padrão. Ativar com AUTO_SEND_ENABLED=true no .env
+    # ---------------------------------------------------------------------------
+    auto_send_enabled: bool = False
+    auto_send_diario_max: int = 7          # máx envios por dia
+    auto_send_hora_inicio: int = 9         # janela: 09h
+    auto_send_hora_fim: int = 18           # janela: até 18h
+    auto_send_intervalo_min_s: int = 180   # intervalo mínimo entre envios (segundos)
+    auto_send_intervalo_max_s: int = 720   # intervalo máximo entre envios (segundos)
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -61,6 +71,12 @@ class Settings:
             daily_summary_hour=int(os.getenv("DAILY_SUMMARY_HOUR", "18")),
             daily_summary_minute=int(os.getenv("DAILY_SUMMARY_MINUTE", "30")),
             disable_daily_summary=_as_bool(os.getenv("DISABLE_DAILY_SUMMARY"), default=False),
+            auto_send_enabled=_as_bool(os.getenv("AUTO_SEND_ENABLED"), default=False),
+            auto_send_diario_max=int(os.getenv("AUTO_SEND_DIARIO_MAX", "7")),
+            auto_send_hora_inicio=int(os.getenv("AUTO_SEND_HORA_INICIO", "9")),
+            auto_send_hora_fim=int(os.getenv("AUTO_SEND_HORA_FIM", "18")),
+            auto_send_intervalo_min_s=int(os.getenv("AUTO_SEND_INTERVALO_MIN_S", "180")),
+            auto_send_intervalo_max_s=int(os.getenv("AUTO_SEND_INTERVALO_MAX_S", "720")),
         )
 
     @staticmethod
