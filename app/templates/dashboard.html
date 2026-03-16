@@ -142,7 +142,7 @@ async function loadAutoSendStatus() {
     bar.dataset.enabled = d.enabled ? '1' : '0';
     toggle.dataset.enabled = d.enabled ? '1' : '0';
     txt.textContent = d.enabled ? 'Ligado' : 'Desligado';
-    const proximos = d.proximos_leads?.length ?? 0;
+    const proximos = d.total_na_fila ?? d.proximos_leads?.length ?? 0;
     meta.textContent = d.enabled
       ? `${d.enviados_hoje}/${d.diario_max} hoje · ${proximos} na fila · janela ${d.hora_inicio}h–${d.hora_fim}h`
       : `${proximos} lead(s) na fila · desativado`;

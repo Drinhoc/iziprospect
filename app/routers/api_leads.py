@@ -240,7 +240,7 @@ def get_auto_send_status():
     db_flag = db.get_setting("auto_send_enabled")
     enabled = (db_flag == "true") if db_flag else _settings.auto_send_enabled
     sent_today = db.count_auto_sent_today(today)
-    next_candidates = db.get_leads_for_auto_send(limit=5)
+    next_candidates = db.get_leads_for_auto_send(limit=100)
     return {
         "enabled": enabled,
         "diario_max": _settings.auto_send_diario_max,
@@ -250,6 +250,7 @@ def get_auto_send_status():
         "intervalo_max_s": _settings.auto_send_intervalo_max_s,
         "enviados_hoje": sent_today,
         "restantes_hoje": max(0, _settings.auto_send_diario_max - sent_today),
+        "total_na_fila": len(next_candidates),
         "proximos_leads": [
             {
                 "lead_id": l["lead_id"],
