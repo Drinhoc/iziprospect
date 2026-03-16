@@ -8,72 +8,80 @@
 // C = Prova social leve (menciona clínicas da região, sem citar o lead)
 const MSG_TEMPLATES = {
   odontologia: [
-    `Oi, tudo bem? Sou o Pedro 🙂
+    `Oi! Vi a {{nome}} pesquisando clínicas odontológicas na região 🙂
 
-Tô montando um assistente de atendimento pelo WhatsApp pra clínicas odontológicas aqui da região — basicamente pra responder rápido e organizar agendamentos sem precisar de alguém na tela o tempo todo.
+Queria perguntar rápido: vocês costumam perder agendamentos porque alguma mensagem chegou fora do horário e não foi respondida a tempo?
 
-Faz sentido te explicar em 2 minutos como funciona?`,
-    `Oi! Pergunta rápida: vocês costumam perder agendamentos porque a mensagem chegou fora do horário ou demorou a ser respondida?
+Tenho ajudado clínicas por aqui a resolver isso pelo WhatsApp, sem precisar contratar alguém extra pra ficar de plantão.
 
-Pergunto porque estou ajudando algumas clínicas de odontologia aqui na região a resolver exatamente isso pelo WhatsApp.
+Faz sentido eu te mostrar como em 2 minutos?`,
+    `Oi, {{nome}}! Pergunta rápida:
 
-Posso te contar como em 2 minutinhos?`,
-    `Olá! Tudo bem? 🙂
+Já perderam paciente porque a recepção estava ocupada ou fora do horário e a mensagem no WhatsApp ficou sem resposta?
 
-Estou conversando com algumas clínicas odontológicas aqui da região sobre automação de atendimento no WhatsApp (agendamento, confirmação de consultas, etc).
+Pergunto porque resolvo exatamente isso pra clínicas odontológicas daqui. Posso te explicar em 2 minutinhos?`,
+    `Oi, {{nome}}! Sou o Pedro.
 
-Posso te explicar rapidinho em 2 minutos como funciona?`,
+Tenho ajudado clínicas odontológicas da região a parar de perder agendamentos por demora no WhatsApp — automatizando respostas e confirmações fora do horário, sem app novo nem contratação.
+
+Vale uma conversa rápida de 2 minutos?`,
   ],
   medicina: [
-    `Oi, tudo bem? Sou o Pedro 🙂
+    `Oi! Vi a {{nome}} pesquisando clínicas médicas na região 🙂
 
-Tô montando um assistente de atendimento pelo WhatsApp pra clínicas médicas aqui da região — pra responder rápido e confirmar consultas sem sobrecarregar a recepção.
+Queria perguntar rápido: vocês costumam perder consultas porque alguma mensagem chegou fora do horário ou a recepção não deu conta de responder a tempo?
 
-Faz sentido te explicar em 2 minutos como funciona?`,
-    `Oi! Pergunta rápida: vocês costumam perder consultas porque a mensagem chegou fora do horário ou a recepção não conseguiu responder a tempo?
+Tenho ajudado clínicas por aqui com isso — um assistente no WhatsApp que responde e confirma consulta mesmo quando a recepção está ocupada.
 
-Pergunto porque estou ajudando algumas clínicas médicas aqui na região a resolver exatamente isso pelo WhatsApp.
+Faz sentido eu te mostrar como em 2 minutos?`,
+    `Oi, {{nome}}! Pergunta rápida:
 
-Posso te contar como em 2 minutinhos?`,
-    `Olá! Tudo bem? 🙂
+Já perderam consulta porque a recepção não conseguiu responder uma mensagem a tempo — fora do horário ou no pico do dia?
 
-Estou conversando com algumas clínicas aqui da região sobre automação de atendimento no WhatsApp (agendamento, confirmação de consultas, etc).
+Pergunto porque resolvo exatamente isso pra clínicas médicas daqui. Posso te explicar em 2 minutinhos?`,
+    `Oi, {{nome}}! Sou o Pedro.
 
-Posso te explicar rapidinho em 2 minutos como funciona?`,
+Tenho ajudado clínicas médicas da região a não perder mais consulta por falta de resposta no WhatsApp — automatizando o atendimento fora do horário sem sobrecarregar a recepção.
+
+Vale uma conversa rápida de 2 minutos?`,
   ],
   estetica: [
-    `Oi, tudo bem? Sou o Pedro 🙂
+    `Oi! Vi a {{nome}} pesquisando clínicas de estética na região 🙂
 
-Tô montando um assistente de atendimento pelo WhatsApp pra clínicas de estética aqui da região — pra responder rápido, agendar e confirmar procedimentos sem depender de alguém disponível o tempo todo.
+Queria perguntar rápido: vocês costumam perder clientes porque a mensagem no WhatsApp demorou a ser respondida ou chegou fora do horário?
 
-Faz sentido te explicar em 2 minutos como funciona?`,
-    `Oi! Pergunta rápida: vocês costumam perder clientes porque a mensagem chegou fora do horário e não foi respondida a tempo?
+Tenho ajudado clínicas de estética por aqui com isso — respostas automáticas e agendamento pelo WhatsApp mesmo quando a equipe está em atendimento.
 
-Pergunto porque estou ajudando algumas clínicas de estética aqui na região a resolver exatamente isso pelo WhatsApp.
+Faz sentido eu te mostrar como em 2 minutos?`,
+    `Oi, {{nome}}! Pergunta rápida:
 
-Posso te contar como em 2 minutinhos?`,
-    `Olá! Tudo bem? 🙂
+Já perderam cliente porque a mensagem ficou sem resposta enquanto a equipe estava em atendimento ou fora do horário?
 
-Estou ajudando algumas clínicas de estética a automatizar o atendimento no WhatsApp (agendamentos, confirmação de consultas e respostas rápidas).
+Pergunto porque resolvo exatamente isso pra clínicas de estética daqui. Posso te explicar em 2 minutinhos?`,
+    `Oi, {{nome}}! Sou o Pedro.
 
-Queria saber se vocês já usam algo assim por aí.`,
+Tenho ajudado clínicas de estética da região a não perder mais cliente por demora no WhatsApp — respostas automáticas e agendamento mesmo fora do horário, sem precisar de alguém disponível o tempo todo.
+
+Vale uma conversa rápida de 2 minutos?`,
   ],
   default: [
-    `Oi, tudo bem? Sou o Pedro 🙂
+    `Oi! Vi a {{nome}} pesquisando clínicas na região 🙂
 
-Tô montando um assistente de atendimento pelo WhatsApp — pra responder rápido e organizar agendamentos sem precisar de alguém disponível o tempo todo.
+Queria perguntar rápido: vocês costumam perder atendimentos porque alguma mensagem no WhatsApp chegou fora do horário ou demorou a ser respondida?
 
-Faz sentido te explicar em 2 minutos como funciona?`,
-    `Oi! Pergunta rápida: vocês costumam perder clientes porque a mensagem chegou fora do horário ou demorou a ser respondida?
+Tenho ajudado clínicas por aqui a resolver isso — respostas automáticas e agendamento mesmo quando a equipe está ocupada ou fora do horário.
 
-Pergunto porque estou ajudando alguns negócios aqui na região a resolver exatamente isso pelo WhatsApp.
+Faz sentido eu te mostrar como em 2 minutos?`,
+    `Oi, {{nome}}! Pergunta rápida:
 
-Posso te contar como em 2 minutinhos?`,
-    `Olá! Tudo bem? 🙂
+Já perderam paciente ou cliente porque a mensagem no WhatsApp ficou sem resposta enquanto a equipe estava ocupada ou fora do horário?
 
-Estou ajudando algumas clínicas a automatizar o atendimento no WhatsApp (agendamentos, confirmação de consultas e respostas rápidas).
+Pergunto porque resolvo exatamente isso pra clínicas e consultórios daqui. Posso te explicar em 2 minutinhos?`,
+    `Oi, {{nome}}! Sou o Pedro.
 
-Queria saber se vocês já usam algo assim por aí.`,
+Tenho ajudado clínicas e consultórios da região a não perder mais atendimento por demora no WhatsApp — automatizando respostas e agendamentos fora do horário sem complicação.
+
+Vale uma conversa rápida de 2 minutos?`,
   ],
 };
 
