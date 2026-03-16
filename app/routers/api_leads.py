@@ -217,16 +217,32 @@ def bulk_create_leads(body: dict):
 # Auto-send: status e histórico
 # ---------------------------------------------------------------------------
 
+@router.post("/auto-send/toggle")
+def toggle_auto_send():
+    """Liga/desliga o auto-send. O valor persiste no banco (sobrescreve .env)."""
+    from app.config import settings as _settings
+    db = _get_db()
+    current = db.get_setting("auto_send_enabled")
+    # Se nunca foi salvo no DB, usa o valor do .env como base
+    if current == "":
+        current = "true" if _settings.auto_send_enabled else "false"
+    new_value = "false" if current == "true" else "true"
+    db.set_setting("auto_send_enabled", new_value)
+    return {"enabled": new_value == "true"}
+
+
 @router.get("/auto-send/status")
 def get_auto_send_status():
     """Retorna status atual do auto-send: habilitado, limite, enviados hoje, próximos elegíveis."""
     from app.config import settings as _settings
     db = _get_db()
     today = date.today().isoformat()
+    db_flag = db.get_setting("auto_send_enabled")
+    enabled = (db_flag == "true") if db_flag else _settings.auto_send_enabled
     sent_today = db.count_auto_sent_today(today)
     next_candidates = db.get_leads_for_auto_send(limit=5)
     return {
-        "enabled": _settings.auto_send_enabled,
+        "enabled": enabled,
         "diario_max": _settings.auto_send_diario_max,
         "hora_inicio": _settings.auto_send_hora_inicio,
         "hora_fim": _settings.auto_send_hora_fim,

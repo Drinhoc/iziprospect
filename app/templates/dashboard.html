@@ -27,6 +27,21 @@
   </div>
 </div>
 
+<!-- Auto-Send toggle -->
+<div class="autosend-bar" id="autosend-bar">
+  <div class="autosend-info">
+    <span class="autosend-label">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      Envio automático
+    </span>
+    <span class="autosend-meta" id="autosend-meta">carregando…</span>
+  </div>
+  <button class="autosend-toggle" id="autosend-toggle" onclick="toggleAutoSend()" title="Ligar/desligar envio automático">
+    <span class="autosend-toggle-track"><span class="autosend-toggle-thumb"></span></span>
+    <span class="autosend-toggle-txt" id="autosend-toggle-txt">—</span>
+  </button>
+</div>
+
 <!-- Alertas de saúde do pipeline -->
 <div class="alertas-row" id="alertas-row" style="display:none">
   <div class="alerta-card alerta-card--frio" id="alerta-frios" style="display:none">
@@ -116,4 +131,36 @@
 
 {% block scripts %}
 <script src="/static/dashboard.js"></script>
+<script>
+async function loadAutoSendStatus() {
+  try {
+    const d = await fetch('/api/auto-send/status').then(r => r.json());
+    const bar   = document.getElementById('autosend-bar');
+    const meta  = document.getElementById('autosend-meta');
+    const toggle = document.getElementById('autosend-toggle');
+    const txt   = document.getElementById('autosend-toggle-txt');
+    bar.dataset.enabled = d.enabled ? '1' : '0';
+    toggle.dataset.enabled = d.enabled ? '1' : '0';
+    txt.textContent = d.enabled ? 'Ligado' : 'Desligado';
+    const proximos = d.proximos_leads?.length ?? 0;
+    meta.textContent = d.enabled
+      ? `${d.enviados_hoje}/${d.diario_max} hoje · ${proximos} na fila · janela ${d.hora_inicio}h–${d.hora_fim}h`
+      : `${proximos} lead(s) na fila · desativado`;
+  } catch(e) { /* silencia se endpoint não existir */ }
+}
+
+async function toggleAutoSend() {
+  const btn = document.getElementById('autosend-toggle');
+  if (btn.dataset.loading) return;
+  btn.dataset.loading = '1';
+  try {
+    await fetch('/api/auto-send/toggle', { method: 'POST' });
+    await loadAutoSendStatus();
+  } finally {
+    delete btn.dataset.loading;
+  }
+}
+
+loadAutoSendStatus();
+</script>
 {% endblock %}

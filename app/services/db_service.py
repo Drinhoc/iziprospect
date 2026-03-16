@@ -280,6 +280,13 @@ class DBService:
                 cur.execute(
                     "ALTER TABLE leads ADD COLUMN IF NOT EXISTS acao_followup TEXT DEFAULT ''"
                 )
+                # Tabela de configurações persistentes (chave-valor)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS settings_kv (
+                        key   TEXT PRIMARY KEY,
+                        value TEXT NOT NULL DEFAULT ''
+                    )
+                """)
                 # Auto-send: rastreamento de envio automático de primeiro contato
                 cur.execute(
                     "ALTER TABLE leads ADD COLUMN IF NOT EXISTS mensagem_enviada_em TEXT DEFAULT ''"
@@ -907,6 +914,31 @@ class DBService:
                 )
                 row = cur.fetchone()
                 return int(row[0]) if row else 0
+        finally:
+            self._put(conn)
+
+    def get_setting(self, key: str, default: str = "") -> str:
+        """Lê um valor da tabela settings_kv. Retorna default se não existir."""
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT value FROM settings_kv WHERE key = %s", (key,))
+                row = cur.fetchone()
+                return row[0] if row else default
+        finally:
+            self._put(conn)
+
+    def set_setting(self, key: str, value: str) -> None:
+        """Grava ou atualiza um valor na tabela settings_kv."""
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO settings_kv (key, value) VALUES (%s, %s)
+                       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value""",
+                    (key, value),
+                )
+            conn.commit()
         finally:
             self._put(conn)
 

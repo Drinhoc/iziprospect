@@ -132,8 +132,9 @@ async def _auto_sender_loop() -> None:
     """Envia 1 lead por ciclo respeitando janela horária e limite diário.
 
     Ciclo:
-    1. Dorme 60s base entre verificações.
-    2. Verifica se AUTO_SEND_ENABLED=true.
+    1. Dorme 300s (5 min) base entre verificações — com apenas 7 envios/dia
+       e intervalo mínimo de 3 min entre eles, 5 min é mais que suficiente.
+    2. Verifica se auto_send está habilitado (DB tem prioridade sobre .env).
     3. Verifica se está dentro da janela horária configurada.
     4. Tenta enviar 1 lead via AutoSender.
     5. Se enviou: dorme intervalo aleatório (MIN–MAX segundos) antes da próxima tentativa.
@@ -142,9 +143,16 @@ async def _auto_sender_loop() -> None:
     import random
 
     while True:
-        await asyncio.sleep(60)
+        await asyncio.sleep(300)
         try:
-            if not settings.auto_send_enabled:
+            db = get_db_service()
+            # DB tem prioridade: toggle do dashboard sobrescreve .env
+            db_flag = db.get_setting("auto_send_enabled")
+            if db_flag:
+                enabled = db_flag == "true"
+            else:
+                enabled = settings.auto_send_enabled
+            if not enabled:
                 continue
 
             from zoneinfo import ZoneInfo
@@ -154,7 +162,6 @@ async def _auto_sender_loop() -> None:
             if not (settings.auto_send_hora_inicio <= now.hour < settings.auto_send_hora_fim):
                 continue
 
-            db = get_db_service()
             sender = AutoSender(db, evolution_service, settings)
             sent = await sender.send_one()
 
