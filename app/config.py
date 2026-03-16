@@ -44,8 +44,8 @@ class Settings:
     auto_send_diario_max: int = 7          # máx envios por dia
     auto_send_hora_inicio: int = 9         # janela: 09h
     auto_send_hora_fim: int = 18           # janela: até 18h
-    auto_send_intervalo_min_s: int = 180   # intervalo mínimo entre envios (segundos)
-    auto_send_intervalo_max_s: int = 720   # intervalo máximo entre envios (segundos)
+    auto_send_intervalo_min_s: int = 1080  # intervalo mínimo entre envios (segundos) ~18 min
+    auto_send_intervalo_max_s: int = 1500  # intervalo máximo entre envios (segundos) ~25 min
 
     @classmethod
     def from_env(cls) -> "Settings":
