@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from datetime import date
+from datetime import date, datetime as _datetime
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -235,8 +235,9 @@ def toggle_auto_send():
 def get_auto_send_status():
     """Retorna status atual do auto-send: habilitado, limite, enviados hoje, próximos elegíveis."""
     from app.config import settings as _settings
+    from zoneinfo import ZoneInfo
     db = _get_db()
-    today = date.today().isoformat()
+    today = _datetime.now(ZoneInfo(_settings.default_timezone)).date().isoformat()
     db_flag = db.get_setting("auto_send_enabled")
     enabled = (db_flag == "true") if db_flag else _settings.auto_send_enabled
     sent_today = db.count_auto_sent_today(today)
