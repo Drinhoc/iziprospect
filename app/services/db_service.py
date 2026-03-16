@@ -901,6 +901,24 @@ class DBService:
         finally:
             self._put(conn)
 
+    def mark_auto_send_error(self, lead_id: str) -> None:
+        """Marca lead como erro de envio automático para excluí-lo da fila.
+
+        Seta origem_primeiro_contato = 'auto_erro' — get_leads_for_auto_send
+        filtra por origem_primeiro_contato = '', então o lead é ignorado
+        em todos os ciclos futuros.
+        """
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE leads SET origem_primeiro_contato = 'auto_erro' WHERE lead_id = %s",
+                    (lead_id,),
+                )
+            conn.commit()
+        finally:
+            self._put(conn)
+
     def count_auto_sent_today(self, today_iso: str) -> int:
         """Quantos envios automáticos já foram feitos hoje (YYYY-MM-DD).
 

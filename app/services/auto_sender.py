@@ -188,33 +188,46 @@ class AutoSender:
             )
             return False
 
-        # Busca o próximo lead elegível
-        candidates = await _thread(self.db.get_leads_for_auto_send, 1)
+        # Busca os próximos leads elegíveis (até 5 para pular falhas permanentes)
+        candidates = await _thread(self.db.get_leads_for_auto_send, 5)
         if not candidates:
             logger.info("auto_sender | nenhum lead elegível no momento")
             return False
 
-        lead = candidates[0]
-        lead_id = lead["lead_id"]
-        nome = lead.get("nome") or lead_id
-        whatsapp = lead.get("whatsapp", "")
+        lead = None
+        ok = False
+        mensagem = variante = when_iso = ""
+        for candidate in candidates:
+            _lead_id = candidate["lead_id"]
+            _nome = candidate.get("nome") or _lead_id
+            _whatsapp = candidate.get("whatsapp", "")
+            _mensagem, _variante = render_message(candidate)
+            _when_iso = now.isoformat()
 
-        # Gera mensagem
-        mensagem, variante = render_message(lead)
-        when_iso = now.isoformat()
+            logger.info(
+                "auto_sender | enviando para lead_id=%s nome=%r variante=%s whatsapp=%s",
+                _lead_id, _nome, _variante, _whatsapp[:6] + "****",
+            )
+            _ok = await self.evolution.send_confirmation(_whatsapp, _mensagem)
 
-        # Envia via Evolution API
-        logger.info(
-            "auto_sender | enviando para lead_id=%s nome=%r variante=%s whatsapp=%s",
-            lead_id, nome, variante, whatsapp[:6] + "****",
-        )
-        ok = await self.evolution.send_confirmation(whatsapp, mensagem)
+            if _ok:
+                lead = candidate
+                lead_id = _lead_id
+                nome = _nome
+                whatsapp = _whatsapp
+                mensagem = _mensagem
+                variante = _variante
+                when_iso = _when_iso
+                ok = True
+                break
+            else:
+                logger.error(
+                    "auto_sender | falha no envio | lead_id=%s whatsapp=%s — marcando como erro e tentando próximo",
+                    _lead_id, _whatsapp[:6] + "****",
+                )
+                await _thread(self.db.mark_auto_send_error, _lead_id)
 
         if not ok:
-            logger.error(
-                "auto_sender | falha no envio | lead_id=%s whatsapp=%s",
-                lead_id, whatsapp[:6] + "****",
-            )
             return False
 
         # Persiste no DB
