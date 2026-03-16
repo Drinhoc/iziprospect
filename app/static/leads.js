@@ -417,14 +417,20 @@ function _bindNovoBadgeBtns(el) {
   });
 }
 
+function _waErroBadge(l) {
+  if (l.origem_primeiro_contato !== 'auto_erro') return '';
+  return `<span class="wa-erro-badge" title="Erro no envio automático — número pode ser inválido ou não está no WhatsApp">⚠️ Nº inválido</span>`;
+}
+
 function renderTable(leads) {
   const tbody = document.getElementById('leads-tbody');
   tbody.innerHTML = '';
   leads.forEach(l => {
     const phone = fmtPhone(l.whatsapp);
-    const phoneTd = phone
+    const phoneContent = phone
       ? `${phone} <button class="copy-phone-btn" data-phone="${esc(fmtPhone(l.whatsapp) || '')}" title="Copiar">⎘</button>${_copyMsgBtn(l)}`
       : _copyMsgBtn(l) || '—';
+    const phoneTd = `${phoneContent}${_waErroBadge(l)}`;
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><span class="lead-name">${esc(l.nome)}</span></td>
@@ -462,8 +468,8 @@ function renderCards(leads) {
     card.className = 'lead-card';
     const phone = fmtPhone(l.whatsapp);
     const phoneHtml = phone
-      ? `📱 ${phone} <button class="copy-phone-btn" data-phone="${esc(fmtPhone(l.whatsapp) || '')}" title="Copiar número">⎘</button>`
-      : null;
+      ? `📱 ${phone} <button class="copy-phone-btn" data-phone="${esc(fmtPhone(l.whatsapp) || '')}" title="Copiar número">⎘</button>${_waErroBadge(l)}`
+      : _waErroBadge(l) || null;
     const msgTipo = ['novo', 'contato feito'].includes(l.status) ? _getMsgTipo(l) : null;
     const msgBtnLabel = msgTipo === 'fu2' ? 'Follow-up 2' : msgTipo === 'fu1' ? 'Follow-up 1' : 'Mensagem inicial';
     const msgBtnHtml = msgTipo

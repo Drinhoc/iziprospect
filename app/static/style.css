@@ -318,6 +318,7 @@ button.badge-novo--btn:hover { background: #cffafe; color: #0e7490; }
 .badge-fechado       { background: #d1fae5; color: #065f46; }
 .badge-perdido       { background: #fee2e2; color: #991b1b; }
 .badge-invalido      { background: #e5e7eb; color: #6b7280; }
+.wa-erro-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 0.72rem; font-weight: 600; color: #b91c1c; background: #fee2e2; border: 1px solid #fca5a5; border-radius: 4px; padding: 1px 6px; margin-left: 4px; cursor: default; white-space: nowrap; }
 
 /* Temperatura badges */
 .badge-temp {
@@ -1684,6 +1685,7 @@ button.badge-novo--btn:hover { background: #cffafe; color: #0e7490; }
 :root.dark .badge-fechado       { background: #064e3b; color: #6ee7b7; }
 :root.dark .badge-perdido       { background: #450a0a; color: #fca5a5; }
 :root.dark .badge-invalido      { background: #1f2937; color: #6b7280; }
+:root.dark .wa-erro-badge { color: #fca5a5; background: #450a0a; border-color: #7f1d1d; }
 
 /* Dark: temperatura badges */
 :root.dark .badge-temp-frio     { background: #1e293b; color: #94a3b8; }
