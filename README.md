@@ -1,113 +1,119 @@
-# IziClinic Invisible CRM (WhatsApp → OpenAI → Google Sheets)
+# IziProspect — CRM Comercial com WhatsApp
 
-CRM invisível para operação comercial da IziClinic: recebe webhook do Evolution API (texto/áudio), transcreve áudio com Whisper, extrai estrutura com LLM da OpenAI e persiste no Google Sheets.
+CRM invisível para operação comercial: captura leads via mensagens no WhatsApp (texto e áudio), processa com IA, organiza em banco de dados PostgreSQL e sincroniza com Google Sheets. Inclui dashboard web, gestão de leads, prospecção automática e envio automático de primeiro contato.
+
+---
+
+## Funcionalidades
+
+- **Webhook WhatsApp**: recebe mensagens via Evolution API (texto e áudio)
+- **Transcrição de áudio**: via Whisper (OpenAI)
+- **Extração com LLM**: GPT-4o-mini extrai estrutura (nome, cidade, segmento, telefone, etc.)
+- **Matching anti-duplicação**: fuzzy matching com RapidFuzz para não criar leads duplicados
+- **Dashboard web**: KPIs, funil, leads por segmento e cidade
+- **Gestão de leads**: CRUD completo, histórico, busca e importação em massa
+- **Prospecção automática**: busca em OpenStreetMap, Telelistas e Apontador com enriquecimento de WhatsApp
+- **Auto-Send**: envio automático de primeiro contato com variantes A/B/C por segmento
+- **Analytics**: distribuição de confiança da IA, análise de conversas, rastreamento de A/B
+- **Sync Google Sheets**: espelho de leads e atividades em tempo real
+
+---
 
 ## Arquitetura
 
-1. `POST /webhook/evolution` recebe payload do Evolution.
-2. Payload é normalizado para:
-   - `msg_id`, `msg_type`, `raw_text`, `media_url`, `timestamp`, `chat_id`, `is_group`
-3. Filtro por grupo: ignora mensagens fora de grupo e fora de `CRM_TARGET_GROUP_ID`.
-4. Idempotência: se `msg_id` já existir em `ATIVIDADES`, o webhook ignora duplicata (`{ "ok": true, "duplicate": true }`).
-5. Triagem local ignora mensagens vagas (ex.: "ok", "teste") antes de chamar OpenAI.
-6. Se for áudio, resolve mídia com `resolve_whatsapp_audio(media_url, mimetype)`, salva com extensão válida (ex.: `.ogg`) e transcreve com `whisper-1`.
-7. Envia texto para LLM (`gpt-4o-mini`) para extrair JSON estruturado.
-6. Faz matching anti-duplicação no Sheets e upsert em `LEADS`.
-8. Sempre grava entrada em `ATIVIDADES` (incluindo `msg_id`).
-9. Em ambiguidades/falhas reais, envia para aba `REVISAR`.
+```
+WhatsApp Group (Evolution API)
+    │
+    ▼
+POST /webhook/evolution
+    │
+    ├─ Normaliza payload → msg_id, msg_type, raw_text, media_url, timestamp, chat_id
+    ├─ Idempotência: msg_id já existe em atividades? → retorna {duplicate: true}
+    ├─ Filtra mensagens vagas ("ok", "oi", "teste") antes de chamar OpenAI
+    │
+    ├─ [áudio] → Baixa + descriptografa .enc → Transcreve com Whisper
+    │
+    ├─ GPT-4o-mini extrai JSON estruturado:
+    │     intent, nome, cidade, segmento, whatsapp, status, followup_em, resumo
+    │
+    ├─ Matching de lead:
+    │     whatsapp → instagram → lead_key → contains → fuzzy
+    │     ≥0.88: match automático
+    │     0.78–0.88: envia para REVISAR (ambíguo)
+    │     <0.78: cria novo lead
+    │
+    ├─ Upsert em PostgreSQL (leads + atividades)
+    ├─ Sync para Google Sheets
+    └─ Envia confirmação de volta ao grupo
+```
 
-## Estrutura das abas
+---
 
-### LEADS
-`lead_id, nome, cidade, segmento, whatsapp, instagram, site, status, ultima_interacao_em, proximo_followup_em, observacoes, nome_normalizado, cidade_normalizada, lead_key`
+## Stack
 
-### ATIVIDADES
-`data_hora, msg_id, lead_id, tipo, canal, mensagem_bruta, resumo, followup_em`
+| Camada | Tecnologia |
+|---|---|
+| Backend | FastAPI 0.115 + Uvicorn |
+| Banco de dados | PostgreSQL 12+ |
+| Templates | Jinja2 + HTML/CSS/JS vanilla |
+| IA / Transcrição | OpenAI API (GPT-4o-mini + Whisper) |
+| WhatsApp | Evolution API (webhook) |
+| Sync | Google Sheets API via gspread |
+| Scraping / Enriquecimento | BeautifulSoup, httpx, DuckDuckGo |
+| Matching | RapidFuzz (jaro_winkler) |
+| Deploy | Docker + Railway |
 
-### REVISAR
-`data_hora, mensagem_bruta, cidade_detectada, nome_detectado, candidatos, acao, resolvido_em`
-
-## Logs e observabilidade
-
-A aplicação usa `logging` padrão do Python com logs para:
-- mensagem recebida
-- `msg_id` extraído
-- tipo de mensagem
-- transcrição iniciada/finalizada
-- duplicata ignorada
-- lead resolvido / lead em revisão
-- erro de transcrição
-- erro de confirmação no WhatsApp (sem quebrar webhook)
-
-## Comandos manuais no grupo
-
-- `VINCULAR L0001`
-  - MVP: vincula **a atividade mais recente não vinculada** (`lead_id` vazio).
-- `CORRIGIR L0001 cidade=Campinas segmento=Odonto`
-  - Atualiza campos no lead.
-- `SET L0001 whatsapp=+5511999999999 instagram=@clinicax`
-  - Atualiza contatos do lead.
+---
 
 ## Pré-requisitos
 
 - Python 3.11+
+- PostgreSQL 12+
 - Conta OpenAI com acesso a Whisper e Chat Completions
-- Google Sheet e Service Account com permissão de edição
-- Evolution API configurada para webhook
+- Google Cloud: Sheets API habilitada + Service Account com permissão de Editor na planilha
+- Evolution API configurada com webhook apontando para este serviço
 
-## Configuração do Google Sheets
-
-1. Crie uma planilha no Google Sheets.
-2. Copie o ID da planilha (`GOOGLE_SHEETS_ID`).
-3. No Google Cloud, habilite **Google Sheets API**.
-4. Crie uma **Service Account**.
-5. Gere chave JSON.
-6. Compartilhe a planilha com o e-mail da service account como Editor.
-7. Use o JSON inteiro em `GOOGLE_SERVICE_ACCOUNT_JSON` (ou caminho para arquivo JSON).
-
-> A aplicação cria/reinicializa automaticamente as abas `LEADS`, `ATIVIDADES`, `REVISAR` com os headers exigidos.
+---
 
 ## Variáveis de ambiente
-
-
-- `CRM_TARGET_GROUP_ID`: grupo autorizado do CRM (obrigatório em produção). Aceita formatos com/sem `@g.us` e até valor colado de markdown/mailto; o backend normaliza internamente. Mensagens fora do grupo alvo retornam `ignored` com `not_group` ou `unauthorized_group`.
-- `DISABLE_EVOLUTION_CONFIRMATION`: quando `true`, não tenta envio de confirmação para Evolution (`confirmation skipped`).
-
-## Importante sobre credencial Google no deploy
-
-Para evitar crash de boot por JSON inválido em variável de ambiente:
-
-- Prefira `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` no Railway (mais estável para escaping).
-- Se usar `GOOGLE_SERVICE_ACCOUNT_JSON`, envie JSON válido com aspas duplas (`"`) e sem aspas simples de Python.
-- O app agora tenta parse resiliente (JSON estrito, variação com `\n`, e fallback controlado), mas formato válido continua essencial.
-
 
 Copie `.env.example` para `.env` e preencha:
 
 ```bash
-OPENAI_API_KEY=
-GOOGLE_SHEETS_ID=
-GOOGLE_SERVICE_ACCOUNT_JSON={...}
-GOOGLE_SERVICE_ACCOUNT_JSON_BASE64=
-EVOLUTION_WEBHOOK_SECRET=
-EVOLUTION_API_URL=
-EVOLUTION_API_KEY=
-CRM_TARGET_GROUP_ID=
-DISABLE_EVOLUTION_CONFIRMATION=true
-# aliases opcionais de compatibilidade (caso sua infra use outro nome):
-GROUP_ID_CRM_CONFIGURADO=
-GROUP_ID_CRM=
-CRM_GROUP_ID=
-DEFAULT_TIMEZONE=UTC
+# — Obrigatórias —
+OPENAI_API_KEY=                          # Chave OpenAI
+DATABASE_URL=postgresql://user:pass@host:5432/dbname  # PostgreSQL
+GOOGLE_SHEETS_ID=                        # ID da planilha Google Sheets
+GOOGLE_SERVICE_ACCOUNT_JSON='{...}'      # JSON da service account (ou use a variável _BASE64 abaixo)
+GOOGLE_SERVICE_ACCOUNT_JSON_BASE64=      # JSON encodado em base64 (preferível no Railway)
 
-# Auto-send (desligado por padrão — ativar explicitamente)
+# — WhatsApp / Evolution API —
+EVOLUTION_API_URL=                       # URL base da Evolution API
+EVOLUTION_API_KEY=                       # Chave da Evolution API
+EVOLUTION_INSTANCE_NAME=                 # Nome da instância WhatsApp
+EVOLUTION_WEBHOOK_SECRET=                # Secret HMAC para validar webhooks (opcional)
+CRM_TARGET_GROUP_ID=                     # JID do grupo autorizado (ex: 5511999999999@g.us)
+DISABLE_EVOLUTION_CONFIRMATION=false     # true = não envia confirmação de volta ao grupo
+
+# — Comportamento —
+DEFAULT_TIMEZONE=America/Sao_Paulo       # Fuso horário para agendamentos
+SHEETS_SYNC_INTERVAL_MINUTES=15          # Frequência de sync com Sheets
+DAILY_SUMMARY_HOUR=18                    # Hora do resumo diário (formato 24h)
+DAILY_SUMMARY_MINUTE=30
+DISABLE_DAILY_SUMMARY=false
+
+# — Auto-Send (desligado por padrão) —
 AUTO_SEND_ENABLED=false
-AUTO_SEND_DIARIO_MAX=7
-AUTO_SEND_HORA_INICIO=9
-AUTO_SEND_HORA_FIM=18
-AUTO_SEND_INTERVALO_MIN_S=1080
-AUTO_SEND_INTERVALO_MAX_S=1500
+AUTO_SEND_DIARIO_MAX=7                   # Máximo de envios por dia
+AUTO_SEND_HORA_INICIO=9                  # Janela de envio: início (24h)
+AUTO_SEND_HORA_FIM=18                    # Janela de envio: fim
+AUTO_SEND_INTERVALO_MIN_S=1080           # Intervalo mínimo entre envios (18 min)
+AUTO_SEND_INTERVALO_MAX_S=1500           # Intervalo máximo entre envios (25 min)
 ```
+
+> **Dica Railway:** prefira `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` para evitar problemas de escaping em JSON.
+
+---
 
 ## Rodando localmente
 
@@ -115,6 +121,8 @@ AUTO_SEND_INTERVALO_MAX_S=1500
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env  # edite com suas credenciais
+
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
@@ -124,32 +132,253 @@ Health check:
 curl http://localhost:8000/health
 ```
 
-## Testes recomendados (ordem segura)
+---
 
-1. Teste primeiro mensagens de **texto**.
-2. Depois teste mensagens de **áudio**.
+## Docker
 
-Isso reduz risco de troubleshooting misto (webhook + mídia + transcrição) no primeiro deploy.
+```bash
+docker build -t iziprospect .
+docker run --rm -p 8000:8000 --env-file .env iziprospect
+```
 
-## Testando webhook com curl
+---
 
-Exemplo texto:
+## Deploy no Railway
+
+1. Suba o repositório no GitHub.
+2. Crie novo projeto no Railway → Deploy from GitHub.
+3. Configure as variáveis de ambiente (seção acima).
+4. Railway detecta o `Dockerfile` e faz build automático.
+5. Configure o webhook no Evolution apontando para:
+   ```
+   https://SEU_APP.railway.app/webhook/evolution
+   ```
+6. (Opcional) Defina `EVOLUTION_WEBHOOK_SECRET` e configure o mesmo valor no Evolution para validação HMAC.
+
+---
+
+## Configuração do Google Sheets
+
+1. Crie uma planilha no Google Sheets.
+2. Copie o ID da planilha para `GOOGLE_SHEETS_ID`.
+3. No Google Cloud, habilite a **Google Sheets API**.
+4. Crie uma **Service Account** e gere a chave JSON.
+5. Compartilhe a planilha com o e-mail da service account como **Editor**.
+6. Use o JSON em `GOOGLE_SERVICE_ACCOUNT_JSON` ou encode em base64 e use `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64`.
+
+> O app cria automaticamente as abas `LEADS`, `ATIVIDADES`, `REVISAR` e `MSG_AB_EVENTOS` com os headers corretos na primeira execução.
+
+---
+
+## Páginas do sistema
+
+| Rota | Página | Descrição |
+|---|---|---|
+| `/dashboard` | Dashboard | KPIs, funil de vendas, leads por segmento e cidade |
+| `/leads` | Gestão de Leads | Lista, busca, filtros, CRUD, importação em massa, histórico |
+| `/estatisticas` | Analytics | Confiança da IA, análise de conversas, gráficos A/B |
+| `/prospeccao` | Prospecção | Busca automática de leads, fila de aprovação |
+
+---
+
+## API — Endpoints principais
+
+### Webhook
+| Método | Rota | Descrição |
+|---|---|---|
+| `POST` | `/webhook/evolution` | Entrada principal de mensagens WhatsApp |
+| `POST` | `/sync/sheets-to-db` | Sync manual Sheets → PostgreSQL |
+
+### Leads
+| Método | Rota | Descrição |
+|---|---|---|
+| `GET` | `/api/leads` | Lista com filtros (status, segmento, temperatura, busca, paginação) |
+| `GET` | `/api/leads/{id}` | Detalhes de um lead |
+| `GET` | `/api/leads/{id}/atividades` | Histórico de atividades do lead |
+| `GET` | `/api/leads/{id}/perfil` | Perfil de comunicação (breakdown por tipo) |
+| `POST` | `/api/leads` | Criar lead |
+| `PUT` | `/api/leads/{id}` | Atualizar lead |
+| `DELETE` | `/api/leads/{id}` | Remover lead |
+| `POST` | `/api/leads/bulk` | Importação em massa com deduplicação |
+| `POST` | `/api/leads/reativar-auto-erro` | Desbloqueia leads presos no auto-send |
+
+### Estatísticas
+| Método | Rota | Descrição |
+|---|---|---|
+| `GET` | `/api/stats` | Contagens por status, temperatura e segmento |
+| `GET` | `/api/estatisticas` | KPIs e funil completo |
+| `GET` | `/api/analises/stats` | Distribuição de confiança da IA |
+
+### Auto-Send
+| Método | Rota | Descrição |
+|---|---|---|
+| `POST` | `/api/auto-send/toggle` | Liga/desliga envio automático |
+| `GET` | `/api/auto-send/status` | Status atual + fila + envios hoje |
+| `GET` | `/api/auto-send/historico` | Histórico dos últimos 50 envios |
+
+### Prospecção
+| Método | Rota | Descrição |
+|---|---|---|
+| `POST` | `/api/prospeccao/buscar` | Inicia busca de leads (OSM + Telelistas + Apontador) |
+| `GET` | `/api/prospeccao/fila` | Lista fila de prospects com status e enriquecimento |
+| `GET` | `/api/prospeccao/contadores` | Contagens por status de revisão |
+| `GET` | `/api/prospeccao/status/{busca_id}` | Progresso de enriquecimento (polling) |
+| `PUT` | `/api/prospeccao/{id}/aprovar` | Aprova prospect → converte em lead |
+| `PUT` | `/api/prospeccao/{id}/descartar` | Descarta prospect |
+| `POST` | `/api/prospeccao/aprovar-lote` | Aprova em massa (apenas com WhatsApp) |
+| `DELETE` | `/api/prospeccao/fila/descartados` | Limpa descartados |
+
+---
+
+## Banco de dados
+
+### Tabela `leads`
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `lead_id` | TEXT PK | Identificador único (ex: `L0042`) |
+| `nome` | TEXT | Nome da clínica/empresa |
+| `cidade` | TEXT | Cidade |
+| `segmento` | TEXT | Segmento (odontologia, medicina, estetica…) |
+| `whatsapp` | TEXT | Número WhatsApp normalizado (`+55DDD…`) |
+| `instagram` | TEXT | Handle Instagram |
+| `email` | TEXT | E-mail |
+| `site` | TEXT | URL do site |
+| `status` | TEXT | novo / contato feito / proposta enviada / conversão / perdido / fechado |
+| `temperatura` | TEXT | frio / morno / quente |
+| `resumo` | TEXT | Resumo gerado pela IA |
+| `acao_followup` | TEXT | Ação de follow-up pendente |
+| `observacoes` | TEXT | Notas manuais |
+| `origem_primeiro_contato` | TEXT | automatico / manual / auto_erro / '' |
+| `mensagem_enviada_em` | TEXT | Timestamp do auto-send (ISO) |
+| `proximo_followup_em` | TEXT | Data/hora do próximo follow-up |
+
+### Tabela `atividades`
+
+| Campo | Descrição |
+|---|---|
+| `data_hora` | Timestamp do evento |
+| `msg_id` | ID único da mensagem (idempotência) |
+| `lead_id` | FK para leads |
+| `tipo` | Tipo (auto_envio, mensagem, followup…) |
+| `canal` | Canal (whatsapp_direto, grupo…) |
+| `mensagem_bruta` | Texto original ou transcrição |
+| `resumo` | Resumo gerado pela IA |
+
+### Tabela `lead_prospects`
+
+Fila de prospecção com nome, cidade, segmento, telefone, whatsapp, website, instagram, link_maps, fonte, status_revisao, rating e enriquecimento.
+
+---
+
+## Matching de leads
+
+Prioridade:
+
+1. `whatsapp` — match exato por telefone normalizado
+2. `instagram` — match exato
+3. `lead_key` — `cidade_normalizada:nome_canonico`
+4. `contains` — substring no nome (mesma cidade)
+5. Fuzzy (`jaro_winkler`):
+   - `≥ 0.88` → match automático
+   - `0.78 – 0.88` → envia para `REVISAR` com top 3 candidatos
+   - `< 0.78` → cria novo lead
+
+A normalização remove acentos, pontuação e termos genéricos (clínica, consultório, odonto, estética) para melhorar a proximidade de nomes.
+
+---
+
+## Auto-Send — Envio automático de primeiro contato
+
+O sistema envia automaticamente a primeira mensagem de prospecção para leads com `status = 'novo'`. **Desligado por padrão.**
+
+### Fluxo
+
+```
+Lead status='novo' + whatsapp preenchido
+    │
+    ▼ (loop a cada ~1 min)
+Dentro da janela horária? → não: aguarda
+    │ sim
+Limite diário atingido? → sim: aguarda amanhã
+    │ não
+Seleciona 1 lead (FIFO, prioridade: segmento preenchido)
+    │
+Gera mensagem variante A/B/C (determinístico por lead_id)
+    │
+Envia via Evolution API
+    │
+Sucesso → status='contato feito', registra em atividades + msg_ab_eventos
+Falha   → marca como 'auto_erro', tenta próximo lead no ciclo seguinte
+```
+
+### Variantes de mensagem
+
+| Variante | Estratégia |
+|---|---|
+| A | Apresentação casual ("Oi, sou o Pedro…") |
+| B | Dor-primeiro (abre com a dor do cliente) |
+| C | Prova social (menciona clínicas da região) |
+
+Templates personalizados por segmento: `odontologia`, `medicina`, `estetica`, `default`.
+
+### Reativar leads bloqueados
+
+Leads marcados como `auto_erro` (falha antes de algum fix) podem ser reativados na página de **Leads** com o botão **"🔄 Reativar fila"**, ou via API:
+
+```bash
+POST /api/leads/reativar-auto-erro
+```
+
+Isso reseta `origem_primeiro_contato = ''` para todos os leads `novo` com `whatsapp` preenchido que estavam bloqueados, colocando-os de volta na fila de envio.
+
+---
+
+## Prospecção automática
+
+A tela de **Prospecção** busca leads automaticamente em:
+
+1. **OpenStreetMap (Overpass API)** — dados estruturados de POIs
+2. **Telelistas.net** — lista telefônica brasileira
+3. **Apontador.com.br** — diretório de empresas
+
+Após a coleta, o sistema enriquece cada prospect buscando WhatsApp via:
+- Scraping do site (links `wa.me`, `api.whatsapp.com`)
+- Fallback via DuckDuckGo Search
+
+Prospects aprovados são convertidos em leads. Prospects com erro ou sem resultado podem ser descartados.
+
+---
+
+## Regras de robustez
+
+- Mensagens vagas são ignoradas antes de chamar OpenAI (`message_too_vague`)
+- Falha da OpenAI não quebra o webhook: retorna HTTP 200 com `{deferred: true}`
+- Falha de confirmação via Evolution não quebra o processamento
+- Áudio inválido ou falha de transcrição é roteado para `REVISAR`
+- Duplicatas detectadas por `msg_id` (idempotência)
+- Auto-send: falha de envio não altera o lead — retenta no próximo ciclo
+
+---
+
+## Testando localmente
+
+### Mensagem de texto
 
 ```bash
 curl -X POST http://localhost:8000/webhook/evolution \
   -H 'Content-Type: application/json' \
-  -H 'x-webhook-secret: SEU_SECRET' \
   -d '{
     "data": {
       "key": {"id": "ABCD1234", "remoteJid": "5511999999999@g.us"},
       "messageTimestamp": 1730803200,
-      "chatId": "5511999999999@g.us",
-      "message": {"conversation": "Novo lead: Clínica Sorriso em Campinas, insta @sorriso"}
+      "chatId": "SEU_GROUP_ID@g.us",
+      "message": {"conversation": "Novo lead: Clínica Sorriso em Campinas, 19 99898-9888"}
     }
   }'
 ```
 
-Exemplo áudio:
+### Mensagem de áudio
 
 ```bash
 curl -X POST http://localhost:8000/webhook/evolution \
@@ -158,265 +387,44 @@ curl -X POST http://localhost:8000/webhook/evolution \
     "data": {
       "key": {"id": "EFGH5678", "remoteJid": "5511999999999@g.us"},
       "messageTimestamp": 1730803200,
-      "chatId": "5511999999999@g.us",
-      "message": {"audioMessage": {"url": "https://seu-cdn/audio.ogg"}}
+      "chatId": "SEU_GROUP_ID@g.us",
+      "message": {"audioMessage": {"url": "https://cdn-evolution/audio.ogg"}}
     }
   }'
 ```
 
-## Regras de matching implementadas
-
-Prioridade:
-1. `whatsapp`
-2. `instagram`
-3. `lead_key` (`cidade_normalizada:nome_canonico`)
-4. `contains` em nome (mesma cidade)
-5. fuzzy fallback
-   - `>=0.88`: match automático
-   - `0.78-0.88`: não cria lead, envia para `REVISAR` com top 3
-   - `<0.78`: cria lead novo
-
-A normalização remove acentos/pontuação e aplica limpeza leve de termos genéricos (ex.: clínica/consultório/odonto/estética) para melhorar proximidade de nomes.
-
-## Docker
-
-Build:
-
-```bash
-docker build -t iziclinic-crm .
-```
-
-Run:
-
-```bash
-docker run --rm -p 8000:8000 --env-file .env iziclinic-crm
-```
-
-## Deploy no Railway
-
-1. Suba este repositório no GitHub.
-2. Crie novo projeto no Railway (Deploy from GitHub).
-3. Configure variáveis de ambiente do `.env.example`.
-4. Railway detecta `Dockerfile` e faz build automático.
-5. Configure URL pública no Evolution webhook apontando para:
-   - `https://SEU_APP.railway.app/webhook/evolution`
-6. (Opcional) Configure header `x-webhook-secret` no emissor e variável `EVOLUTION_WEBHOOK_SECRET`.
-
-## Observações
-
-- Falha de confirmação via Evolution API não quebra processamento do webhook.
-- Em falha de transcrição ou mensagem não processável, o evento é roteado para `REVISAR`.
-
-
-## Regras operacionais de robustez
-
-- Mensagens vagas são ignoradas antes da OpenAI (`message_too_vague`) para reduzir custo e sujeira.
-- Falha da OpenAI não quebra webhook: resposta HTTP 200 com `deferred=true` e `reason=openai_unavailable`.
-- Matching prioriza telefone normalizado, depois instagram, depois nome/lead_key/fuzzy.
-- `REVISAR` é usado para falhas reais (transcrição, ambiguidade, payload inválido), não para mensagens bobas ignoradas.
-
-
-## Fluxo de áudio (WhatsApp)
-
-- Nunca enviamos `.enc` diretamente para OpenAI.
-- O backend usa `mimetype` para decidir extensão válida (`.ogg`, `.mp3`, `.wav`, etc.).
-- A função `resolve_whatsapp_audio(media_url, mimetype)` baixa a mídia, cria arquivo temporário com extensão correta e retorna o `path` pronto para Whisper.
-- Erros de áudio geram logs específicos (`falha_download_audio`, `mimetype_invalido`, `midia_nao_suportada`, `falha_transcricao`) e roteamento para `REVISAR`.
-
-
-## Interpretação CRM (texto e áudio)
-
-Após transcrever (quando áudio), o backend aplica interpretação CRM para classificar a ação:
-
-- `novo_lead`
-- `atualizar_lead`
-- `registrar_atividade`
-- `registrar_followup`
-- `revisao_manual`
-
-### Lógica de interpretação
-
-1. Extrai telefone do texto (se houver).
-2. Detecta follow-up (ex.: "amanhã", "semana que vem", "depois das 14").
-3. Classifica tipo de atividade (respondeu, pediu proposta, sem interesse, número inválido etc.).
-4. Se o LLM não trouxer nome, tenta fallback local com trecho anterior ao telefone.
-5. Mantém intent segura (`update`) quando vier inválida/vazia.
-
-### Pipeline final
-
-receber evento
-→ resolver áudio
-→ transcrever
-→ normalizar texto
-→ interpretar intenção CRM
-→ localizar lead (telefone > nome exato/semelhante > contexto)
-→ registrar em LEADS / ATIVIDADES / REVISAR
-
-### Exemplos de entrada/saída
-
-Entrada: `"Clínica Sorriso, odonto, 19 99898-9888"`
-- Ação esperada: `novo_lead`
-- Resultado: upsert em LEADS + atividade `contato inicial`
-
-Entrada: `"A clínica sorriso respondeu"`
-- Ação esperada: `atualizar_lead` (ou `registrar_atividade` com contexto)
-- Resultado: atividade `respondeu`
-
-Entrada: `"Retornar amanhã"`
-- Ação esperada: `registrar_followup`
-- Resultado: `followup_em` preenchido
-
-Entrada: `"Número errado"`
-- Ação esperada: `registrar_atividade`
-- Resultado: atividade `número inválido`, status sugerido de contato inválido
-
----
-
-## Auto-Send: Envio Automático de Primeiro Contato
-
-O sistema pode enviar automaticamente a primeira mensagem de prospecção para
-leads com status `novo`. O envio é **desligado por padrão** e precisa ser
-ativado explicitamente.
-
-### Como funciona
-
-```
-Lead status='novo' + whatsapp preenchido
-    │
-    ▼ (a cada ~1 min o loop verifica)
-Dentro da janela horária? (09h–18h) ──► não → aguarda
-    │ sim
-    ▼
-Limite diário atingido? (padrão: 7/dia) ──► sim → aguarda amanhã
-    │ não
-    ▼
-Seleciona 1 lead elegível (FIFO por data_criacao, preferência com segmento)
-    │
-    ▼
-Gera mensagem personalizada (A/B/C determinístico por lead_id)
-    │
-    ▼
-Envia via Evolution API (WhatsApp)
-    │
-    ├── Sucesso:
-    │     • status → 'contato feito', temperatura → 'frio'
-    │     • mensagem_enviada_em = agora
-    │     • origem_primeiro_contato = 'automatico'
-    │     • Registrado em atividades (tipo='auto_envio')
-    │     • Registrado em msg_ab_eventos (evento='auto_enviada')
-    │     • Loop dorme 3–12 min antes do próximo envio
-    │
-    └── Falha (API offline, número inválido):
-          • Nada é alterado no lead
-          • Retenta no próximo ciclo (60s)
-```
-
-### Como ativar
-
-Defina no `.env`:
-
-```bash
-AUTO_SEND_ENABLED=true
-AUTO_SEND_DIARIO_MAX=7        # quantos envios por dia
-AUTO_SEND_HORA_INICIO=9       # hora de início (formato 24h)
-AUTO_SEND_HORA_FIM=18         # hora de fim
-AUTO_SEND_INTERVALO_MIN_S=180 # intervalo mínimo entre envios (segundos)
-AUTO_SEND_INTERVALO_MAX_S=720 # intervalo máximo entre envios (segundos)
-```
-
-Reinicie a aplicação após alterar o `.env`. O loop começa imediatamente
-na janela horária configurada.
-
-### Quais leads são selecionados?
-
-Um lead entra na fila de auto-send quando:
-
-| Critério | Valor |
-|---|---|
-| `status` | `novo` |
-| `whatsapp` | preenchido |
-| `mensagem_enviada_em` | vazio (nunca enviado automaticamente) |
-| `origem_primeiro_contato` | vazio (sem contato registrado) |
-
-**Ordenação:** leads com `segmento` preenchido primeiro (para melhor
-personalização da mensagem), depois por `data_criacao ASC` (mais antigos
-na frente — FIFO).
-
-Isso significa que leads sem WhatsApp, leads já contatados (manual ou
-automaticamente), ou leads em qualquer status que não seja `novo` são
-**automaticamente ignorados**.
-
-### Variantes de mensagem (A/B/C)
-
-Cada lead recebe sempre a mesma variante (determinística pelo `lead_id`):
-
-| Variante | Estratégia |
-|---|---|
-| A | Apresentação pessoal casual ("Sou o Pedro...") |
-| B | Dor-primeiro (abre com pergunta sobre o problema deles) |
-| C | Prova social leve (menciona clínicas da região) |
-
-Os templates são personalizados por segmento: `odontologia`, `medicina`,
-`estetica`, `default` (demais casos).
-
-### APIs de monitoramento
-
-```bash
-# Status atual do auto-send
-GET /api/auto-send/status
-
-# Histórico dos últimos 50 envios automáticos
-GET /api/auto-send/historico
-```
-
-Exemplo de resposta de `/api/auto-send/status`:
-```json
-{
-  "enabled": true,
-  "diario_max": 7,
-  "hora_inicio": 9,
-  "hora_fim": 18,
-  "enviados_hoje": 3,
-  "restantes_hoje": 4,
-  "proximos_leads": [
-    { "lead_id": "L042", "nome": "Clínica Sorriso", "segmento": "odontologia" }
-  ]
-}
-```
-
-### Rastreamento e auditoria
-
-Cada envio automático gera **3 registros**:
-
-1. **`atividades`** — `tipo='auto_envio'`, `mensagem_bruta` contém o texto
-   enviado, `canal='whatsapp_direto'`
-2. **`msg_ab_eventos`** — `evento='auto_enviada'`, `variante=A/B/C`,
-   permite medir taxa de resposta por variante
-3. **`leads`** — campos `mensagem_enviada_em`, `auto_send_variante`,
-   `origem_primeiro_contato='automatico'`
-
-### Como pausar
-
-Para pausar sem reiniciar a aplicação, basta mudar `AUTO_SEND_ENABLED=false`
-e reiniciar. Leads com `mensagem_enviada_em` preenchido **não** serão
-re-enviados.
-
-### Diferença entre envio manual e automático
-
-| | Manual | Automático |
-|---|---|---|
-| Quem dispara | Usuário copia a mensagem e envia no WhatsApp | Sistema envia direto |
-| `origem_primeiro_contato` | `manual` | `automatico` |
-| `mensagem_enviada_em` | não preenchido | preenchido com timestamp |
-| Rastreado em `msg_ab_eventos` | sim (`evento='copiada'`) | sim (`evento='auto_enviada'`) |
-
-### Logs
-
-Procure no log da aplicação por:
+### Logs úteis do auto-send
 
 ```
 auto_sender | enviando para lead_id=L042 nome='Clínica Sorriso' variante=B
 auto_sender | OK | lead_id=L042 variante=B (3/7 hoje)
 auto_sender_loop | aguardando 347s antes do próximo envio
 auto_sender | limite diário atingido (7/7), aguardando amanhã
+```
+
+---
+
+## Estrutura do projeto
+
+```
+app/
+├── main.py                   # FastAPI app principal, webhook, health, sync
+├── config.py                 # Configurações e parsing de env vars
+├── routers/
+│   ├── api_leads.py          # REST API de leads e auto-send
+│   ├── api_prospeccao.py     # API de prospecção
+│   └── dashboard_ui.py       # Rotas HTML
+├── services/
+│   ├── db_service.py         # Operações PostgreSQL (leads, atividades, prospects)
+│   ├── openai_service.py     # Whisper + GPT extração estruturada
+│   ├── sheets_service.py     # Sync Google Sheets
+│   ├── prospector_service.py # Busca multi-fonte + enriquecimento
+│   ├── auto_sender.py        # Loop de envio automático
+│   ├── crm_interpreter.py    # NLU, detecção de intent, follow-up
+│   ├── evolution_service.py  # Integração Evolution API
+│   └── normalizer.py         # Normalização de payloads
+├── schemas/
+│   └── models.py             # Modelos Pydantic
+├── templates/                # HTML (Jinja2): dashboard, leads, estatisticas, prospeccao
+└── static/                   # CSS + JS (vanilla)
 ```
