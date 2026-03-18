@@ -118,6 +118,14 @@ def _is_mobile_br(phone: str) -> bool:
     return len(digits) == 11 and digits[2] == "9"
 
 
+def _is_valid_br_phone(phone: str) -> bool:
+    """Aceita celular (11 dígitos) e fixo (10 dígitos) brasileiros com DDD."""
+    digits = "".join(c for c in (phone or "") if c.isdigit())
+    if digits.startswith("55"):
+        digits = digits[2:]
+    return len(digits) in (10, 11)
+
+
 def _parse_cidade_estado(cidade: str) -> Tuple[str, str]:
     """'Limeira SP' → ('Limeira', 'SP'); 'São Paulo' → ('São Paulo', '')"""
     parts = cidade.strip().rsplit(None, 1)
@@ -291,7 +299,7 @@ class ProspectorService:
             ).strip()
             phone = _norm_phone(phone_raw)
             # If OSM has a mobile number, it's likely WhatsApp already
-            whatsapp = phone if _is_mobile_br(phone) else ""
+            whatsapp = phone if _is_valid_br_phone(phone) else ""
 
             website = (
                 tags.get("website", "")
@@ -385,7 +393,7 @@ class ProspectorService:
                     if m:
                         phone = _norm_phone(m.group(0))
 
-            whatsapp = phone if _is_mobile_br(phone) else ""
+            whatsapp = phone if _is_valid_br_phone(phone) else ""
 
             website = ""
             for a in item.find_all("a", href=True):
@@ -467,7 +475,7 @@ class ProspectorService:
             if tel_link:
                 phone = _norm_phone(tel_link["href"].replace("tel:", ""))
 
-            whatsapp = phone if _is_mobile_br(phone) else ""
+            whatsapp = phone if _is_valid_br_phone(phone) else ""
 
             website = ""
             for a in item.find_all("a", href=True):
@@ -567,7 +575,7 @@ class ProspectorService:
         for a in soup.find_all("a", href=re.compile(r"^tel:")):
             raw = a["href"].replace("tel:", "").replace("+", "").replace(" ", "")
             normalized = _norm_phone(raw)
-            if _is_mobile_br(normalized):
+            if _is_valid_br_phone(normalized):
                 return {"whatsapp": normalized}
 
         # 5. Any cell number in page text (last resort — less reliable)
