@@ -2210,6 +2210,43 @@ class DBService:
         finally:
             self._put(conn)
 
+    def reset_prospects_for_reenrich(self, busca_id: Optional[str] = None) -> List[str]:
+        """Reset enriquecido=0 for pendente prospects with no WhatsApp.
+
+        Returns list of distinct busca_ids affected so callers can trigger
+        enrich_batch for each one.
+        """
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                base = """
+                    UPDATE lead_prospects
+                    SET enriquecido = 0
+                    WHERE status_revisao = 'pendente'
+                      AND (whatsapp IS NULL OR whatsapp = '')
+                      AND enriquecido = 1
+                """
+                params: list = []
+                if busca_id:
+                    base += " AND busca_id = %s"
+                    params.append(busca_id)
+                cur.execute(base, params)
+
+                if busca_id:
+                    busca_ids = [busca_id] if cur.rowcount > 0 else []
+                else:
+                    cur.execute(
+                        """SELECT DISTINCT busca_id FROM lead_prospects
+                           WHERE status_revisao = 'pendente'
+                             AND (whatsapp IS NULL OR whatsapp = '')
+                             AND enriquecido = 0"""
+                    )
+                    busca_ids = [r[0] for r in cur.fetchall() if r[0]]
+            conn.commit()
+            return busca_ids
+        finally:
+            self._put(conn)
+
     def approve_prospect(self, prospect_id: int) -> str:
         """Creates a lead from prospect, updates prospect status. Returns lead_id."""
         p = self.get_prospect(prospect_id)

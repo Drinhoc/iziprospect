@@ -215,6 +215,20 @@ class ProspectorService:
 
         return {"busca_id": busca_id, "total": total, "por_fonte": por_fonte}
 
+    async def re_enrich_sem_whatsapp(self, busca_id: str | None = None) -> Dict[str, Any]:
+        """Re-run enrichment for all pending prospects that have no WhatsApp yet.
+
+        Resets enriquecido=0 for matching records, then fires enrich_batch
+        for each affected busca_id.  Returns a summary dict.
+        """
+        busca_ids = await asyncio.to_thread(
+            self.db.reset_prospects_for_reenrich, busca_id
+        )
+        logger.info("re_enrich_sem_whatsapp | busca_ids=%s", busca_ids)
+        for bid in busca_ids:
+            await self.enrich_batch(bid)
+        return {"busca_ids_processados": busca_ids, "total": len(busca_ids)}
+
     async def enrich_batch(self, busca_id: str) -> None:
         """Background task: enrich ALL unenriched prospects from a busca.
 

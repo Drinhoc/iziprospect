@@ -147,6 +147,25 @@ def aprovar_lote(body: AprovarLoteRequest):
     return {"aprovados": len(aprovados), "erros": len(erros), "detalhes": aprovados}
 
 
+class ReEnriquecerRequest(BaseModel):
+    busca_id: Optional[str] = None
+
+
+@router.post("/re-enriquecer")
+async def re_enriquecer(body: ReEnriquecerRequest, background_tasks: BackgroundTasks):
+    """Re-run WhatsApp enrichment for pending prospects that still have no WhatsApp number.
+
+    Pass busca_id to restrict to a specific search batch, or omit to process all.
+    """
+    prospector = _get_prospector()
+    background_tasks.add_task(prospector.re_enrich_sem_whatsapp, body.busca_id)
+    return {
+        "ok": True,
+        "message": "Varredura de re-enriquecimento iniciada em background.",
+        "busca_id": body.busca_id,
+    }
+
+
 @router.delete("/fila/descartados")
 def limpar_descartados():
     db = _get_db()
