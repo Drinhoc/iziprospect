@@ -147,19 +147,6 @@ def aprovar_lote(body: AprovarLoteRequest):
     return {"aprovados": len(aprovados), "erros": len(erros), "detalhes": aprovados}
 
 
-class ReEnriquecerRequest(BaseModel):
-    busca_id: Optional[str] = None
-
-
-@router.post("/re-enriquecer")
-async def re_enriquecer(background_tasks: BackgroundTasks):
-    """Re-run WhatsApp enrichment for all leads with status='novo' and no WhatsApp number."""
-    prospector = _get_prospector()
-    background_tasks.add_task(prospector.enrich_leads_sem_whatsapp)
-    return {
-        "ok": True,
-        "message": "Varredura iniciada: buscando WhatsApp nos leads com status 'novo' sem número.",
-    }
 
 
 @router.delete("/fila/descartados")

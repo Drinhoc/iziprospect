@@ -156,6 +156,14 @@ def delete_lead(lead_id: str):
     return {"ok": True}
 
 
+@router.post("/leads/reativar-auto-erro")
+def reativar_auto_erro():
+    """Desbloqueia leads com status='novo' marcados como auto_erro para nova tentativa de envio."""
+    db = _get_db()
+    count = db.reativar_leads_auto_erro()
+    return {"ok": True, "reativados": count}
+
+
 @router.post("/leads/bulk", status_code=200)
 def bulk_create_leads(body: dict):
     """Importa múltiplos leads de uma vez.

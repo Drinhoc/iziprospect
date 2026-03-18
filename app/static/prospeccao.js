@@ -139,7 +139,6 @@ function switchTab(tab, el) {
 
   // Show/hide tab-specific actions
   document.getElementById('btn-aprovar-lote').classList.toggle('hidden', tab !== 'pendente');
-  document.getElementById('btn-reenriquecer').classList.toggle('hidden', tab !== 'pendente');
   document.getElementById('btn-limpar-desc').classList.toggle('hidden', tab !== 'descartado');
 }
 
@@ -345,22 +344,6 @@ async function aprovarComWhatsApp() {
   } finally {
     btn.disabled = false;
     btn.textContent = 'Aprovar c/ WhatsApp';
-  }
-}
-
-async function reEnriquecer() {
-  const btn = document.getElementById('btn-reenriquecer');
-  btn.disabled = true;
-  btn.textContent = 'Varrendo…';
-  try {
-    const res = await fetch('/api/prospeccao/re-enriquecer', { method: 'POST' });
-    const data = await res.json();
-    alert('Varredura iniciada! Todos os leads com status "novo" e sem WhatsApp serão reprocessados em background.\n\nAguarde alguns minutos e verifique os leads.');
-  } catch (e) {
-    alert('Erro: ' + e.message);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '🔍 Buscar WhatsApp nos leads novos';
   }
 }
 

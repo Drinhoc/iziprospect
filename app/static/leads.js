@@ -1094,4 +1094,24 @@ async function runImport() {
   }
 }
 
+async function reativarAutoErro() {
+  const btn = document.getElementById('btn-reativar');
+  btn.disabled = true;
+  btn.textContent = 'Reativando…';
+  try {
+    const res = await fetch('/api/leads/reativar-auto-erro', { method: 'POST' });
+    const data = await res.json();
+    if (data.reativados === 0) {
+      alert('Nenhum lead bloqueado encontrado. Todos os leads "novo" já estão na fila.');
+    } else {
+      alert(`${data.reativados} lead(s) reativado(s)! Eles voltaram para a fila de envio automático.`);
+    }
+  } catch (e) {
+    alert('Erro: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔄 Reativar fila';
+  }
+}
+
 loadLeads();
