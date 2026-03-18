@@ -152,17 +152,13 @@ class ReEnriquecerRequest(BaseModel):
 
 
 @router.post("/re-enriquecer")
-async def re_enriquecer(body: ReEnriquecerRequest, background_tasks: BackgroundTasks):
-    """Re-run WhatsApp enrichment for pending prospects that still have no WhatsApp number.
-
-    Pass busca_id to restrict to a specific search batch, or omit to process all.
-    """
+async def re_enriquecer(background_tasks: BackgroundTasks):
+    """Re-run WhatsApp enrichment for all leads with status='novo' and no WhatsApp number."""
     prospector = _get_prospector()
-    background_tasks.add_task(prospector.re_enrich_sem_whatsapp, body.busca_id)
+    background_tasks.add_task(prospector.enrich_leads_sem_whatsapp)
     return {
         "ok": True,
-        "message": "Varredura de re-enriquecimento iniciada em background.",
-        "busca_id": body.busca_id,
+        "message": "Varredura iniciada: buscando WhatsApp nos leads com status 'novo' sem número.",
     }
 
 

@@ -353,19 +353,14 @@ async function reEnriquecer() {
   btn.disabled = true;
   btn.textContent = 'Varrendo…';
   try {
-    const body = currentBuscaId ? { busca_id: currentBuscaId } : {};
-    const res = await fetch('/api/prospeccao/re-enriquecer', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+    const res = await fetch('/api/prospeccao/re-enriquecer', { method: 'POST' });
     const data = await res.json();
-    alert('Varredura iniciada! Os números serão buscados em background. Aguarde alguns minutos e atualize a página.');
+    alert('Varredura iniciada! Todos os leads com status "novo" e sem WhatsApp serão reprocessados em background.\n\nAguarde alguns minutos e verifique os leads.');
   } catch (e) {
     alert('Erro: ' + e.message);
   } finally {
     btn.disabled = false;
-    btn.textContent = '🔍 Re-varrer sem WhatsApp';
+    btn.textContent = '🔍 Buscar WhatsApp nos leads novos';
   }
 }
 

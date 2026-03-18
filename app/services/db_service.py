@@ -835,6 +835,22 @@ class DBService:
     # Auto-send helpers
     # ---------------------------------------------------------------------------
 
+    def get_leads_novo_sem_whatsapp(self) -> List[Dict[str, Any]]:
+        """Retorna leads com status='novo' e whatsapp vazio que têm site ou nome para enriquecer."""
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT lead_id, nome, cidade, site
+                       FROM leads
+                       WHERE status = 'novo'
+                         AND (whatsapp IS NULL OR whatsapp = '')
+                       ORDER BY data_criacao ASC"""
+                )
+                return self._fetchall_dict(cur)
+        finally:
+            self._put(conn)
+
     def get_leads_for_auto_send(self, limit: int = 1) -> List[Dict[str, Any]]:
         """Retorna leads elegíveis para envio automático de primeiro contato.
 

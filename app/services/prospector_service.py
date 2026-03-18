@@ -215,6 +215,42 @@ class ProspectorService:
 
         return {"busca_id": busca_id, "total": total, "por_fonte": por_fonte}
 
+    async def enrich_leads_sem_whatsapp(self) -> Dict[str, Any]:
+        """Re-run WhatsApp enrichment for leads with status='novo' and no whatsapp.
+
+        Uses the same pipeline as prospect enrichment: website scraping + DDG fallback.
+        Updates leads.whatsapp directly when found.
+        """
+        leads = await asyncio.to_thread(self.db.get_leads_novo_sem_whatsapp)
+        logger.info("enrich_leads_sem_whatsapp | total=%d", len(leads))
+        found = 0
+        for lead in leads:
+            whatsapp = None
+            try:
+                if lead.get("site"):
+                    result = await self._enrich_website(lead["site"])
+                    if result:
+                        whatsapp = result.get("whatsapp")
+
+                if not whatsapp and lead.get("nome"):
+                    whatsapp = await self._ddg_search_whatsapp(
+                        lead["nome"], lead.get("cidade", "")
+                    )
+                    if whatsapp:
+                        logger.info("ddg_found_wa lead | nome=%s wa=%s", lead["nome"], whatsapp)
+            except Exception as exc:
+                logger.debug("enrich_lead failed id=%s: %s", lead["lead_id"], exc)
+
+            if whatsapp:
+                await asyncio.to_thread(
+                    self.db.update_lead_from_dashboard,
+                    lead["lead_id"],
+                    {"whatsapp": whatsapp},
+                )
+                found += 1
+
+        return {"total_leads": len(leads), "whatsapp_encontrados": found}
+
     async def re_enrich_sem_whatsapp(self, busca_id: str | None = None) -> Dict[str, Any]:
         """Re-run enrichment for all pending prospects that have no WhatsApp yet.
 
