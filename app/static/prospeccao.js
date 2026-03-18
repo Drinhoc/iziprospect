@@ -139,6 +139,7 @@ function switchTab(tab, el) {
 
   // Show/hide tab-specific actions
   document.getElementById('btn-aprovar-lote').classList.toggle('hidden', tab !== 'pendente');
+  document.getElementById('btn-reenriquecer').classList.toggle('hidden', tab !== 'pendente');
   document.getElementById('btn-limpar-desc').classList.toggle('hidden', tab !== 'descartado');
 }
 
@@ -344,6 +345,27 @@ async function aprovarComWhatsApp() {
   } finally {
     btn.disabled = false;
     btn.textContent = 'Aprovar c/ WhatsApp';
+  }
+}
+
+async function reEnriquecer() {
+  const btn = document.getElementById('btn-reenriquecer');
+  btn.disabled = true;
+  btn.textContent = 'Varrendo…';
+  try {
+    const body = currentBuscaId ? { busca_id: currentBuscaId } : {};
+    const res = await fetch('/api/prospeccao/re-enriquecer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    alert('Varredura iniciada! Os números serão buscados em background. Aguarde alguns minutos e atualize a página.');
+  } catch (e) {
+    alert('Erro: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔍 Re-varrer sem WhatsApp';
   }
 }
 
