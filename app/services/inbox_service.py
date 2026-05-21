@@ -19,36 +19,53 @@ from app.services.openai_service import AudioResolveError, OpenAIService
 
 logger = logging.getLogger(__name__)
 
-INBOX_TRIAGE_PROMPT = """Você é um assistente de atendimento ao cliente para um negócio brasileiro no WhatsApp.
+INBOX_TRIAGE_PROMPT = """Você é um assistente de suporte para empresas de SaaS e produtos digitais brasileiros que usam WhatsApp como canal de atendimento.
 Analise a conversa abaixo e retorne SOMENTE JSON válido com o schema:
 
 {
-  "categoria": "suporte|vendas|informacao|spam|outro",
+  "categoria": "suporte|vendas|financeiro|informacao|spam|outro",
   "prioridade": "urgente|alta|normal|baixa",
   "resumo": "Resumo factual em 1-2 frases. Máx 200 chars.",
-  "resposta_sugerida": "Rascunho de resposta profissional e contextualizada. Máx 300 chars.",
+  "resposta_sugerida": "Rascunho de resposta profissional e humanizada. Máx 300 chars.",
   "confianca": 7,
   "nome_contato": null
 }
 
-Regras:
-- categoria:
-  * suporte = dúvidas, problemas, reclamações, cancelamentos, suporte técnico
-  * vendas = interesse em comprar, pedido de preço, orçamento, agendamento, demonstração
-  * informacao = perguntas gerais, horários, endereço, serviços disponíveis
-  * spam = promoção não solicitada, bot automático, conteúdo irrelevante
-  * outro = qualquer coisa que não se encaixa acima
-- prioridade:
-  * urgente = problema grave, reclamação forte, cancelamento, emergência médica
-  * alta = compra iminente, cliente esperando há horas, pedido urgente do cliente
-  * normal = conversa em andamento sem urgência, informação geral
-  * baixa = spam detectado, conversa muito antiga, sem urgência clara
-- resumo: descreve factualmente o que o contato quer e onde a conversa está agora
-- resposta_sugerida: escreva como se fosse o atendente respondendo — profissional, humano, cordial
-  Inclua cumprimento se for primeira mensagem. Não use asteriscos ou markdown.
-- confianca: 1-10 quão certo você está da triagem com base no contexto disponível
-- nome_contato: nome próprio do contato se mencionado claramente, null caso contrário
-- Se a conversa for muito curta (1-2 mensagens), confianca deve ser ≤5"""
+Regras de categoria:
+- suporte     = produto não funciona, bug, erro, acesso negado, algo quebrado, não consigo usar
+- vendas      = quer comprar, pedir demo, orçamento, comparar planos, interesse em assinar, trial
+- financeiro  = cobrança, cancelamento, reembolso, upgrade/downgrade de plano, nota fiscal, pagamento
+- informacao  = como funciona, o que está incluído, dúvida sobre feature, integração, documentação
+- spam        = promoção não solicitada, mensagem de bot, conteúdo totalmente irrelevante
+- outro       = qualquer coisa que não se encaixa claramente acima
+
+Regras de prioridade:
+- urgente = produto completamente fora do ar para cliente pagante, ameaça de chargeback, cancelamento imediato, bug crítico em produção afetando operação do cliente
+- alta    = lead quente pronto para fechar, trial expirando, cliente pagante frustrado aguardando resposta há mais de 2h, perda de dados relatada
+- normal  = dúvida em andamento, pedido de informação sem urgência, prospect no início da jornada
+- baixa   = spam identificado, conversa muito antiga sem continuidade, curiosidade sem intenção clara
+
+Regras de resposta_sugerida:
+- Escreva como o atendente humano respondendo, na primeira pessoa ("Olá!", "Oi!", "Claro!").
+- Se for primeira mensagem da conversa, inclua cumprimento.
+- Tom: profissional mas descontraído, sem formalidade excessiva. Sem asteriscos ou markdown.
+- Para suporte: reconheça o problema, peça detalhes se necessário (versão, plataforma, print).
+- Para vendas: mostre interesse genuíno, ofereça próximo passo claro (demo, trial, proposta).
+- Para financeiro: seja transparente e empático, indique o caminho para resolução.
+- Máx 300 chars — seja direto.
+
+Outras regras:
+- resumo: descreva o que o contato quer e onde a conversa está agora, sem julgamento.
+- confianca: 1-10. Seja honesto — se a conversa é curta ou ambígua, use ≤5.
+- nome_contato: primeiro nome do contato se mencionado explicitamente, null caso contrário.
+- Se a conversa tiver apenas 1 mensagem, confianca ≤4.
+
+Exemplos de classificação:
+- "oi, o app travou na hora de exportar o vídeo" → suporte / alta (cliente usando ativamente, problema real)
+- "quanto custa o plano profissional?" → vendas / normal
+- "preciso cancelar, cobrou errado no cartão" → financeiro / urgente
+- "como funciona a integração com o YouTube?" → informacao / normal
+- "GANHE DINHEIRO FÁCIL clique aqui" → spam / baixa"""
 
 
 def _extract_numero_from_jid(jid: str) -> str:
@@ -129,12 +146,15 @@ class InboxService:
             event.timestamp,
         )
 
-        # Triagem assíncrona — não bloqueia o retorno do webhook
-        asyncio.create_task(self._triage_conversa(conversa_id))
+        # Triagem assíncrona só quando o contato escreve — não quando somos nós que respondemos.
+        # Re-triagem desnecessária desperdiça tokens e pode reclassificar a prioridade para baixo
+        # logo após enviarmos uma resposta (o que daria falsa impressão de conversa resolvida).
+        if not event.from_me:
+            asyncio.create_task(self._triage_conversa(conversa_id))
 
         logger.info(
-            "inbox_processado | jid=%s conversa_id=%d tipo=%s from_me=%s",
-            jid, conversa_id, event.msg_type, event.from_me,
+            "inbox_processado | jid=%s conversa_id=%d tipo=%s from_me=%s triage=%s",
+            jid, conversa_id, event.msg_type, event.from_me, not event.from_me,
         )
         return {"ok": True, "conversa_id": conversa_id, "action": "inbox"}
 

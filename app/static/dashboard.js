@@ -7,6 +7,7 @@
 const CAT_COLORS = {
   suporte:    '#3b82f6',
   vendas:     '#10b981',
+  financeiro: '#8b5cf6',
   informacao: '#f59e0b',
   spam:       '#ef4444',
   outro:      '#9ca3af',
@@ -15,6 +16,7 @@ const CAT_COLORS = {
 const CAT_LABELS = {
   suporte:    'Suporte',
   vendas:     'Vendas',
+  financeiro: 'Financeiro',
   informacao: 'Informação',
   spam:       'Spam',
   outro:      'Outro',
