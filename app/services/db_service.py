@@ -2603,6 +2603,92 @@ class DBService:
         finally:
             self._put(conn)
 
+    def get_inbox_dashboard_stats(self, timezone: str = "America/Sao_Paulo") -> Dict[str, Any]:
+        """Retorna todos os dados do dashboard inbox-first em uma única chamada."""
+        from zoneinfo import ZoneInfo
+        from datetime import datetime as _dt
+        today = _dt.now(ZoneInfo(timezone)).date().isoformat()
+
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                # Contadores principais
+                cur.execute(
+                    """SELECT
+                           COUNT(*) FILTER (WHERE status = 'aberto')                                       AS abertas,
+                           COUNT(*) FILTER (WHERE prioridade = 'urgente' AND status = 'aberto')             AS urgentes,
+                           COALESCE(SUM(nao_lidas) FILTER (WHERE status = 'aberto'), 0)                    AS total_nao_lidas,
+                           COUNT(*) FILTER (
+                               WHERE status = 'resolvido'
+                               AND DATE(resolvido_em AT TIME ZONE %s) = %s::date)                           AS resolvidas_hoje,
+                           COUNT(*) FILTER (WHERE status = 'aberto' AND nao_lidas > 0)                     AS conversas_nao_lidas
+                       FROM conversas""",
+                    (timezone, today),
+                )
+                row = cur.fetchone()
+                stats = {
+                    "abertas":              row[0] or 0,
+                    "urgentes":             row[1] or 0,
+                    "total_nao_lidas":      row[2] or 0,
+                    "resolvidas_hoje":      row[3] or 0,
+                    "conversas_nao_lidas":  row[4] or 0,
+                }
+
+                # Volume por categoria (não arquivadas)
+                cur.execute(
+                    """SELECT COALESCE(categoria, 'outro'), COUNT(*)
+                       FROM conversas
+                       WHERE status != 'arquivado'
+                       GROUP BY 1 ORDER BY 2 DESC"""
+                )
+                stats["por_categoria"] = {r[0]: r[1] for r in cur.fetchall()}
+
+                # Volume últimos 7 dias (por data de criação)
+                cur.execute(
+                    """SELECT DATE(criado_em AT TIME ZONE %s) AS dia, COUNT(*) AS total
+                       FROM conversas
+                       WHERE criado_em >= NOW() - INTERVAL '7 days'
+                       GROUP BY 1 ORDER BY 1 ASC""",
+                    (timezone,),
+                )
+                stats["volume_7d"] = [{"dia": str(r[0]), "total": r[1]} for r in cur.fetchall()]
+
+                # Conversas urgentes/alta com não lidas (lista de ação)
+                cur.execute(
+                    """SELECT id, nome_contato, numero, prioridade, categoria,
+                              nao_lidas, resumo_ia, ultimo_msg_em, status
+                       FROM conversas
+                       WHERE status = 'aberto' AND prioridade IN ('urgente', 'alta')
+                       ORDER BY
+                           CASE prioridade WHEN 'urgente' THEN 1 ELSE 2 END,
+                           nao_lidas DESC,
+                           ultimo_msg_em DESC NULLS LAST
+                       LIMIT 5"""
+                )
+                cols = [d[0] for d in cur.description]
+                urgentes = [dict(zip(cols, r)) for r in cur.fetchall()]
+
+                # Conversas normais sem resposta (nao_lidas > 0)
+                cur.execute(
+                    """SELECT id, nome_contato, numero, prioridade, categoria,
+                              nao_lidas, resumo_ia, ultimo_msg_em
+                       FROM conversas
+                       WHERE status = 'aberto' AND nao_lidas > 0
+                         AND prioridade NOT IN ('urgente', 'alta')
+                       ORDER BY ultimo_msg_em DESC NULLS LAST
+                       LIMIT 5"""
+                )
+                cols = [d[0] for d in cur.description]
+                sem_resposta = [dict(zip(cols, r)) for r in cur.fetchall()]
+
+            return {
+                "stats":            stats,
+                "urgentes":         urgentes,
+                "sem_resposta":     sem_resposta,
+            }
+        finally:
+            self._put(conn)
+
     def get_inbox_stats(self) -> Dict[str, Any]:
         conn = self._conn()
         try:

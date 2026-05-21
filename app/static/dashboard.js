@@ -1,140 +1,257 @@
-/* Dashboard JS */
+/* dashboard.js — MVP 2.0: inbox-first dashboard */
 
-const STATUS_ORDER = [
-  'novo', 'contato feito', 'conversando', 'negociando', 'fechado', 'perdido', 'contato inválido'
-];
+// ---------------------------------------------------------------------------
+// Paleta de cores
+// ---------------------------------------------------------------------------
+
+const CAT_COLORS = {
+  suporte:    '#3b82f6',
+  vendas:     '#10b981',
+  informacao: '#f59e0b',
+  spam:       '#ef4444',
+  outro:      '#9ca3af',
+};
+
+const CAT_LABELS = {
+  suporte:    'Suporte',
+  vendas:     'Vendas',
+  informacao: 'Informação',
+  spam:       'Spam',
+  outro:      'Outro',
+};
 
 const STATUS_COLORS = {
   'novo':             '#9ca3af',
-  'contato feito':    '#06b6d4',
-  'conversando':      '#8b5cf6',
+  '1º contato':       '#06b6d4',
+  'qualificado':      '#8b5cf6',
   'negociando':       '#f97316',
+  'em espera':        '#eab308',
+  'sem resposta':     '#4b5563',
   'fechado':          '#10b981',
   'perdido':          '#ef4444',
-  'contato inválido': '#4b5563',
+  'contato inválido': '#374151',
 };
 
-const TEMP_COLORS = {
-  'frio':     '#94a3b8',
-  'morno':    '#eab308',
-  'engajado': '#f97316',
-  'quente':   '#ef4444',
-  'cliente':  '#10b981',
+const PRIO_COLORS = {
+  urgente: '#dc2626',
+  alta:    '#f59e0b',
+  normal:  '#6b7280',
+  baixa:   '#10b981',
 };
 
-const SEGMENTO_COLORS = ['#3b82f6','#8b5cf6','#f59e0b','#10b981','#f97316','#6366f1','#14b8a6'];
+const VOL_COLOR = '#1a56db';
 
-function fmtDate(s) {
-  if (!s) return '—';
-  return s.slice(0, 10).split('-').reverse().join('/');
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function escHtml(s) {
+  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function buildBars(container, data, colorMap, maxVal) {
-  container.innerHTML = '';
-  if (!data || data.length === 0) {
-    container.innerHTML = '<span style="color:#9ca3af;font-size:.82rem">Sem dados</span>';
+function timeAgo(isoStr) {
+  if (!isoStr) return '';
+  const diff = Date.now() - new Date(isoStr).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1)  return 'agora';
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  return `${Math.floor(h / 24)}d`;
+}
+
+function avatarLetters(name) {
+  const s = (name || '?').trim();
+  const digits = s.replace(/\D/g, '');
+  if (digits.length > 4) return digits.slice(-4);
+  return s.split(/\s+/).slice(0, 2).map(w => w[0].toUpperCase()).join('');
+}
+
+function buildBars(containerId, entries, colorMap, fallbackColors) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (!entries || entries.length === 0) {
+    el.innerHTML = '<span class="chart-empty">Sem dados ainda</span>';
     return;
   }
-  const max = maxVal || Math.max(...data.map(([, v]) => v));
-  data.forEach(([key, val], i) => {
-    const pct = max > 0 ? Math.round((val / max) * 100) : 0;
-    const color = colorMap[key] || SEGMENTO_COLORS[i % SEGMENTO_COLORS.length];
-    const item = document.createElement('div');
-    item.className = 'bar-item';
-    item.innerHTML = `
-      <div class="bar-label-row">
-        <strong>${key}</strong>
-        <span>${val}</span>
-      </div>
-      <div class="bar-track">
-        <div class="bar-fill" style="width:${pct}%;background:${color}"></div>
+  const max = Math.max(...entries.map(([, v]) => v));
+  el.innerHTML = entries.map(([key, val], i) => {
+    const pct   = max > 0 ? Math.round((val / max) * 100) : 0;
+    const color = colorMap[key] || (fallbackColors && fallbackColors[i % fallbackColors.length]) || '#6b7280';
+    const label = CAT_LABELS[key] || key;
+    return `
+      <div class="bar-item">
+        <div class="bar-label-row">
+          <strong>${escHtml(label)}</strong>
+          <span>${val}</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill" style="width:${pct}%;background:${color}"></div>
+        </div>
       </div>`;
-    container.appendChild(item);
-  });
+  }).join('');
 }
+
+// ---------------------------------------------------------------------------
+// Seção "Atenção agora"
+// ---------------------------------------------------------------------------
+
+function renderAtencao(urgentes) {
+  const section = document.getElementById('atencao-section');
+  const list    = document.getElementById('atencao-list');
+
+  if (!urgentes || urgentes.length === 0) {
+    section.classList.add('hidden');
+    return;
+  }
+
+  section.classList.remove('hidden');
+  list.innerHTML = urgentes.map(c => {
+    const nome  = escHtml(c.nome_contato || c.numero || 'Desconhecido');
+    const resumo = escHtml((c.resumo_ia || 'Sem análise ainda').slice(0, 90));
+    const prio  = c.prioridade || 'normal';
+    const cat   = c.categoria || 'outro';
+    const nl    = c.nao_lidas || 0;
+    const tempo = timeAgo(c.ultimo_msg_em);
+    const prioColor = PRIO_COLORS[prio] || '#6b7280';
+
+    return `
+      <a class="atencao-card" href="/inbox/${c.id}">
+        <div class="atencao-avatar" style="background:${prioColor}">${avatarLetters(c.nome_contato || c.numero)}</div>
+        <div class="atencao-body">
+          <div class="atencao-top">
+            <span class="atencao-nome">${nome}</span>
+            <span class="atencao-badges">
+              <span class="atencao-prio-badge" style="background:${prioColor}20;color:${prioColor}">${prio}</span>
+              <span class="atencao-cat-badge">${CAT_LABELS[cat] || cat}</span>
+            </span>
+          </div>
+          <div class="atencao-resumo">${resumo}${c.resumo_ia && c.resumo_ia.length > 90 ? '…' : ''}</div>
+        </div>
+        <div class="atencao-meta">
+          ${nl > 0 ? `<span class="atencao-nl">${nl}</span>` : ''}
+          <span class="atencao-tempo">${tempo}</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
+      </a>`;
+  }).join('');
+}
+
+// ---------------------------------------------------------------------------
+// Lista "Aguardando resposta"
+// ---------------------------------------------------------------------------
+
+function renderSemResposta(list_data) {
+  const el = document.getElementById('list-sem-resposta');
+  if (!el) return;
+
+  if (!list_data || list_data.length === 0) {
+    el.innerHTML = '<li><span class="ml-empty">Nenhuma conversa aguardando resposta 🎉</span></li>';
+    return;
+  }
+
+  el.innerHTML = list_data.map(c => {
+    const nome  = escHtml(c.nome_contato || c.numero || 'Desconhecido');
+    const nl    = c.nao_lidas || 0;
+    const tempo = timeAgo(c.ultimo_msg_em);
+    return `
+      <li onclick="window.location='/inbox/${c.id}'" style="cursor:pointer">
+        <span class="ml-name">${nome}</span>
+        <span class="ml-date">
+          ${nl > 0 ? `<span class="ml-nl">${nl}</span>` : ''}
+          ${tempo}
+        </span>
+      </li>`;
+  }).join('');
+}
+
+// ---------------------------------------------------------------------------
+// CRM resumo
+// ---------------------------------------------------------------------------
+
+function renderCrmResumo(crm) {
+  const el = document.getElementById('crm-resumo-grid');
+  if (!el || !crm) return;
+
+  const items = [
+    { label: 'Leads ativos',     value: crm.leads_ativos   ?? '—', icon: '👤' },
+    { label: 'Follow-ups hoje',  value: crm.followups_hoje ?? '—', icon: '📅' },
+    { label: 'Novos na semana',  value: crm.criados_semana ?? '—', icon: '✨' },
+  ];
+
+  el.innerHTML = items.map(it => `
+    <div class="crm-resumo-item">
+      <span class="crm-resumo-icon">${it.icon}</span>
+      <span class="crm-resumo-value">${it.value}</span>
+      <span class="crm-resumo-label">${it.label}</span>
+    </div>`).join('');
+}
+
+// ---------------------------------------------------------------------------
+// Chart volume 7 dias
+// ---------------------------------------------------------------------------
+
+function buildVolume7d(data) {
+  const el = document.getElementById('chart-volume7d');
+  if (!el) return;
+
+  if (!data || data.length === 0) {
+    el.innerHTML = '<span class="chart-empty">Sem dados nos últimos 7 dias</span>';
+    return;
+  }
+
+  const max = Math.max(...data.map(d => d.total));
+  el.innerHTML = data.map(d => {
+    const pct   = max > 0 ? Math.round((d.total / max) * 100) : 0;
+    const label = d.dia ? d.dia.slice(5).replace('-', '/') : '?';
+    return `
+      <div class="bar-item">
+        <div class="bar-label-row">
+          <strong>${label}</strong>
+          <span>${d.total}</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill" style="width:${pct}%;background:${VOL_COLOR}"></div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ---------------------------------------------------------------------------
+// Carregamento principal
+// ---------------------------------------------------------------------------
 
 async function loadDashboard() {
   try {
-    const res = await fetch('/api/stats');
-    if (!res.ok) throw new Error('API error');
-    const d = await res.json();
+    const d = await fetch('/api/inbox/dashboard').then(r => r.json());
 
-    // Cards
-    document.getElementById('stat-ativos').textContent = d.total_ativos;
-    document.getElementById('stat-vencidos').textContent = d.followups_vencidos;
-    document.getElementById('stat-hoje').textContent = d.followups_hoje;
-    document.getElementById('stat-semana').textContent = d.criados_semana;
+    // Stat cards
+    const s = d.stats || {};
+    document.getElementById('stat-abertas').textContent    = s.abertas    ?? '—';
+    document.getElementById('stat-urgentes').textContent   = s.urgentes   ?? '—';
+    document.getElementById('stat-nao-lidas').textContent  = s.total_nao_lidas ?? '—';
+    document.getElementById('stat-resolvidas').textContent = s.resolvidas_hoje  ?? '—';
 
-    // Pipeline chart — ordered
-    const statusData = STATUS_ORDER
-      .filter(s => d.by_status[s])
-      .map(s => [s, d.by_status[s]]);
-    // Add any status not in order
-    Object.entries(d.by_status).forEach(([k, v]) => {
-      if (!STATUS_ORDER.includes(k)) statusData.push([k, v]);
-    });
-    buildBars(document.getElementById('chart-status'), statusData, STATUS_COLORS);
+    // Atenção agora
+    renderAtencao(d.urgentes || []);
 
-    // Segmento chart
-    const segData = Object.entries(d.by_segmento).sort((a, b) => b[1] - a[1]);
-    buildBars(document.getElementById('chart-segmento'), segData, {});
+    // Chart: categorias
+    const catEntries = Object.entries(s.por_categoria || {}).sort((a, b) => b[1] - a[1]);
+    buildBars('chart-categorias', catEntries, CAT_COLORS, null);
 
-    // Temperatura chart
-    const tempOrder = ['frio', 'morno', 'engajado', 'quente', 'cliente'];
-    const tempData = tempOrder.filter(t => d.by_temperatura && d.by_temperatura[t]).map(t => [t, d.by_temperatura[t]]);
-    buildBars(document.getElementById('chart-temperatura'), tempData, TEMP_COLORS);
+    // Chart: volume 7 dias
+    buildVolume7d(s.volume_7d || []);
 
-    // Follow-ups list
-    const fuList = document.getElementById('list-followups');
-    fuList.innerHTML = '';
-    if (d.proximos_followups.length === 0) {
-      fuList.innerHTML = '<li><span class="ml-empty">Nenhum follow-up agendado</span></li>';
-    } else {
-      d.proximos_followups.forEach(l => {
-        const li = document.createElement('li');
-        li.innerHTML = `
-          <span class="ml-name">${l.nome || '—'}</span>
-          <span class="ml-date">${fmtDate(l.proximo_followup_em)}</span>`;
-        li.style.cursor = 'pointer';
-        li.onclick = () => window.location = `/leads`;
-        fuList.appendChild(li);
-      });
-    }
+    // Chart: pipeline CRM
+    const crm = d.crm_resumo || {};
+    const statusEntries = Object.entries(crm.by_status || {}).sort((a, b) => b[1] - a[1]).slice(0, 6);
+    buildBars('chart-status', statusEntries, STATUS_COLORS, null);
 
-    // Recentes list
-    const recList = document.getElementById('list-recentes');
-    recList.innerHTML = '';
-    if (d.recentes.length === 0) {
-      recList.innerHTML = '<li><span class="ml-empty">Nenhum lead ainda</span></li>';
-    } else {
-      d.recentes.forEach(l => {
-        const li = document.createElement('li');
-        li.innerHTML = `
-          <span class="ml-name">${l.nome || '—'}</span>
-          <span class="ml-date">${fmtDate(l.data_criacao)}</span>`;
-        li.style.cursor = 'pointer';
-        li.onclick = () => window.location = `/leads`;
-        recList.appendChild(li);
-      });
-    }
+    // Lista sem resposta
+    renderSemResposta(d.sem_resposta || []);
 
-    // Alertas de saúde do pipeline
-    const recontatos = d.recontatos_hoje || 0;
-    const nunca = d.leads_nunca_contatados || 0;
-    const alertasRow = document.getElementById('alertas-row');
-    const alertaFrios = document.getElementById('alerta-frios');
-    const alertaEsquecidos = document.getElementById('alerta-esquecidos');
-    if (recontatos > 0 || nunca > 0) {
-      alertasRow.style.display = '';
-      if (recontatos > 0) {
-        document.getElementById('stat-frios').textContent = recontatos;
-        if (alertaFrios) alertaFrios.style.display = '';
-      }
-      if (nunca > 0) {
-        document.getElementById('stat-nunca').textContent = nunca;
-        if (alertaEsquecidos) alertaEsquecidos.style.display = '';
-      }
-    }
+    // CRM resumo
+    renderCrmResumo(crm);
 
     // Timestamp
     document.getElementById('last-update').textContent =
@@ -145,75 +262,5 @@ async function loadDashboard() {
   }
 }
 
-// ===== Análises de Conversa =====
-
-function confEmoji(score) {
-  if (score >= 9) return '💚';
-  if (score >= 7) return '🟢';
-  if (score >= 4) return '🟡';
-  return '🔴';
-}
-
-function confLabel(score) {
-  if (score >= 9) return 'Quase certa';
-  if (score >= 7) return 'Promissora';
-  if (score >= 4) return 'Incerta';
-  return 'Baixa';
-}
-
-async function loadAnalises() {
-  try {
-    const res = await fetch('/api/analises/stats');
-    if (!res.ok) return;
-    const d = await res.json();
-
-    if (!d.total) return;  // Sem análises ainda — mantém seção oculta
-
-    document.getElementById('analises-section').style.display = '';
-
-    document.getElementById('analise-total').textContent = d.total;
-    document.getElementById('analise-avg').textContent =
-      d.avg_confianca !== null ? `${d.avg_confianca}/10` : '—';
-
-    // Distribuição
-    const dist = d.distribuicao || {};
-    const buckets = [
-      { key: 'baixa',       label: 'Baixa',       emoji: '🔴', color: '#ef4444' },
-      { key: 'incerta',     label: 'Incerta',      emoji: '🟡', color: '#f59e0b' },
-      { key: 'promissora',  label: 'Promissora',   emoji: '🟢', color: '#10b981' },
-      { key: 'quase_certa', label: 'Quase certa',  emoji: '💚', color: '#059669' },
-    ];
-    const distEl = document.getElementById('analise-dist');
-    distEl.innerHTML = '';
-    buckets.forEach(b => {
-      const n = dist[b.key] || 0;
-      const chip = document.createElement('div');
-      chip.className = 'analise-chip';
-      chip.style.borderColor = b.color;
-      chip.innerHTML = `<span class="analise-chip-emoji">${b.emoji}</span><span class="analise-chip-label">${b.label}</span><span class="analise-chip-count" style="color:${b.color}">${n}</span>`;
-      distEl.appendChild(chip);
-    });
-
-    // Últimas análises
-    const list = document.getElementById('analises-recentes');
-    list.innerHTML = '';
-    (d.recentes || []).forEach(a => {
-      const score = a.confianca_analise;
-      const li = document.createElement('li');
-      li.className = 'analise-item';
-      li.innerHTML = `
-        <span class="analise-score">${confEmoji(score)} ${score}/10</span>
-        <span class="analise-nome">${a.nome || a.lead_id || '—'}</span>
-        <span class="analise-resumo">${(a.resumo || '').slice(0, 80)}${(a.resumo || '').length > 80 ? '…' : ''}</span>
-        <span class="analise-data">${fmtDate(a.data_hora)}</span>`;
-      list.appendChild(li);
-    });
-  } catch (e) {
-    console.error('loadAnalises error:', e);
-  }
-}
-
 loadDashboard();
-loadAnalises();
-// Auto-refresh every 2 minutes
-setInterval(() => { loadDashboard(); loadAnalises(); }, 120_000);
+setInterval(loadDashboard, 60_000);  // Refresh a cada 1 minuto

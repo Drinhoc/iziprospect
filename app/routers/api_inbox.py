@@ -49,6 +49,22 @@ class ReplyBody(BaseModel):
 # Endpoints
 # ---------------------------------------------------------------------------
 
+@router.get("/api/inbox/dashboard")
+def get_inbox_dashboard():
+    """Dados completos do dashboard inbox-first em uma única chamada."""
+    from app.config import settings
+    db = _get_db()
+    inbox = db.get_inbox_dashboard_stats(settings.default_timezone)
+    crm   = db.get_stats()
+    inbox["crm_resumo"] = {
+        "leads_ativos":    crm.get("leads_ativos",    0),
+        "followups_hoje":  crm.get("followups_hoje",  0),
+        "criados_semana":  crm.get("criados_semana",  0),
+        "by_status":       crm.get("by_status",       {}),
+    }
+    return inbox
+
+
 @router.get("/api/inbox/stats")
 def get_inbox_stats():
     """Retorna contadores do inbox: abertas, urgentes, não lidas, por categoria."""

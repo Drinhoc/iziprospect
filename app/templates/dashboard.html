@@ -7,27 +7,27 @@
   <span class="page-subtitle" id="last-update"></span>
 </div>
 
-<!-- Stat cards -->
+<!-- ── Hero stats ── -->
 <div class="stat-grid" id="stat-cards">
   <div class="stat-card">
-    <div class="stat-value" id="stat-ativos">—</div>
-    <div class="stat-label">Leads ativos</div>
+    <div class="stat-value" id="stat-abertas">—</div>
+    <div class="stat-label">Conversas abertas</div>
   </div>
   <div class="stat-card stat-card--warning">
-    <div class="stat-value" id="stat-vencidos">—</div>
-    <div class="stat-label">Follow-ups vencidos</div>
+    <div class="stat-value" id="stat-urgentes">—</div>
+    <div class="stat-label">Urgentes agora</div>
   </div>
   <div class="stat-card stat-card--blue">
-    <div class="stat-value" id="stat-hoje">—</div>
-    <div class="stat-label">Follow-ups hoje</div>
+    <div class="stat-value" id="stat-nao-lidas">—</div>
+    <div class="stat-label">Não lidas</div>
   </div>
   <div class="stat-card stat-card--green">
-    <div class="stat-value" id="stat-semana">—</div>
-    <div class="stat-label">Novos esta semana</div>
+    <div class="stat-value" id="stat-resolvidas">—</div>
+    <div class="stat-label">Resolvidas hoje</div>
   </div>
 </div>
 
-<!-- Auto-Send toggle -->
+<!-- ── Auto-Send toggle (compacto) ── -->
 <div class="autosend-bar" id="autosend-bar">
   <div class="autosend-info">
     <span class="autosend-label">
@@ -42,90 +42,67 @@
   </button>
 </div>
 
-<!-- Alertas de saúde do pipeline -->
-<div class="alertas-row" id="alertas-row" style="display:none">
-  <div class="alerta-card alerta-card--frio" id="alerta-frios" style="display:none">
-    <div class="alerta-icon">🔄</div>
-    <div class="alerta-body">
-      <div class="alerta-value" id="stat-frios">0</div>
-      <div class="alerta-label">Para recontatar <span class="alerta-sub">perdidos com data chegando</span></div>
-    </div>
+<!-- ── Atenção agora (urgentes + alta prio) ── -->
+<div class="atencao-section hidden" id="atencao-section">
+  <div class="atencao-header">
+    <h2 class="atencao-title">
+      <span class="atencao-dot"></span>
+      Precisam de atenção agora
+    </h2>
+    <a href="/inbox" class="atencao-link">Ver inbox completo →</a>
   </div>
-  <div class="alerta-card alerta-card--esquecido" id="alerta-esquecidos" style="display:none">
-    <div class="alerta-icon">👻</div>
-    <div class="alerta-body">
-      <div class="alerta-value" id="stat-nunca">0</div>
-      <div class="alerta-label">Nunca contatados <span class="alerta-sub">em novo há 7+ dias</span></div>
-    </div>
-  </div>
+  <div class="atencao-list" id="atencao-list"></div>
 </div>
 
-<!-- Charts row -->
+<!-- ── Charts ── -->
 <div class="charts-row">
-  <!-- Pipeline por status -->
+
   <div class="chart-card">
-    <h2 class="chart-title">Pipeline</h2>
+    <h2 class="chart-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      Por categoria
+    </h2>
+    <div class="bar-chart" id="chart-categorias"></div>
+  </div>
+
+  <div class="chart-card">
+    <h2 class="chart-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Últimos 7 dias
+    </h2>
+    <div class="bar-chart" id="chart-volume7d"></div>
+  </div>
+
+  <div class="chart-card chart-card--small">
+    <h2 class="chart-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      Pipeline CRM
+    </h2>
     <div class="bar-chart" id="chart-status"></div>
   </div>
-
-  <!-- Por segmento -->
-  <div class="chart-card">
-    <h2 class="chart-title">Segmentos</h2>
-    <div class="bar-chart" id="chart-segmento"></div>
-  </div>
-
-  <!-- Por temperatura -->
-  <div class="chart-card chart-card--small">
-    <h2 class="chart-title">Temperatura</h2>
-    <div class="bar-chart" id="chart-temperatura"></div>
-  </div>
 </div>
 
-<!-- Bottom lists -->
+<!-- ── Listas ── -->
 <div class="lists-row">
-  <!-- Próximos follow-ups -->
+
   <div class="list-card">
     <h2 class="list-title">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-      Próximos follow-ups
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      Aguardando resposta
     </h2>
-    <ul class="mini-list" id="list-followups"></ul>
+    <ul class="mini-list" id="list-sem-resposta"></ul>
+    <a href="/inbox" class="list-ver-mais">Ver todas no inbox →</a>
   </div>
 
-  <!-- Leads recentes -->
   <div class="list-card">
     <h2 class="list-title">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-      Leads recentes
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+      CRM — resumo
     </h2>
-    <ul class="mini-list" id="list-recentes"></ul>
-  </div>
-</div>
-
-<!-- Análises de conversa -->
-<div class="analises-section" id="analises-section" style="display:none">
-  <h2 class="section-title">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-    Análises de Conversa
-  </h2>
-
-  <!-- KPIs -->
-  <div class="analises-kpis">
-    <div class="analise-kpi">
-      <span class="analise-kpi-value" id="analise-total">—</span>
-      <span class="analise-kpi-label">análises</span>
-    </div>
-    <div class="analise-kpi">
-      <span class="analise-kpi-value" id="analise-avg">—</span>
-      <span class="analise-kpi-label">confiança média</span>
-    </div>
+    <div class="crm-resumo-grid" id="crm-resumo-grid"></div>
+    <a href="/leads" class="list-ver-mais">Ver leads →</a>
   </div>
 
-  <!-- Distribuição -->
-  <div class="analise-dist" id="analise-dist"></div>
-
-  <!-- Últimas análises -->
-  <ul class="mini-list analises-list" id="analises-recentes"></ul>
 </div>
 {% endblock %}
 
@@ -135,18 +112,18 @@
 async function loadAutoSendStatus() {
   try {
     const d = await fetch('/api/auto-send/status').then(r => r.json());
-    const bar   = document.getElementById('autosend-bar');
-    const meta  = document.getElementById('autosend-meta');
+    const bar    = document.getElementById('autosend-bar');
+    const meta   = document.getElementById('autosend-meta');
     const toggle = document.getElementById('autosend-toggle');
-    const txt   = document.getElementById('autosend-toggle-txt');
-    bar.dataset.enabled = d.enabled ? '1' : '0';
+    const txt    = document.getElementById('autosend-toggle-txt');
+    bar.dataset.enabled    = d.enabled ? '1' : '0';
     toggle.dataset.enabled = d.enabled ? '1' : '0';
     txt.textContent = d.enabled ? 'Ligado' : 'Desligado';
     const proximos = d.total_na_fila ?? d.proximos_leads?.length ?? 0;
     meta.textContent = d.enabled
       ? `${d.enviados_hoje}/${d.diario_max} hoje · ${proximos} na fila · janela ${d.hora_inicio}h–${d.hora_fim}h`
       : `${proximos} lead(s) na fila · desativado`;
-  } catch(e) { /* silencia se endpoint não existir */ }
+  } catch(e) { /* silencia */ }
 }
 
 async function toggleAutoSend() {
