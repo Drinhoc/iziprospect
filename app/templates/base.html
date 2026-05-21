@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
   <meta name="theme-color" content="#1a56db" />
-  <title>{% block title %}IziProspect{% endblock %} — CRM</title>
+  <title>{% block title %}IziDesk{% endblock %} — Inbox & CRM</title>
   <link rel="stylesheet" href="/static/style.css" />
   <script>
     // Apply dark mode before paint to avoid flash
@@ -17,7 +17,7 @@
   <aside class="sidebar">
     <div class="sidebar-logo">
       <span class="logo-icon">⚡</span>
-      <span class="logo-text">IziProspect</span>
+      <span class="logo-text">IziDesk</span>
     </div>
     <nav class="sidebar-nav">
       <a href="/dashboard" class="nav-item {% if request.url.path == '/dashboard' %}active{% endif %}">
@@ -58,7 +58,7 @@
 
   <!-- Mobile top bar -->
   <header class="topbar">
-    <span class="topbar-logo">⚡ IziProspect</span>
+    <span class="topbar-logo">⚡ IziDesk</span>
     <button class="theme-toggle-mobile" onclick="toggleTheme()" title="Alternar tema">
       <span class="theme-icon-moon">🌙</span>
       <span class="theme-icon-sun">☀️</span>

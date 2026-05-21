@@ -602,7 +602,7 @@ class SheetsService:
 
         dash_data = [
             # Linha 1: Título principal
-            ["📊 DASHBOARD — IziProspect CRM", "", "", "", "", "", "", "🏙️ Top Cidades", "", ""],
+            ["📊 DASHBOARD — IziDesk CRM", "", "", "", "", "", "", "🏙️ Top Cidades", "", ""],
             # Linha 2: Sub-cabeçalho pipeline
             ["📋 Pipeline por Status", "", "", "", "🏥 Por Segmento", "", "", ""],
             # Linha 3: Header tabela status

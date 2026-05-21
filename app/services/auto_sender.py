@@ -38,103 +38,28 @@ logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Templates — ⚠️ manter em sincronia com app/static/leads.js MSG_TEMPLATES
-# Use {{nome}} para o nome da clínica (substituído em render_message).
-# Variantes: 0=A (personalização + contexto), 1=B (dor direta), 2=C (resultado primeiro)
+# Use {{nome}} para o nome do lead (substituído em render_message).
+# Variantes: 0=A (problema/contexto), 1=B (dor direta), 2=C (resultado primeiro)
 # ---------------------------------------------------------------------------
 _TEMPLATES: dict[str, list[str]] = {
-    "odontologia": [
-        (
-            "Oi! Vi a {{nome}} pesquisando clínicas odontológicas na região 🙂\n\n"
-            "Queria perguntar rápido: vocês costumam perder agendamentos porque alguma mensagem "
-            "chegou fora do horário e não foi respondida a tempo?\n\n"
-            "Tenho ajudado clínicas por aqui a resolver isso pelo WhatsApp, sem precisar contratar "
-            "alguém extra pra ficar de plantão.\n\n"
-            "Faz sentido eu te mostrar como em 2 minutos?"
-        ),
-        (
-            "Oi, {{nome}}! Pergunta rápida:\n\n"
-            "Já perderam paciente porque a recepção estava ocupada ou fora do horário e a mensagem "
-            "no WhatsApp ficou sem resposta?\n\n"
-            "Pergunto porque resolvo exatamente isso pra clínicas odontológicas daqui. "
-            "Posso te explicar em 2 minutinhos?"
-        ),
-        (
-            "Oi, {{nome}}! Sou o Pedro.\n\n"
-            "Tenho ajudado clínicas odontológicas da região a parar de perder agendamentos por "
-            "demora no WhatsApp — automatizando respostas e confirmações fora do horário, "
-            "sem app novo nem contratação.\n\n"
-            "Vale uma conversa rápida de 2 minutos?"
-        ),
-    ],
-    "medicina": [
-        (
-            "Oi! Vi a {{nome}} pesquisando clínicas médicas na região 🙂\n\n"
-            "Queria perguntar rápido: vocês costumam perder consultas porque alguma mensagem "
-            "chegou fora do horário ou a recepção não deu conta de responder a tempo?\n\n"
-            "Tenho ajudado clínicas por aqui com isso — um assistente no WhatsApp que responde "
-            "e confirma consulta mesmo quando a recepção está ocupada.\n\n"
-            "Faz sentido eu te mostrar como em 2 minutos?"
-        ),
-        (
-            "Oi, {{nome}}! Pergunta rápida:\n\n"
-            "Já perderam consulta porque a recepção não conseguiu responder uma mensagem a tempo "
-            "— fora do horário ou no pico do dia?\n\n"
-            "Pergunto porque resolvo exatamente isso pra clínicas médicas daqui. "
-            "Posso te explicar em 2 minutinhos?"
-        ),
-        (
-            "Oi, {{nome}}! Sou o Pedro.\n\n"
-            "Tenho ajudado clínicas médicas da região a não perder mais consulta por falta de "
-            "resposta no WhatsApp — automatizando o atendimento fora do horário sem sobrecarregar "
-            "a recepção.\n\n"
-            "Vale uma conversa rápida de 2 minutos?"
-        ),
-    ],
-    "estetica": [
-        (
-            "Oi! Vi a {{nome}} pesquisando clínicas de estética na região 🙂\n\n"
-            "Queria perguntar rápido: vocês costumam perder clientes porque a mensagem no WhatsApp "
-            "demorou a ser respondida ou chegou fora do horário?\n\n"
-            "Tenho ajudado clínicas de estética por aqui com isso — respostas automáticas e "
-            "agendamento pelo WhatsApp mesmo quando a equipe está em atendimento.\n\n"
-            "Faz sentido eu te mostrar como em 2 minutos?"
-        ),
-        (
-            "Oi, {{nome}}! Pergunta rápida:\n\n"
-            "Já perderam cliente porque a mensagem ficou sem resposta enquanto a equipe estava "
-            "em atendimento ou fora do horário?\n\n"
-            "Pergunto porque resolvo exatamente isso pra clínicas de estética daqui. "
-            "Posso te explicar em 2 minutinhos?"
-        ),
-        (
-            "Oi, {{nome}}! Sou o Pedro.\n\n"
-            "Tenho ajudado clínicas de estética da região a não perder mais cliente por demora "
-            "no WhatsApp — respostas automáticas e agendamento mesmo fora do horário, sem precisar "
-            "de alguém disponível o tempo todo.\n\n"
-            "Vale uma conversa rápida de 2 minutos?"
-        ),
-    ],
     "default": [
         (
-            "Oi! Vi a {{nome}} pesquisando clínicas na região 🙂\n\n"
-            "Queria perguntar rápido: vocês costumam perder atendimentos porque alguma mensagem "
-            "no WhatsApp chegou fora do horário ou demorou a ser respondida?\n\n"
-            "Tenho ajudado clínicas por aqui a resolver isso — respostas automáticas e agendamento "
-            "mesmo quando a equipe está ocupada ou fora do horário.\n\n"
-            "Faz sentido eu te mostrar como em 2 minutos?"
+            "Oi! {{nome}}, tudo bem?\n\n"
+            "Pergunta rápida: sua equipe costuma perder oportunidades porque alguma mensagem "
+            "no WhatsApp demorou pra ser respondida — fora do horário ou no rush do dia?\n\n"
+            "Tenho ajudado empresas a resolver isso de forma simples, sem mudar a rotina de ninguém.\n\n"
+            "Faz sentido a gente conversar 2 minutos?"
         ),
         (
             "Oi, {{nome}}! Pergunta rápida:\n\n"
-            "Já perderam paciente ou cliente porque a mensagem no WhatsApp ficou sem resposta "
-            "enquanto a equipe estava ocupada ou fora do horário?\n\n"
-            "Pergunto porque resolvo exatamente isso pra clínicas e consultórios daqui. "
-            "Posso te explicar em 2 minutinhos?"
+            "Vocês perdem clientes ou oportunidades porque mensagens no WhatsApp ficam sem "
+            "resposta enquanto a equipe está ocupada?\n\n"
+            "Resolvo exatamente isso. Posso te explicar em 2 minutinhos?"
         ),
         (
-            "Oi, {{nome}}! Sou o Pedro.\n\n"
-            "Tenho ajudado clínicas e consultórios da região a não perder mais atendimento por "
-            "demora no WhatsApp — automatizando respostas e agendamentos fora do horário "
-            "sem complicação.\n\n"
+            "Oi, {{nome}}!\n\n"
+            "Tenho ajudado empresas a responder mais rápido e perder menos oportunidades pelo "
+            "WhatsApp — de forma automática, sem precisar de mais uma pessoa pra isso.\n\n"
             "Vale uma conversa rápida de 2 minutos?"
         ),
     ],

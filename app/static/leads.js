@@ -1,85 +1,25 @@
 /* Leads page JS */
 
 // ===== Mensagem inicial sugerida =====
-// Templates A/B/C por segmento. Variante determinada pelo lead_id (consistente por lead).
-// A/B/C — Estratégias distintas:
-// A = Apresentação pessoal casual (sem "Vi o perfil", tom de papo)
-// B = Dor-primeiro (abre com pergunta sobre o problema deles, sem intro)
-// C = Prova social leve (menciona clínicas da região, sem citar o lead)
+// Templates A/B/C. Variante determinada pelo lead_id (consistente por lead).
+// A = Problema/contexto, B = Dor direta, C = Resultado primeiro
 const MSG_TEMPLATES = {
-  odontologia: [
-    `Oi! Vi a {{nome}} pesquisando clínicas odontológicas na região 🙂
-
-Queria perguntar rápido: vocês costumam perder agendamentos porque alguma mensagem chegou fora do horário e não foi respondida a tempo?
-
-Tenho ajudado clínicas por aqui a resolver isso pelo WhatsApp, sem precisar contratar alguém extra pra ficar de plantão.
-
-Faz sentido eu te mostrar como em 2 minutos?`,
-    `Oi, {{nome}}! Pergunta rápida:
-
-Já perderam paciente porque a recepção estava ocupada ou fora do horário e a mensagem no WhatsApp ficou sem resposta?
-
-Pergunto porque resolvo exatamente isso pra clínicas odontológicas daqui. Posso te explicar em 2 minutinhos?`,
-    `Oi, {{nome}}! Sou o Pedro.
-
-Tenho ajudado clínicas odontológicas da região a parar de perder agendamentos por demora no WhatsApp — automatizando respostas e confirmações fora do horário, sem app novo nem contratação.
-
-Vale uma conversa rápida de 2 minutos?`,
-  ],
-  medicina: [
-    `Oi! Vi a {{nome}} pesquisando clínicas médicas na região 🙂
-
-Queria perguntar rápido: vocês costumam perder consultas porque alguma mensagem chegou fora do horário ou a recepção não deu conta de responder a tempo?
-
-Tenho ajudado clínicas por aqui com isso — um assistente no WhatsApp que responde e confirma consulta mesmo quando a recepção está ocupada.
-
-Faz sentido eu te mostrar como em 2 minutos?`,
-    `Oi, {{nome}}! Pergunta rápida:
-
-Já perderam consulta porque a recepção não conseguiu responder uma mensagem a tempo — fora do horário ou no pico do dia?
-
-Pergunto porque resolvo exatamente isso pra clínicas médicas daqui. Posso te explicar em 2 minutinhos?`,
-    `Oi, {{nome}}! Sou o Pedro.
-
-Tenho ajudado clínicas médicas da região a não perder mais consulta por falta de resposta no WhatsApp — automatizando o atendimento fora do horário sem sobrecarregar a recepção.
-
-Vale uma conversa rápida de 2 minutos?`,
-  ],
-  estetica: [
-    `Oi! Vi a {{nome}} pesquisando clínicas de estética na região 🙂
-
-Queria perguntar rápido: vocês costumam perder clientes porque a mensagem no WhatsApp demorou a ser respondida ou chegou fora do horário?
-
-Tenho ajudado clínicas de estética por aqui com isso — respostas automáticas e agendamento pelo WhatsApp mesmo quando a equipe está em atendimento.
-
-Faz sentido eu te mostrar como em 2 minutos?`,
-    `Oi, {{nome}}! Pergunta rápida:
-
-Já perderam cliente porque a mensagem ficou sem resposta enquanto a equipe estava em atendimento ou fora do horário?
-
-Pergunto porque resolvo exatamente isso pra clínicas de estética daqui. Posso te explicar em 2 minutinhos?`,
-    `Oi, {{nome}}! Sou o Pedro.
-
-Tenho ajudado clínicas de estética da região a não perder mais cliente por demora no WhatsApp — respostas automáticas e agendamento mesmo fora do horário, sem precisar de alguém disponível o tempo todo.
-
-Vale uma conversa rápida de 2 minutos?`,
-  ],
   default: [
-    `Oi! Vi a {{nome}} pesquisando clínicas na região 🙂
+    `Oi! {{nome}}, tudo bem?
 
-Queria perguntar rápido: vocês costumam perder atendimentos porque alguma mensagem no WhatsApp chegou fora do horário ou demorou a ser respondida?
+Pergunta rápida: sua equipe costuma perder oportunidades porque alguma mensagem no WhatsApp demorou pra ser respondida — fora do horário ou no rush do dia?
 
-Tenho ajudado clínicas por aqui a resolver isso — respostas automáticas e agendamento mesmo quando a equipe está ocupada ou fora do horário.
+Tenho ajudado empresas a resolver isso de forma simples, sem mudar a rotina de ninguém.
 
-Faz sentido eu te mostrar como em 2 minutos?`,
+Faz sentido a gente conversar 2 minutos?`,
     `Oi, {{nome}}! Pergunta rápida:
 
-Já perderam paciente ou cliente porque a mensagem no WhatsApp ficou sem resposta enquanto a equipe estava ocupada ou fora do horário?
+Vocês perdem clientes ou oportunidades porque mensagens no WhatsApp ficam sem resposta enquanto a equipe está ocupada?
 
-Pergunto porque resolvo exatamente isso pra clínicas e consultórios daqui. Posso te explicar em 2 minutinhos?`,
-    `Oi, {{nome}}! Sou o Pedro.
+Resolvo exatamente isso. Posso te explicar em 2 minutinhos?`,
+    `Oi, {{nome}}!
 
-Tenho ajudado clínicas e consultórios da região a não perder mais atendimento por demora no WhatsApp — automatizando respostas e agendamentos fora do horário sem complicação.
+Tenho ajudado empresas a responder mais rápido e perder menos oportunidades pelo WhatsApp — de forma automática, sem precisar de mais uma pessoa pra isso.
 
 Vale uma conversa rápida de 2 minutos?`,
   ],
@@ -87,47 +27,17 @@ Vale uma conversa rápida de 2 minutos?`,
 
 // ===== Follow-up 1 (~5 dias sem resposta) =====
 const FU1_TEMPLATES = {
-  odontologia: [
-    `Oi! Tudo bem? 🙂 Passei aqui só pra confirmar se conseguiu ver minha mensagem sobre a assistente virtual para atendimento no WhatsApp. Se não for algo interessante pra vocês no momento, sem problema!`,
-    `Oi! Pergunta rápida — vocês costumam perder agendamentos porque a mensagem chegou fora do horário e não foi respondida a tempo? Se sim, posso te mostrar em 2 minutos como resolvo isso pra clínicas odontológicas daqui. 🙂`,
-    `Oi! Só passando rapidamente. Estou ajudando algumas clínicas odontológicas da região a automatizar o WhatsApp — queria checar se faria sentido pra vocês. Posso te enviar um vídeo rápido de como funciona?`,
-  ],
-  medicina: [
-    `Oi! Tudo bem? 🙂 Só passando pra confirmar se conseguiu ver minha mensagem sobre automação de atendimento no WhatsApp pra clínicas. Se não for o momento, tudo bem também!`,
-    `Oi! Pergunta rápida — vocês costumam perder consultas por mensagens que chegaram fora do horário e não foram respondidas a tempo? Se sim, posso te mostrar como algumas clínicas médicas daqui resolveram isso. 🙂`,
-    `Oi! Só passando rapidamente. Estou ajudando algumas clínicas da região a automatizar o atendimento no WhatsApp — quis checar se faria sentido pra vocês também. Posso te enviar um vídeo rápido?`,
-  ],
-  estetica: [
-    `Oi! Tudo bem? 🙂 Passando só pra confirmar se conseguiu ver minha mensagem sobre automação de atendimento no WhatsApp pra clínicas de estética. Se não for algo relevante agora, tudo bem!`,
-    `Oi! Pergunta rápida — vocês costumam perder clientes porque a mensagem chegou fora do horário ou demorou pra ser respondida? Posso te mostrar em 2 minutos como estou ajudando clínicas de estética daqui a resolver isso. 🙂`,
-    `Oi! Só passando rapidamente. Estou ajudando algumas clínicas de estética da região com automação de WhatsApp — quis checar se faria sentido conhecer. Posso te enviar um vídeo rápido?`,
-  ],
   default: [
     `Oi! Tudo bem? 🙂 Só passando pra confirmar se conseguiu ver minha mensagem sobre automação de atendimento no WhatsApp. Se não for o momento, sem problema!`,
-    `Oi! Pergunta rápida — vocês costumam perder clientes porque a mensagem chegou fora do horário e demorou a ser respondida? Posso te mostrar em 2 minutos como resolvo isso. 🙂`,
-    `Oi! Só passando rapidamente. Estou ajudando alguns negócios da região a automatizar o atendimento no WhatsApp — quis checar se faria sentido pra vocês. Posso te enviar um vídeo rápido?`,
+    `Oi! Pergunta rápida — vocês costumam perder oportunidades porque mensagens no WhatsApp ficam sem resposta enquanto a equipe está ocupada? Posso te mostrar em 2 minutos como resolvo isso. 🙂`,
+    `Oi! Só passando rapidamente. Estou ajudando empresas a automatizar o atendimento no WhatsApp — quis checar se faria sentido pra vocês. Posso te enviar um vídeo rápido?`,
   ],
 };
 
 // ===== Follow-up 2 (~10 dias — mais curto, baixa pressão) =====
 const FU2_TEMPLATES = {
-  odontologia: [
-    `Oi! Só passando rapidamente pra saber se faz sentido pra vocês conhecer a solução de automação de atendimento no WhatsApp 🙂 Se preferir, posso enviar um vídeo curto mostrando como funciona.`,
-    `Oi! Última mensagem por aqui 🙂 Se o atendimento automatizado no WhatsApp não for prioridade agora, tudo bem — mas se quiser ver como funciona pra clínicas odontológicas, é só falar.`,
-    `Oi! Se surgir interesse em automatizar o atendimento da clínica no WhatsApp no futuro, é só me chamar 🙂 Boa sorte com a agenda!`,
-  ],
-  medicina: [
-    `Oi! Só passando rapidamente pra saber se faz sentido conhecer a solução de automação de atendimento no WhatsApp pra clínicas 🙂 Posso enviar um vídeo curto se preferir.`,
-    `Oi! Última mensagem por aqui 🙂 Se automação de WhatsApp não for prioridade agora, tudo bem — mas se quiser ver como funciona, é só falar.`,
-    `Oi! Se surgir interesse em automatizar o atendimento da clínica no WhatsApp no futuro, é só me chamar 🙂 Boa sorte com a agenda!`,
-  ],
-  estetica: [
-    `Oi! Só passando rapidamente pra saber se faz sentido pra vocês conhecer a automação de atendimento no WhatsApp 🙂 Se preferir, posso enviar um vídeo curto de como funciona.`,
-    `Oi! Última mensagem por aqui 🙂 Se automação de WhatsApp não for prioridade agora, tudo bem — mas se quiser ver como funciona pra clínicas de estética, é só falar.`,
-    `Oi! Se surgir interesse em automatizar o atendimento no futuro, é só me chamar 🙂 Sucesso com a agenda!`,
-  ],
   default: [
-    `Oi! Só passando rapidamente pra saber se faz sentido pra vocês conhecer a solução de automação de atendimento no WhatsApp 🙂 Posso enviar um vídeo curto se preferir.`,
+    `Oi! Só passando rapidamente pra saber se faz sentido conhecer a solução de automação de atendimento no WhatsApp 🙂 Posso enviar um vídeo curto se preferir.`,
     `Oi! Última mensagem por aqui 🙂 Se automação de WhatsApp não for prioridade agora, tudo bem — mas se quiser ver como funciona, é só falar.`,
     `Oi! Se surgir interesse em automatizar o atendimento no WhatsApp no futuro, é só me chamar 🙂 Boa sorte!`,
   ],
@@ -211,10 +121,11 @@ let state = {
 // ===== Badges =====
 
 const SEGMENTO_LABEL = {
-  'odontologia': 'Odontologia',
-  'medicina':    'Medicina',
-  'estetica':    'Estética',
-  'psicologia':  'Psicologia',
+  'saas':        'SaaS',
+  'ecommerce':   'E-commerce',
+  'servicos':    'Serviços',
+  'varejo':      'Varejo',
+  'educacao':    'Educação',
   'outros':      'Outros',
 };
 

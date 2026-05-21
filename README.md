@@ -1,8 +1,8 @@
-# IziProspect
+# IziDesk
 
 **CRM comercial + Inbox WhatsApp com IA — tudo num só lugar.**
 
-IziProspect conecta um número WhatsApp (via Evolution API) ao seu processo comercial. Ele opera em dois modos complementares:
+IziDesk conecta um número WhatsApp (via Evolution API) ao seu processo comercial. Ele opera em dois modos complementares:
 
 - **Modo CRM** — você digita mensagens rápidas num grupo WhatsApp e a IA extrai, estrutura e persiste os dados dos seus leads automaticamente.
 - **Modo Inbox** *(MVP 2.0)* — todas as conversas individuais recebidas no número são capturadas, transcritas, classificadas por IA e apresentadas num painel de atendimento com sugestão de resposta.
@@ -11,7 +11,7 @@ IziProspect conecta um número WhatsApp (via Evolution API) ao seu processo come
 
 ## Para o usuário — o que é e como usar
 
-### O que é o IziProspect?
+### O que é o IziDesk?
 
 É uma plataforma de atendimento e CRM integrada diretamente ao seu WhatsApp. Você conecta um número e passa a ter visibilidade total de todas as conversas e leads — com IA trabalhando para você em segundo plano.
 

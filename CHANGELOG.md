@@ -1,10 +1,10 @@
-# Changelog — IziProspect
+# Changelog — IziDesk
 
 ## [MVP 2.0] — Inbox WhatsApp (branch: claude/mvp-2-iziprospect-saas)
 
 ### Visão geral
 
-MVP 2.0 transforma o IziProspect de um CRM acionado por grupo WhatsApp para uma
+MVP 2.0 transforma o IziDesk de um CRM acionado por grupo WhatsApp para uma
 **plataforma de inbox completa**: qualquer conversa individual recebida no número
 conectado é capturada, triada por IA e exibida num painel dedicado com sugestão
 de resposta e histórico completo.
