@@ -9,6 +9,13 @@ MVP 2.0 transforma o IziProspect de um CRM acionado por grupo WhatsApp para uma
 conectado é capturada, triada por IA e exibida num painel dedicado com sugestão
 de resposta e histórico completo.
 
+**Filosofia do MVP 2.0 — inbound puro:**
+O Inbox é um canal de atendimento reativo. O sistema não envia mensagens por
+iniciativa própria — ele organiza e prioriza as conversas de quem já chegou até
+você. Quem manda mensagem primeiro é sempre o cliente. O atendente responde.
+Auto-Send e Prospecção ativa são ferramentas do Modo CRM e não fazem parte
+deste fluxo.
+
 Inspiração: atendentes sobrecarregados com centenas de mensagens de áudio sem
 nenhuma ferramenta de triagem ou priorização. O Inbox MVP 2.0 resolve exatamente
 esse problema.
