@@ -9,6 +9,81 @@ IziProspect conecta um número WhatsApp (via Evolution API) ao seu processo come
 
 ---
 
+## Para o usuário — o que é e como usar
+
+### O que é o IziProspect?
+
+É uma ferramenta de atendimento e CRM integrada diretamente ao seu WhatsApp. Você conecta um número e passa a ter visibilidade total de todas as conversas, leads e oportunidades — com IA trabalhando para você em segundo plano.
+
+Não precisa copiar nada manualmente. A IA lê, classifica e sugere o que fazer.
+
+---
+
+### Funcionalidades principais
+
+#### Inbox WhatsApp (painel de atendimento)
+
+- Todas as conversas recebidas aparecem num painel único, organizadas por prioridade e categoria.
+- Cada conversa é classificada automaticamente como: **Suporte**, **Vendas**, **Financeiro**, **Informação**, **Spam** ou **Outro**.
+- Prioridade definida pela IA: **Urgente**, **Alta**, **Normal** ou **Baixa**.
+- A IA gera um **resumo** da conversa e uma **sugestão de resposta** pronta — você aprova com um clique ou edita.
+- Áudios são transcritos automaticamente (você lê, sem precisar ouvir).
+- Você pode responder direto pelo painel — a mensagem vai para o WhatsApp do contato.
+- Marque conversas como **Resolvidas** ou **Arquivadas** para manter o inbox limpo.
+
+#### CRM de leads (modo grupo)
+
+- Você escreve uma mensagem casual num grupo WhatsApp ("Falei com João da Clínica X, quer demo") e a IA extrai e salva o lead automaticamente.
+- Sem formulários. Sem copiar e colar. A IA entende linguagem natural.
+- Cada lead tem: nome, empresa, cidade, segmento, telefone, status no funil e histórico de interações.
+- O funil vai de `novo` → `1º contato` → `qualificado` → `negociando` → `fechado`.
+- Comandos rápidos no grupo: `leads hoje`, `followup`, `pipeline` — você recebe o resumo em segundos.
+
+#### Auto-Send (primeiro contato automático)
+
+- Leads novos com WhatsApp recebem uma mensagem de primeiro contato automaticamente.
+- Horário e limite diário configuráveis (padrão: 9h–18h, até 7 por dia).
+- 3 variantes de mensagem (A/B/C) para testar qual converte melhor.
+
+#### Dashboard
+
+- Visão geral do inbox: conversas abertas, urgentes, não lidas, resolvidas hoje.
+- Gráfico de volume dos últimos 7 dias.
+- Distribuição por categoria.
+- Pipeline CRM em tempo real.
+- Conversas que precisam de atenção agora (urgentes sem resposta) destacadas no topo.
+
+#### Prospecção automática
+
+- Busca de leads por cidade e segmento em fontes públicas (OpenStreetMap, Telelistas, Apontador).
+- Enriquecimento automático com WhatsApp quando disponível.
+
+#### Automações diárias
+
+- **9h** — lista de follow-ups do dia enviada no grupo CRM.
+- **18h30** — resumo do dia (leads gerados, interações, metas).
+- Leads sem resposta há 5+ dias são marcados automaticamente como frios.
+
+---
+
+### Como usar no dia a dia
+
+**Para atender clientes (Inbox):**
+1. Acesse `/inbox` no painel web.
+2. Veja as conversas ordenadas por prioridade.
+3. Clique numa conversa para abrir o histórico completo.
+4. Leia o resumo e a sugestão da IA no painel lateral.
+5. Use a sugestão ou escreva sua própria resposta e envie.
+6. Marque como resolvida quando finalizar.
+
+**Para gestão de leads (CRM):**
+1. Escreva no grupo WhatsApp dedicado sobre qualquer interação com um lead.
+2. A IA confirma e atualiza — você recebe confirmação em segundos.
+3. Use `followup` para ver quem você precisa contatar hoje.
+4. Use `pipeline` para ver o estado geral do seu funil.
+
+---
+
 ## Sumário
 
 1. [Como funciona — visão geral](#como-funciona--visão-geral)
