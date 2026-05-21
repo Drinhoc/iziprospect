@@ -17,6 +17,155 @@ from rapidfuzz import fuzz
 
 logger = logging.getLogger(__name__)
 
+CREATE_TENANTS_SQL = """
+CREATE TABLE IF NOT EXISTS public.tenants (
+    id                 TEXT PRIMARY KEY,
+    nome               TEXT NOT NULL DEFAULT '',
+    plano              TEXT NOT NULL DEFAULT 'basico',
+    evolution_instance TEXT UNIQUE,
+    evolution_api_key  TEXT DEFAULT '',
+    ativo              BOOLEAN DEFAULT true,
+    criado_em          TIMESTAMPTZ DEFAULT NOW(),
+    atualizado_em      TIMESTAMPTZ DEFAULT NOW()
+);
+"""
+
+TENANT_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS leads (
+    lead_id              TEXT PRIMARY KEY,
+    nome                 TEXT DEFAULT '',
+    cidade               TEXT DEFAULT '',
+    segmento             TEXT DEFAULT '',
+    whatsapp             TEXT DEFAULT '',
+    email                TEXT DEFAULT '',
+    instagram            TEXT DEFAULT '',
+    site                 TEXT DEFAULT '',
+    responsavel          TEXT DEFAULT '',
+    fonte                TEXT DEFAULT '',
+    status               TEXT DEFAULT 'novo',
+    temperatura          TEXT DEFAULT 'frio',
+    resumo               TEXT DEFAULT '',
+    acao_followup        TEXT DEFAULT '',
+    observacoes          TEXT DEFAULT '',
+    data_criacao         TEXT,
+    ultima_interacao_em  TEXT,
+    proximo_followup_em  TEXT DEFAULT '',
+    data_recontato       TEXT DEFAULT '',
+    nome_normalizado     TEXT DEFAULT '',
+    cidade_normalizada   TEXT DEFAULT '',
+    lead_key             TEXT DEFAULT '',
+    valor_venda          NUMERIC DEFAULT 0,
+    data_fechamento      TEXT DEFAULT '',
+    motivo_perda         TEXT DEFAULT '',
+    status_anterior      TEXT DEFAULT '',
+    mensagem_enviada_em  TEXT DEFAULT '',
+    auto_send_variante   TEXT DEFAULT '',
+    origem_primeiro_contato TEXT DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS atividades (
+    id               SERIAL PRIMARY KEY,
+    data_hora        TEXT,
+    msg_id           TEXT UNIQUE,
+    lead_id          TEXT DEFAULT '',
+    tipo             TEXT DEFAULT '',
+    canal            TEXT DEFAULT '',
+    acao_executada   TEXT DEFAULT '',
+    confianca_ia     REAL DEFAULT 0,
+    confianca_analise INTEGER,
+    duracao_audio_s  REAL,
+    mensagem_bruta   TEXT DEFAULT '',
+    resumo           TEXT DEFAULT '',
+    followup_em      TEXT DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS lead_prospects (
+    id               SERIAL PRIMARY KEY,
+    nome             TEXT DEFAULT '',
+    cidade           TEXT DEFAULT '',
+    segmento         TEXT DEFAULT '',
+    telefone         TEXT DEFAULT '',
+    whatsapp         TEXT DEFAULT '',
+    website          TEXT DEFAULT '',
+    instagram        TEXT DEFAULT '',
+    link_maps        TEXT DEFAULT '',
+    fonte            TEXT DEFAULT '',
+    fonte_busca      TEXT DEFAULT '',
+    status_revisao   TEXT DEFAULT 'pendente',
+    data_coleta      TEXT DEFAULT '',
+    enriquecido      INTEGER DEFAULT 0,
+    lead_id_aprovado TEXT DEFAULT '',
+    busca_id         TEXT DEFAULT '',
+    rating           TEXT DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS msg_ab_eventos (
+    id        SERIAL PRIMARY KEY,
+    lead_id   TEXT DEFAULT '',
+    variante  TEXT DEFAULT '',
+    segmento  TEXT DEFAULT '',
+    evento    TEXT DEFAULT '',
+    tipo      TEXT DEFAULT 'inicial',
+    data_hora TEXT
+);
+CREATE TABLE IF NOT EXISTS settings_kv (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS conversas (
+    id                SERIAL PRIMARY KEY,
+    jid               TEXT NOT NULL UNIQUE,
+    nome_contato      TEXT DEFAULT '',
+    numero            TEXT DEFAULT '',
+    status            TEXT DEFAULT 'aberto',
+    prioridade        TEXT DEFAULT 'normal',
+    categoria         TEXT DEFAULT 'outro',
+    total_mensagens   INT DEFAULT 0,
+    nao_lidas         INT DEFAULT 0,
+    ultimo_msg_em     TIMESTAMPTZ,
+    primeira_msg_em   TIMESTAMPTZ,
+    resumo_ia         TEXT DEFAULT '',
+    resposta_sugerida TEXT DEFAULT '',
+    confianca_ia      INT DEFAULT 0,
+    lead_id           TEXT DEFAULT '',
+    atribuido_a       TEXT DEFAULT '',
+    resolvido_em      TIMESTAMPTZ,
+    criado_em         TIMESTAMPTZ DEFAULT NOW(),
+    atualizado_em     TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS mensagens_inbox (
+    id              SERIAL PRIMARY KEY,
+    msg_id          TEXT UNIQUE,
+    conversa_id     INT NOT NULL,
+    jid             TEXT NOT NULL,
+    de_mim          BOOLEAN DEFAULT FALSE,
+    tipo            TEXT DEFAULT 'text',
+    texto           TEXT DEFAULT '',
+    transcricao     TEXT DEFAULT '',
+    duracao_audio_s REAL,
+    media_url       TEXT DEFAULT '',
+    status_proc     TEXT DEFAULT 'pendente',
+    enviado_em      TIMESTAMPTZ,
+    criado_em       TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_leads_whatsapp        ON leads(whatsapp);
+CREATE INDEX IF NOT EXISTS idx_leads_lead_key         ON leads(lead_key);
+CREATE INDEX IF NOT EXISTS idx_leads_nome_normalizado ON leads(nome_normalizado);
+CREATE INDEX IF NOT EXISTS idx_leads_email            ON leads(email);
+CREATE INDEX IF NOT EXISTS idx_atividades_lead_id     ON atividades(lead_id);
+CREATE INDEX IF NOT EXISTS idx_atividades_msg_id      ON atividades(msg_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_prospects_nome_cidade ON lead_prospects (lower(nome), lower(cidade));
+CREATE INDEX IF NOT EXISTS idx_msg_ab_lead            ON msg_ab_eventos(lead_id);
+CREATE INDEX IF NOT EXISTS idx_conversas_jid          ON conversas(jid);
+CREATE INDEX IF NOT EXISTS idx_conversas_status       ON conversas(status);
+CREATE INDEX IF NOT EXISTS idx_conversas_ultimo       ON conversas(ultimo_msg_em DESC NULLS LAST);
+CREATE INDEX IF NOT EXISTS idx_mensagens_conversa     ON mensagens_inbox(conversa_id);
+CREATE INDEX IF NOT EXISTS idx_mensagens_msg_id       ON mensagens_inbox(msg_id);
+"""
+
+def _safe_schema(tenant_id: str) -> str:
+    """Convert tenant_id to a safe PostgreSQL schema name."""
+    safe = re.sub(r"[^a-z0-9]", "_", tenant_id.lower())
+    return f"tenant_{safe}"
+
+
 CREATE_TABLES_SQL = """
 CREATE TABLE IF NOT EXISTS leads (
     lead_id              TEXT PRIMARY KEY,
@@ -235,13 +384,14 @@ class FindByNameResult:
 # ---------------------------------------------------------------------------
 
 class DBService:
-    def __init__(self, database_url: str):
+    def __init__(self, database_url: str, skip_init: bool = False):
         self._pool = psycopg2.pool.ThreadedConnectionPool(
             minconn=1,
             maxconn=10,
             dsn=database_url,
         )
-        self._init_db()
+        if not skip_init:
+            self._init_db()
 
     def _conn(self):
         return self._pool.getconn()
@@ -2829,3 +2979,228 @@ class DBService:
             }
         finally:
             self._put(conn)
+
+    # ------------------------------------------------------------------
+    # Multi-tenant — public.tenants table
+    # ------------------------------------------------------------------
+
+    def create_public_tables(self) -> None:
+        """Cria a tabela public.tenants (idempotente)."""
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(CREATE_TENANTS_SQL)
+            conn.commit()
+            logger.info("public.tenants criada/verificada OK")
+        finally:
+            self._put(conn)
+
+    def create_tenant_schema(self, tenant_id: str) -> None:
+        """Cria schema tenant_{id} com todas as tabelas do IziDesk."""
+        if not re.match(r'^[a-z0-9_]{1,63}$', tenant_id):
+            raise ValueError(f"tenant_id inválido: {tenant_id!r}")
+        schema = _safe_schema(tenant_id)
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}")
+                cur.execute(f"SET search_path TO {schema}, public")
+                cur.execute(TENANT_SCHEMA_SQL)
+                cur.execute("SET search_path TO public")
+            conn.commit()
+            logger.info("schema %s criado OK", schema)
+        finally:
+            self._put(conn)
+
+    def drop_tenant_schema(self, tenant_id: str) -> None:
+        """Remove schema e dados do tenant (CASCADE)."""
+        schema = _safe_schema(tenant_id)
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+                cur.execute(
+                    "DELETE FROM public.tenants WHERE id = %s", (tenant_id,)
+                )
+            conn.commit()
+            logger.info("schema %s removido OK", schema)
+        finally:
+            self._put(conn)
+
+    def list_tenants(self) -> List[Dict[str, Any]]:
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT id, nome, plano, evolution_instance, evolution_api_key,
+                              ativo, criado_em, atualizado_em
+                       FROM public.tenants
+                       ORDER BY criado_em DESC"""
+                )
+                return self._fetchall_dict(cur)
+        finally:
+            self._put(conn)
+
+    def get_tenant(self, tenant_id: str) -> Optional[Dict[str, Any]]:
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT id, nome, plano, evolution_instance, evolution_api_key,
+                              ativo, criado_em, atualizado_em
+                       FROM public.tenants WHERE id = %s""",
+                    (tenant_id,),
+                )
+                return self._fetchone_dict(cur)
+        finally:
+            self._put(conn)
+
+    def get_tenant_by_instance(self, instance_name: str) -> Optional[Dict[str, Any]]:
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT id, nome, plano, evolution_instance, evolution_api_key,
+                              ativo, criado_em, atualizado_em
+                       FROM public.tenants WHERE evolution_instance = %s""",
+                    (instance_name,),
+                )
+                return self._fetchone_dict(cur)
+        finally:
+            self._put(conn)
+
+    def create_tenant(
+        self,
+        tenant_id: str,
+        nome: str,
+        plano: str = "basico",
+        evolution_instance: str = "",
+        evolution_api_key: str = "",
+    ) -> Dict[str, Any]:
+        if not re.match(r'^[a-z0-9_]{1,63}$', tenant_id):
+            raise ValueError(f"tenant_id inválido: {tenant_id!r}")
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO public.tenants
+                           (id, nome, plano, evolution_instance, evolution_api_key)
+                       VALUES (%s, %s, %s, %s, %s)
+                       RETURNING id, nome, plano, evolution_instance, evolution_api_key,
+                                 ativo, criado_em, atualizado_em""",
+                    (tenant_id, nome, plano, evolution_instance or None, evolution_api_key),
+                )
+                row = self._fetchone_dict(cur)
+            conn.commit()
+            return row
+        finally:
+            self._put(conn)
+
+    def update_tenant(self, tenant_id: str, fields: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        allowed = {"nome", "plano", "evolution_instance", "evolution_api_key", "ativo"}
+        updates = {k: v for k, v in fields.items() if k in allowed}
+        if not updates:
+            return self.get_tenant(tenant_id)
+        set_clause = ", ".join(f"{k} = %s" for k in updates)
+        values = list(updates.values()) + [tenant_id]
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""UPDATE public.tenants
+                        SET {set_clause}, atualizado_em = NOW()
+                        WHERE id = %s
+                        RETURNING id, nome, plano, evolution_instance, evolution_api_key,
+                                  ativo, criado_em, atualizado_em""",
+                    values,
+                )
+                row = self._fetchone_dict(cur)
+            conn.commit()
+            return row
+        finally:
+            self._put(conn)
+
+    def get_admin_overview(self) -> Dict[str, Any]:
+        """Estatísticas agregadas de todos os tenants (via schema-qualified SQL)."""
+        tenants = self.list_tenants()
+        conn = self._conn()
+        try:
+            stats = []
+            with conn.cursor() as cur:
+                for t in tenants:
+                    schema = _safe_schema(t["id"])
+                    try:
+                        cur.execute(
+                            f"""SELECT
+                                (SELECT COUNT(*) FROM {schema}.leads)         AS total_leads,
+                                (SELECT COUNT(*) FROM {schema}.conversas
+                                  WHERE status = 'aberto')                    AS conversas_abertas,
+                                (SELECT COALESCE(SUM(nao_lidas),0)
+                                   FROM {schema}.conversas
+                                  WHERE status = 'aberto')                    AS nao_lidas
+                            """
+                        )
+                        row = cur.fetchone()
+                        stats.append({
+                            "tenant_id": t["id"],
+                            "nome": t["nome"],
+                            "plano": t["plano"],
+                            "ativo": t["ativo"],
+                            "evolution_instance": t["evolution_instance"],
+                            "total_leads": row[0] if row else 0,
+                            "conversas_abertas": row[1] if row else 0,
+                            "nao_lidas": row[2] if row else 0,
+                        })
+                    except Exception:
+                        stats.append({
+                            "tenant_id": t["id"],
+                            "nome": t["nome"],
+                            "plano": t["plano"],
+                            "ativo": t["ativo"],
+                            "evolution_instance": t["evolution_instance"],
+                            "total_leads": None,
+                            "conversas_abertas": None,
+                            "nao_lidas": None,
+                        })
+                        conn.rollback()
+            return {"tenants": stats, "total": len(tenants)}
+        finally:
+            self._put(conn)
+
+
+# ---------------------------------------------------------------------------
+# TenantDBService — DBService com search_path fixado no schema do tenant
+# ---------------------------------------------------------------------------
+
+class TenantDBService(DBService):
+    """DBService com todas as queries roteadas para o schema do tenant."""
+
+    @classmethod
+    def from_pool(cls, pool, tenant_id: str) -> "TenantDBService":
+        """Cria TenantDBService compartilhando o pool existente (não abre novas conexões)."""
+        if not re.match(r'^[a-z0-9_]{1,63}$', tenant_id):
+            raise ValueError(f"tenant_id inválido: {tenant_id!r}")
+        obj = object.__new__(cls)
+        obj._pool = pool
+        obj._tenant_schema = _safe_schema(tenant_id)
+        obj._tenant_id = tenant_id
+        return obj
+
+    def _conn(self):
+        conn = self._pool.getconn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"SET search_path TO {self._tenant_schema}, public")
+        except Exception:
+            self._pool.putconn(conn)
+            raise
+        return conn
+
+    def _put(self, conn) -> None:
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SET search_path TO public")
+        except Exception:
+            self._pool.putconn(conn, close=True)
+            return
+        self._pool.putconn(conn)

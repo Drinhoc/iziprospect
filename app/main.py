@@ -21,7 +21,7 @@ from app.services.crm_interpreter import (
     extract_status_override,
     interpret_crm_message,
 )
-from app.services.db_service import DBService
+from app.services.db_service import DBService, TenantDBService
 from app.services.evolution_service import EvolutionService
 from app.services.normalizer import normalize_evolution_payload
 from app.services.openai_service import AudioResolveError, OpenAIService
@@ -40,11 +40,24 @@ app = FastAPI(title="IziClinic Invisible CRM")
 _STATIC_DIR = pathlib.Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
-from app.routers import api_leads, api_prospeccao, api_inbox, dashboard_ui  # noqa: E402
+from app.routers import api_leads, api_prospeccao, api_inbox, dashboard_ui, api_admin, admin_ui  # noqa: E402
 app.include_router(api_leads.router)
 app.include_router(api_prospeccao.router)
 app.include_router(api_inbox.router)
 app.include_router(dashboard_ui.router)
+app.include_router(api_admin.router)
+app.include_router(admin_ui.router)
+
+# Cache de TenantDBService por tenant_id (compartilha pool com db_service global)
+_tenant_db_cache: Dict[str, TenantDBService] = {}
+
+
+def get_tenant_db_service(tenant_id: str) -> TenantDBService:
+    if tenant_id not in _tenant_db_cache:
+        _tenant_db_cache[tenant_id] = TenantDBService.from_pool(
+            get_db_service()._pool, tenant_id
+        )
+    return _tenant_db_cache[tenant_id]
 
 openai_service = OpenAIService(settings.openai_api_key)
 evolution_service = EvolutionService(
@@ -79,6 +92,16 @@ def get_sheets_service() -> SheetsService:
     info = settings.service_account_info()
     sheets_service = SheetsService(info, settings.google_sheets_id)
     return sheets_service
+
+
+@app.on_event("startup")
+async def _create_public_tables() -> None:
+    """Cria a tabela public.tenants para multi-tenancy."""
+    try:
+        db = get_db_service()
+        await asyncio.to_thread(db.create_public_tables)
+    except Exception:
+        logger.warning("create_public_tables falhou — não crítico", exc_info=True)
 
 
 @app.on_event("startup")
@@ -553,6 +576,39 @@ async def _execute_crm_query(intent, db: DBService) -> str:
 async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header(default=None)):
     if settings.evolution_webhook_secret and x_webhook_secret != settings.evolution_webhook_secret:
         raise HTTPException(status_code=401, detail="Invalid webhook secret")
+
+    # Multi-tenant: identifica tenant pelo instanceName do Evolution
+    raw_instance = (
+        payload.get("instanceName")
+        or payload.get("instance")
+        or ""
+    )
+    if raw_instance and settings.database_url:
+        base_db = get_db_service()
+        tenant = await asyncio.to_thread(base_db.get_tenant_by_instance, raw_instance)
+        if tenant and tenant.get("ativo"):
+            event = normalize_evolution_payload(payload)
+            if event.from_me:
+                return {"ok": True, "ignored": True, "reason": "inbox_from_me"}
+            # Busca áudio base64 se necessário
+            if event.msg_type == "audio" and not event.media_base64:
+                if event.raw_msg_key and event.raw_message_obj:
+                    fetched_b64 = await evolution_service.fetch_audio_base64(
+                        instance_name=raw_instance,
+                        msg_key=event.raw_msg_key,
+                        message_obj=event.raw_message_obj,
+                    )
+                    if fetched_b64:
+                        event.media_base64 = fetched_b64
+            from app.services.inbox_service import InboxService
+            tenant_db  = get_tenant_db_service(tenant["id"])
+            tenant_evo = EvolutionService(
+                settings.evolution_api_url,
+                tenant.get("evolution_api_key") or settings.evolution_api_key,
+                raw_instance,
+            )
+            inbox_svc = InboxService(tenant_db, openai_service, tenant_evo)
+            return await inbox_svc.process_incoming(event)
 
     event = normalize_evolution_payload(payload)
     logger.info(

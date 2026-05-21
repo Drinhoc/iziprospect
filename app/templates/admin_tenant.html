@@ -1,0 +1,223 @@
+{% extends "admin_base.html" %}
+{% block title %}Tenant {{ tenant_id }}{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
+  <a href="/admin/tenants" style="color:#6b7280;font-size:13px;text-decoration:none">← Tenants</a>
+  <span style="color:#d1d5db">/</span>
+  <span class="admin-page-title" style="margin:0" id="tenant-nome">{{ tenant_id }}</span>
+</div>
+
+<div class="alert alert-success hidden" id="alert-ok"></div>
+<div class="alert alert-error hidden" id="alert-err"></div>
+
+<div style="display:grid;grid-template-columns:1fr 320px;gap:20px;">
+
+  <!-- Coluna principal -->
+  <div>
+
+    <!-- Stats -->
+    <div class="admin-stat-row" id="tenant-stats-row">
+      <div class="admin-stat"><div class="admin-stat-value" id="ts-leads">—</div><div class="admin-stat-label">Leads</div></div>
+      <div class="admin-stat"><div class="admin-stat-value" id="ts-conversas">—</div><div class="admin-stat-label">Conversas abertas</div></div>
+      <div class="admin-stat"><div class="admin-stat-value" id="ts-nao-lidas">—</div><div class="admin-stat-label">Não lidas</div></div>
+    </div>
+
+    <!-- Config -->
+    <div class="admin-card">
+      <div class="admin-card-title">Configurações do tenant</div>
+      <div class="admin-form-row">
+        <div class="admin-form-group">
+          <label>Nome</label>
+          <input type="text" id="edit-nome" />
+        </div>
+        <div class="admin-form-group">
+          <label>Plano</label>
+          <select id="edit-plano">
+            <option value="basico">Básico</option>
+            <option value="profissional">Profissional</option>
+            <option value="enterprise">Enterprise</option>
+          </select>
+        </div>
+      </div>
+      <div class="admin-form-row">
+        <div class="admin-form-group">
+          <label>Instância Evolution</label>
+          <input type="text" id="edit-instance" />
+        </div>
+        <div class="admin-form-group">
+          <label>API Key Evolution</label>
+          <input type="text" id="edit-apikey" placeholder="chave por instância" />
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <button class="btn-admin btn-admin-primary" onclick="salvarConfig()">Salvar</button>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+          <input type="checkbox" id="edit-ativo" />
+          Tenant ativo
+        </label>
+      </div>
+    </div>
+
+    <!-- Zona de perigo -->
+    <div class="admin-card" style="border-color:#fca5a5">
+      <div class="admin-card-title" style="color:#dc2626">Zona de perigo</div>
+      <p style="font-size:13px;color:#6b7280;margin-bottom:14px">
+        Deletar remove o schema PostgreSQL do tenant (todos os dados) e a instância Evolution.
+        Esta ação é irreversível.
+      </p>
+      <button class="btn-admin btn-admin-danger" onclick="confirmarDelete()">Deletar tenant</button>
+    </div>
+
+  </div>
+
+  <!-- Coluna WhatsApp -->
+  <div>
+    <div class="admin-card">
+      <div class="admin-card-title">WhatsApp</div>
+
+      <div style="margin-bottom:14px;display:flex;align-items:center;gap:8px;">
+        <span style="font-size:13px;color:#6b7280">Status:</span>
+        <span id="wa-status-badge" class="badge-unknown">—</span>
+        <button class="btn-admin btn-admin-ghost" style="padding:4px 8px;font-size:11px" onclick="checkStatus()">↻</button>
+      </div>
+
+      <div class="qr-container" id="qr-container" style="display:none">
+        <img id="qr-img" class="qr-img" src="" alt="QR Code" />
+        <div class="qr-status" id="qr-label">Escaneie com o WhatsApp</div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
+        <button class="btn-admin btn-admin-primary" onclick="criarInstancia()">Criar instância</button>
+        <button class="btn-admin btn-admin-ghost" onclick="gerarQR()">Gerar QR Code</button>
+        <button class="btn-admin btn-admin-ghost" onclick="reconectar()">Reconectar</button>
+        <button class="btn-admin btn-admin-danger" onclick="deletarInstancia()">Deletar instância</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const TENANT_ID = '{{ tenant_id }}';
+const ADMIN_TOKEN = document.cookie.split(';').map(c=>c.trim()).find(c=>c.startsWith('izidesk_admin='))?.split('=')[1]||'';
+const H = { 'X-Admin-Token': ADMIN_TOKEN, 'Content-Type': 'application/json' };
+
+async function loadTenant() {
+  const r = await fetch(`/api/admin/tenants/${TENANT_ID}`, { headers: H });
+  if (!r.ok) { showAlert('err','Tenant não encontrado'); return; }
+  const t = await r.json();
+  document.getElementById('tenant-nome').textContent = t.nome || t.id;
+  document.getElementById('edit-nome').value     = t.nome || '';
+  document.getElementById('edit-plano').value    = t.plano || 'basico';
+  document.getElementById('edit-instance').value = t.evolution_instance || '';
+  document.getElementById('edit-apikey').value   = t.evolution_api_key || '';
+  document.getElementById('edit-ativo').checked  = t.ativo;
+  checkStatus();
+  loadStats();
+}
+
+async function loadStats() {
+  try {
+    const d = await fetch('/api/admin/overview', { headers: H }).then(r => r.json());
+    const t = (d.tenants||[]).find(x => x.tenant_id === TENANT_ID);
+    if (t) {
+      document.getElementById('ts-leads').textContent      = t.total_leads ?? '—';
+      document.getElementById('ts-conversas').textContent  = t.conversas_abertas ?? '—';
+      document.getElementById('ts-nao-lidas').textContent  = t.nao_lidas ?? '—';
+    }
+  } catch(e) {}
+}
+
+async function salvarConfig() {
+  const body = {
+    nome:               document.getElementById('edit-nome').value.trim(),
+    plano:              document.getElementById('edit-plano').value,
+    evolution_instance: document.getElementById('edit-instance').value.trim(),
+    evolution_api_key:  document.getElementById('edit-apikey').value.trim(),
+    ativo:              document.getElementById('edit-ativo').checked,
+  };
+  const r = await fetch(`/api/admin/tenants/${TENANT_ID}`, { method:'PATCH', headers:H, body:JSON.stringify(body) });
+  const d = await r.json();
+  if (!r.ok) { showAlert('err', d.detail||'Erro'); return; }
+  showAlert('ok', 'Configurações salvas!');
+  document.getElementById('tenant-nome').textContent = d.nome;
+}
+
+async function checkStatus() {
+  const r = await fetch(`/api/admin/tenants/${TENANT_ID}/instance/status`, { headers:H });
+  const d = await r.json();
+  const badge = document.getElementById('wa-status-badge');
+  const status = d.status || 'unknown';
+  badge.className = `badge-${status === 'open' ? 'open' : status === 'connecting' ? 'connecting' : status === 'close' ? 'close' : 'unknown'}`;
+  const labels = { open:'Conectado', close:'Desconectado', connecting:'Conectando…', unknown:'Desconhecido', sem_instancia:'Sem instância' };
+  badge.textContent = labels[status] || status;
+}
+
+async function gerarQR() {
+  const r = await fetch(`/api/admin/tenants/${TENANT_ID}/instance/qr`, { headers:H });
+  const d = await r.json();
+  if (!d.qr) { showAlert('err', d.mensagem || 'QR não disponível'); return; }
+  const container = document.getElementById('qr-container');
+  document.getElementById('qr-img').src = d.qr.startsWith('data:') ? d.qr : `data:image/png;base64,${d.qr}`;
+  document.getElementById('qr-label').textContent = 'Escaneie com o WhatsApp';
+  container.style.display = 'block';
+  pollStatus();
+}
+
+function pollStatus() {
+  let tries = 0;
+  const interval = setInterval(async () => {
+    const r = await fetch(`/api/admin/tenants/${TENANT_ID}/instance/status`, { headers:H });
+    const d = await r.json();
+    if (d.status === 'open') {
+      clearInterval(interval);
+      document.getElementById('qr-label').textContent = '✅ Conectado!';
+      document.getElementById('qr-container').style.display = 'none';
+      checkStatus();
+    }
+    if (++tries > 40) clearInterval(interval);
+  }, 3000);
+}
+
+async function criarInstancia() {
+  const r = await fetch(`/api/admin/tenants/${TENANT_ID}/instance/criar`, { method:'POST', headers:H });
+  const d = await r.json();
+  showAlert(r.ok ? 'ok' : 'err', r.ok ? 'Instância criada!' : (d.detail||'Erro'));
+  if (r.ok) checkStatus();
+}
+
+async function reconectar() {
+  const r = await fetch(`/api/admin/tenants/${TENANT_ID}/instance/reconectar`, { method:'POST', headers:H });
+  const d = await r.json();
+  showAlert(r.ok && d.ok ? 'ok' : 'err', r.ok && d.ok ? 'Reconectando…' : 'Falhou');
+  if (r.ok) setTimeout(checkStatus, 2000);
+}
+
+async function deletarInstancia() {
+  if (!confirm('Deletar instância do Evolution? O número vai desconectar.')) return;
+  const r = await fetch(`/api/admin/tenants/${TENANT_ID}/instance`, { method:'DELETE', headers:H });
+  const d = await r.json();
+  showAlert(r.ok ? 'ok' : 'err', r.ok ? 'Instância deletada.' : (d.detail||'Erro'));
+  checkStatus();
+}
+
+async function confirmarDelete() {
+  if (!confirm(`Deletar TODOS os dados do tenant "${TENANT_ID}"? Esta ação não pode ser desfeita.`)) return;
+  const r = await fetch(`/api/admin/tenants/${TENANT_ID}`, { method:'DELETE', headers:H });
+  if (r.ok) window.location.href = '/admin/tenants';
+  else { const d = await r.json(); showAlert('err', d.detail||'Erro'); }
+}
+
+function showAlert(type, msg) {
+  const el = document.getElementById(`alert-${type}`);
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  setTimeout(() => el.classList.add('hidden'), 5000);
+}
+
+loadTenant();
+</script>
+{% endblock %}

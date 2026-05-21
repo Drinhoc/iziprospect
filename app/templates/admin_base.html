@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Admin{% endblock %} — IziDesk Admin</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    .admin-topbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      height: 52px; background: #111827; border-bottom: 1px solid #1f2937;
+      display: flex; align-items: center; padding: 0 24px; gap: 16px;
+    }
+    .admin-topbar-logo { font-weight: 700; font-size: 15px; color: #f9fafb; letter-spacing: -.3px; }
+    .admin-topbar-badge {
+      font-size: 10px; font-weight: 600; background: #dc2626; color: #fff;
+      padding: 2px 7px; border-radius: 99px; text-transform: uppercase;
+    }
+    .admin-topbar-nav { display: flex; gap: 4px; margin-left: 12px; }
+    .admin-topbar-nav a {
+      color: #9ca3af; font-size: 13px; padding: 5px 10px; border-radius: 6px;
+      text-decoration: none;
+    }
+    .admin-topbar-nav a:hover, .admin-topbar-nav a.active { background: #1f2937; color: #f9fafb; }
+    .admin-topbar-right { margin-left: auto; }
+    .admin-topbar-right a { color: #6b7280; font-size: 12px; text-decoration: none; }
+    .admin-topbar-right a:hover { color: #9ca3af; }
+    .admin-main { margin-top: 52px; padding: 32px 32px 64px; max-width: 1200px; }
+    .admin-page-title { font-size: 22px; font-weight: 700; margin-bottom: 24px; }
+    .admin-card {
+      background: var(--bg-card, #fff); border: 1px solid var(--border, #e5e7eb);
+      border-radius: 12px; padding: 20px 24px; margin-bottom: 20px;
+    }
+    .admin-card-title { font-size: 14px; font-weight: 600; margin-bottom: 14px; color: #374151; }
+    .admin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .admin-table th {
+      text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border, #e5e7eb);
+      color: #6b7280; font-weight: 600; font-size: 11px; text-transform: uppercase;
+    }
+    .admin-table td { padding: 10px 12px; border-bottom: 1px solid var(--border, #f3f4f6); }
+    .admin-table tr:hover td { background: var(--bg-hover, #f9fafb); }
+    .badge-ativo { background:#d1fae5;color:#065f46; font-size:11px;padding:2px 8px;border-radius:99px;font-weight:600; }
+    .badge-inativo { background:#fee2e2;color:#991b1b; font-size:11px;padding:2px 8px;border-radius:99px;font-weight:600; }
+    .badge-open { background:#d1fae5;color:#065f46; font-size:11px;padding:2px 8px;border-radius:99px;font-weight:600; }
+    .badge-close { background:#fee2e2;color:#991b1b; font-size:11px;padding:2px 8px;border-radius:99px;font-weight:600; }
+    .badge-connecting { background:#fef3c7;color:#92400e; font-size:11px;padding:2px 8px;border-radius:99px;font-weight:600; }
+    .badge-unknown { background:#f3f4f6;color:#6b7280; font-size:11px;padding:2px 8px;border-radius:99px;font-weight:600; }
+    .btn-admin { padding:7px 14px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;border:none; }
+    .btn-admin-primary { background:#1a56db;color:#fff; }
+    .btn-admin-primary:hover { background:#1e40af; }
+    .btn-admin-danger { background:#dc2626;color:#fff; }
+    .btn-admin-danger:hover { background:#b91c1c; }
+    .btn-admin-ghost { background:transparent;border:1px solid var(--border,#e5e7eb);color:#374151; }
+    .btn-admin-ghost:hover { background:var(--bg-hover,#f9fafb); }
+    .admin-form-row { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; margin-bottom:16px; }
+    .admin-form-group { display:flex; flex-direction:column; gap:4px; min-width:180px; flex:1; }
+    .admin-form-group label { font-size:12px;font-weight:600;color:#374151; }
+    .admin-form-group input, .admin-form-group select {
+      padding:8px 10px; border:1px solid var(--border,#e5e7eb); border-radius:7px;
+      font-size:13px; background:var(--bg-input,#fff); color:var(--text,#111827);
+    }
+    .admin-stat-row { display:flex; gap:16px; flex-wrap:wrap; margin-bottom:20px; }
+    .admin-stat { background:var(--bg-card,#fff); border:1px solid var(--border,#e5e7eb);
+      border-radius:10px; padding:14px 18px; min-width:120px; }
+    .admin-stat-value { font-size:26px; font-weight:700; }
+    .admin-stat-label { font-size:11px; color:#6b7280; margin-top:2px; }
+    .qr-container { text-align:center; padding:20px; }
+    .qr-img { width:220px; height:220px; border:1px solid var(--border,#e5e7eb); border-radius:8px; }
+    .qr-status { margin-top:10px; font-size:13px; font-weight:600; }
+    .modal-overlay {
+      display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:200;
+      align-items:center; justify-content:center;
+    }
+    .modal-overlay.open { display:flex; }
+    .modal { background:var(--bg-card,#fff); border-radius:14px; padding:28px; width:480px; max-width:95vw; }
+    .modal-title { font-size:16px; font-weight:700; margin-bottom:18px; }
+    .modal-footer { display:flex; gap:10px; justify-content:flex-end; margin-top:20px; }
+    .alert { padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:16px; }
+    .alert-success { background:#d1fae5; color:#065f46; }
+    .alert-error { background:#fee2e2; color:#991b1b; }
+  </style>
+</head>
+<body>
+  <header class="admin-topbar">
+    <span class="admin-topbar-logo">⚡ IziDesk</span>
+    <span class="admin-topbar-badge">Admin</span>
+    <nav class="admin-topbar-nav">
+      <a href="/admin/tenants" {% if request.url.path == '/admin/tenants' %}class="active"{% endif %}>Tenants</a>
+    </nav>
+    <div class="admin-topbar-right">
+      <a href="/admin/logout">Sair</a>
+    </div>
+  </header>
+  <main class="admin-main">
+    {% block content %}{% endblock %}
+  </main>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

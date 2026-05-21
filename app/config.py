@@ -43,6 +43,12 @@ class Settings:
     inbox_mode_enabled: bool = False
 
     # ---------------------------------------------------------------------------
+    # Admin panel
+    # ---------------------------------------------------------------------------
+    admin_token: str = ""                  # ADMIN_TOKEN — protege /admin e /api/admin
+    evolution_global_api_key: str = ""     # EVOLUTION_GLOBAL_API_KEY — chave server-level do Evolution
+
+    # ---------------------------------------------------------------------------
     # Auto-send: envio automático de primeiro contato
     # Desligado por padrão. Ativar com AUTO_SEND_ENABLED=true no .env
     # ---------------------------------------------------------------------------
@@ -84,6 +90,8 @@ class Settings:
             auto_send_hora_fim=int(os.getenv("AUTO_SEND_HORA_FIM", "18")),
             auto_send_intervalo_min_s=int(os.getenv("AUTO_SEND_INTERVALO_MIN_S", "180")),
             auto_send_intervalo_max_s=int(os.getenv("AUTO_SEND_INTERVALO_MAX_S", "720")),
+            admin_token=os.getenv("ADMIN_TOKEN", ""),
+            evolution_global_api_key=os.getenv("EVOLUTION_GLOBAL_API_KEY", ""),
         )
 
     @staticmethod

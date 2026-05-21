@@ -1,0 +1,173 @@
+{% extends "admin_base.html" %}
+{% block title %}Tenants{% endblock %}
+
+{% block content %}
+<div class="admin-page-title">Tenants</div>
+
+<!-- Stats -->
+<div class="admin-stat-row" id="admin-stats-row">
+  <div class="admin-stat">
+    <div class="admin-stat-value" id="stat-total">—</div>
+    <div class="admin-stat-label">Total de tenants</div>
+  </div>
+  <div class="admin-stat">
+    <div class="admin-stat-value" id="stat-ativos">—</div>
+    <div class="admin-stat-label">Ativos</div>
+  </div>
+  <div class="admin-stat">
+    <div class="admin-stat-value" id="stat-leads">—</div>
+    <div class="admin-stat-label">Leads totais</div>
+  </div>
+  <div class="admin-stat">
+    <div class="admin-stat-value" id="stat-conversas">—</div>
+    <div class="admin-stat-label">Conversas abertas</div>
+  </div>
+</div>
+
+<!-- Ações -->
+<div style="display:flex;gap:10px;margin-bottom:18px;">
+  <button class="btn-admin btn-admin-primary" onclick="openModal()">+ Novo Tenant</button>
+  <button class="btn-admin btn-admin-ghost" onclick="loadOverview()">↻ Atualizar</button>
+</div>
+
+<!-- Alerta -->
+<div class="alert alert-success hidden" id="alert-ok"></div>
+<div class="alert alert-error hidden" id="alert-err"></div>
+
+<!-- Tabela -->
+<div class="admin-card">
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>ID / Slug</th>
+        <th>Nome</th>
+        <th>Plano</th>
+        <th>Instância Evolution</th>
+        <th>Status</th>
+        <th>Leads</th>
+        <th>Conversas</th>
+        <th>Ações</th>
+      </tr>
+    </thead>
+    <tbody id="tenants-tbody">
+      <tr><td colspan="8" style="text-align:center;color:#9ca3af;padding:32px">Carregando…</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Modal novo tenant -->
+<div class="modal-overlay" id="modal-novo">
+  <div class="modal">
+    <div class="modal-title">Novo Tenant</div>
+    <div class="admin-form-row">
+      <div class="admin-form-group">
+        <label>ID (slug único)</label>
+        <input type="text" id="new-id" placeholder="ex: empresa_abc" pattern="[a-z0-9_]+" />
+      </div>
+      <div class="admin-form-group">
+        <label>Nome</label>
+        <input type="text" id="new-nome" placeholder="Nome do cliente" />
+      </div>
+    </div>
+    <div class="admin-form-row">
+      <div class="admin-form-group">
+        <label>Plano</label>
+        <select id="new-plano">
+          <option value="basico">Básico</option>
+          <option value="profissional">Profissional</option>
+          <option value="enterprise">Enterprise</option>
+        </select>
+      </div>
+      <div class="admin-form-group">
+        <label>Nome da instância Evolution</label>
+        <input type="text" id="new-instance" placeholder="ex: izidesk_empresa_abc" />
+      </div>
+    </div>
+    <div class="admin-form-row">
+      <div class="admin-form-group">
+        <label>API Key Evolution (por instância)</label>
+        <input type="text" id="new-apikey" placeholder="deixe vazio para gerar depois" />
+      </div>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:4px;">
+      <input type="checkbox" id="new-criar-instancia" />
+      Criar instância no Evolution automaticamente
+    </label>
+    <div class="modal-footer">
+      <button class="btn-admin btn-admin-ghost" onclick="closeModal()">Cancelar</button>
+      <button class="btn-admin btn-admin-primary" onclick="criarTenant()">Criar Tenant</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ADMIN_TOKEN = document.cookie.split(';').map(c => c.trim()).find(c => c.startsWith('izidesk_admin='))?.split('=')[1] || '';
+const H = { 'X-Admin-Token': ADMIN_TOKEN, 'Content-Type': 'application/json' };
+
+async function loadOverview() {
+  try {
+    const d = await fetch('/api/admin/overview', { headers: H }).then(r => r.json());
+    const tenants = d.tenants || [];
+    document.getElementById('stat-total').textContent     = d.total ?? '—';
+    document.getElementById('stat-ativos').textContent    = tenants.filter(t => t.ativo).length;
+    document.getElementById('stat-leads').textContent     = tenants.reduce((a,t) => a + (t.total_leads||0), 0);
+    document.getElementById('stat-conversas').textContent = tenants.reduce((a,t) => a + (t.conversas_abertas||0), 0);
+
+    const tbody = document.getElementById('tenants-tbody');
+    if (!tenants.length) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#9ca3af;padding:32px">Nenhum tenant cadastrado ainda.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = tenants.map(t => `
+      <tr>
+        <td><code style="font-size:12px">${t.tenant_id}</code></td>
+        <td><strong>${esc(t.nome)}</strong></td>
+        <td>${t.plano}</td>
+        <td><span style="font-size:12px;color:#6b7280">${t.evolution_instance || '—'}</span></td>
+        <td><span class="${t.ativo ? 'badge-ativo' : 'badge-inativo'}">${t.ativo ? 'Ativo' : 'Inativo'}</span></td>
+        <td>${t.total_leads ?? '—'}</td>
+        <td>${t.conversas_abertas ?? '—'}</td>
+        <td>
+          <a href="/admin/tenants/${t.tenant_id}" class="btn-admin btn-admin-ghost" style="text-decoration:none;padding:5px 10px;font-size:12px">Abrir</a>
+        </td>
+      </tr>`).join('');
+  } catch(e) { console.error(e); }
+}
+
+function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function openModal() { document.getElementById('modal-novo').classList.add('open'); }
+function closeModal() { document.getElementById('modal-novo').classList.remove('open'); }
+
+async function criarTenant() {
+  const body = {
+    id:                  document.getElementById('new-id').value.trim(),
+    nome:                document.getElementById('new-nome').value.trim(),
+    plano:               document.getElementById('new-plano').value,
+    evolution_instance:  document.getElementById('new-instance').value.trim(),
+    evolution_api_key:   document.getElementById('new-apikey').value.trim(),
+    criar_instancia:     document.getElementById('new-criar-instancia').checked,
+  };
+  if (!body.id || !body.nome) { alert('Preencha ID e Nome'); return; }
+  try {
+    const r = await fetch('/api/admin/tenants', { method: 'POST', headers: H, body: JSON.stringify(body) });
+    const d = await r.json();
+    if (!r.ok) { showAlert('err', d.detail || 'Erro ao criar tenant'); return; }
+    closeModal();
+    showAlert('ok', `Tenant "${body.nome}" criado com sucesso!`);
+    loadOverview();
+  } catch(e) { showAlert('err', String(e)); }
+}
+
+function showAlert(type, msg) {
+  const el = document.getElementById(`alert-${type}`);
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  setTimeout(() => el.classList.add('hidden'), 5000);
+}
+
+loadOverview();
+</script>
+{% endblock %}
