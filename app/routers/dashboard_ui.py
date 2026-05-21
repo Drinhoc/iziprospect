@@ -37,6 +37,16 @@ def prospeccao_page(request: Request):
     return templates.TemplateResponse("prospeccao.html", {"request": request})
 
 
+@router.get("/inbox", response_class=HTMLResponse)
+def inbox_page(request: Request):
+    return templates.TemplateResponse("inbox.html", {"request": request})
+
+
+@router.get("/inbox/{conversa_id}", response_class=HTMLResponse)
+def conversa_page(request: Request, conversa_id: int):
+    return templates.TemplateResponse("conversa.html", {"request": request, "conversa_id": conversa_id})
+
+
 @router.get("/landing", response_class=HTMLResponse)
 def landing_page(request: Request):
     return templates.TemplateResponse("landing.html", {"request": request})

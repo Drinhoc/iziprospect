@@ -66,6 +66,52 @@ CREATE INDEX IF NOT EXISTS idx_atividades_lead_id     ON atividades(lead_id);
 CREATE INDEX IF NOT EXISTS idx_atividades_msg_id      ON atividades(msg_id);
 """
 
+CREATE_INBOX_SQL = """
+CREATE TABLE IF NOT EXISTS conversas (
+    id                SERIAL PRIMARY KEY,
+    jid               TEXT NOT NULL UNIQUE,
+    nome_contato      TEXT DEFAULT '',
+    numero            TEXT DEFAULT '',
+    status            TEXT DEFAULT 'aberto',
+    prioridade        TEXT DEFAULT 'normal',
+    categoria         TEXT DEFAULT 'outro',
+    total_mensagens   INT DEFAULT 0,
+    nao_lidas         INT DEFAULT 0,
+    ultimo_msg_em     TIMESTAMPTZ,
+    primeira_msg_em   TIMESTAMPTZ,
+    resumo_ia         TEXT DEFAULT '',
+    resposta_sugerida TEXT DEFAULT '',
+    confianca_ia      INT DEFAULT 0,
+    lead_id           TEXT DEFAULT '',
+    atribuido_a       TEXT DEFAULT '',
+    resolvido_em      TIMESTAMPTZ,
+    criado_em         TIMESTAMPTZ DEFAULT NOW(),
+    atualizado_em     TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS mensagens_inbox (
+    id              SERIAL PRIMARY KEY,
+    msg_id          TEXT UNIQUE,
+    conversa_id     INT NOT NULL,
+    jid             TEXT NOT NULL,
+    de_mim          BOOLEAN DEFAULT FALSE,
+    tipo            TEXT DEFAULT 'text',
+    texto           TEXT DEFAULT '',
+    transcricao     TEXT DEFAULT '',
+    duracao_audio_s REAL,
+    media_url       TEXT DEFAULT '',
+    status_proc     TEXT DEFAULT 'pendente',
+    enviado_em      TIMESTAMPTZ,
+    criado_em       TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversas_jid      ON conversas(jid);
+CREATE INDEX IF NOT EXISTS idx_conversas_status   ON conversas(status);
+CREATE INDEX IF NOT EXISTS idx_conversas_ultimo   ON conversas(ultimo_msg_em DESC NULLS LAST);
+CREATE INDEX IF NOT EXISTS idx_mensagens_conversa ON mensagens_inbox(conversa_id);
+CREATE INDEX IF NOT EXISTS idx_mensagens_msg_id   ON mensagens_inbox(msg_id);
+"""
+
 CREATE_PROSPECTS_SQL = """
 CREATE TABLE IF NOT EXISTS lead_prospects (
     id               SERIAL PRIMARY KEY,
@@ -2313,6 +2359,279 @@ class DBService:
         finally:
             self._put(conn)
         return True
+
+    # ---------------------------------------------------------------------------
+    # Inbox — tabelas conversas + mensagens_inbox
+    # ---------------------------------------------------------------------------
+
+    def create_inbox_tables(self) -> None:
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(CREATE_INBOX_SQL)
+            conn.commit()
+            logger.info("Inbox tables ensured")
+        except Exception:
+            conn.rollback()
+            logger.exception("create_inbox_tables falhou")
+            raise
+        finally:
+            self._put(conn)
+
+    def get_or_create_conversa(self, jid: str, nome_contato: str = "", numero: str = "") -> Dict[str, Any]:
+        conn = self._conn()
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    """INSERT INTO conversas (jid, nome_contato, numero)
+                       VALUES (%s, %s, %s)
+                       ON CONFLICT (jid) DO UPDATE SET
+                           nome_contato = CASE
+                               WHEN EXCLUDED.nome_contato != '' THEN EXCLUDED.nome_contato
+                               ELSE conversas.nome_contato END,
+                           atualizado_em = NOW()
+                       RETURNING *""",
+                    (jid, nome_contato, numero),
+                )
+                row = cur.fetchone()
+            conn.commit()
+            return dict(row) if row else {}
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            self._put(conn)
+
+    def add_mensagem_inbox(
+        self,
+        msg_id: str,
+        conversa_id: int,
+        jid: str,
+        de_mim: bool,
+        tipo: str,
+        texto: str,
+        transcricao: str = "",
+        duracao_audio_s: Optional[float] = None,
+        media_url: str = "",
+        enviado_em=None,
+    ) -> int:
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO mensagens_inbox
+                       (msg_id, conversa_id, jid, de_mim, tipo, texto, transcricao,
+                        duracao_audio_s, media_url, status_proc, enviado_em)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'processado', %s)
+                       ON CONFLICT (msg_id) DO NOTHING
+                       RETURNING id""",
+                    (msg_id, conversa_id, jid, de_mim, tipo, texto, transcricao,
+                     duracao_audio_s, media_url, enviado_em),
+                )
+                row = cur.fetchone()
+                msg_db_id = row[0] if row else 0
+
+                if not de_mim:
+                    cur.execute(
+                        """UPDATE conversas SET
+                               total_mensagens = total_mensagens + 1,
+                               nao_lidas       = nao_lidas + 1,
+                               ultimo_msg_em   = COALESCE(%s, NOW()),
+                               primeira_msg_em = COALESCE(primeira_msg_em, %s),
+                               atualizado_em   = NOW()
+                           WHERE id = %s""",
+                        (enviado_em, enviado_em, conversa_id),
+                    )
+                else:
+                    cur.execute(
+                        """UPDATE conversas SET
+                               total_mensagens = total_mensagens + 1,
+                               ultimo_msg_em   = COALESCE(%s, NOW()),
+                               atualizado_em   = NOW()
+                           WHERE id = %s""",
+                        (enviado_em, conversa_id),
+                    )
+            conn.commit()
+            return msg_db_id
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            self._put(conn)
+
+    def update_conversa_triage(
+        self,
+        conversa_id: int,
+        categoria: str,
+        prioridade: str,
+        resumo_ia: str,
+        resposta_sugerida: str,
+        confianca_ia: int,
+        nome_contato: str = "",
+    ) -> None:
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """UPDATE conversas SET
+                           categoria         = %s,
+                           prioridade        = %s,
+                           resumo_ia         = %s,
+                           resposta_sugerida = %s,
+                           confianca_ia      = %s,
+                           nome_contato      = CASE WHEN %s != '' THEN %s ELSE nome_contato END,
+                           atualizado_em     = NOW()
+                       WHERE id = %s""",
+                    (categoria, prioridade, resumo_ia, resposta_sugerida, confianca_ia,
+                     nome_contato, nome_contato, conversa_id),
+                )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            self._put(conn)
+
+    def list_conversas(
+        self,
+        status: str = "aberto",
+        categoria: Optional[str] = None,
+        prioridade: Optional[str] = None,
+        search: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> Dict[str, Any]:
+        conditions: List[str] = []
+        params: List[Any] = []
+
+        if status and status != "todas":
+            conditions.append("status = %s")
+            params.append(status)
+        if categoria:
+            conditions.append("categoria = %s")
+            params.append(categoria)
+        if prioridade:
+            conditions.append("prioridade = %s")
+            params.append(prioridade)
+        if search:
+            conditions.append("(nome_contato ILIKE %s OR numero ILIKE %s)")
+            params.extend([f"%{search}%", f"%{search}%"])
+
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        offset = (page - 1) * page_size
+
+        conn = self._conn()
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(f"SELECT COUNT(*) FROM conversas {where}", params)
+                total = cur.fetchone()[0]
+
+                cur.execute(
+                    f"""SELECT * FROM conversas {where}
+                        ORDER BY
+                            CASE prioridade
+                                WHEN 'urgente' THEN 1
+                                WHEN 'alta'    THEN 2
+                                WHEN 'normal'  THEN 3
+                                ELSE 4
+                            END,
+                            ultimo_msg_em DESC NULLS LAST
+                        LIMIT %s OFFSET %s""",
+                    params + [page_size, offset],
+                )
+                rows = [dict(r) for r in cur.fetchall()]
+
+            return {"conversas": rows, "total": total, "page": page, "page_size": page_size}
+        finally:
+            self._put(conn)
+
+    def get_conversa(self, conversa_id: int) -> Optional[Dict[str, Any]]:
+        conn = self._conn()
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute("SELECT * FROM conversas WHERE id = %s", (conversa_id,))
+                row = cur.fetchone()
+            return dict(row) if row else None
+        finally:
+            self._put(conn)
+
+    def get_conversa_mensagens(self, conversa_id: int, limit: int = 100) -> List[Dict[str, Any]]:
+        conn = self._conn()
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    """SELECT * FROM mensagens_inbox
+                       WHERE conversa_id = %s
+                       ORDER BY enviado_em ASC NULLS LAST, id ASC
+                       LIMIT %s""",
+                    (conversa_id, limit),
+                )
+                return [dict(r) for r in cur.fetchall()]
+        finally:
+            self._put(conn)
+
+    def update_conversa(self, conversa_id: int, fields: Dict[str, Any]) -> None:
+        ALLOWED = {"status", "prioridade", "categoria", "atribuido_a", "lead_id", "resposta_sugerida"}
+        safe = {k: v for k, v in fields.items() if k in ALLOWED}
+        if not safe:
+            return
+        conn = self._conn()
+        try:
+            set_parts = [f"{k} = %s" for k in safe]
+            vals = list(safe.values())
+            if "status" in safe and safe["status"] == "resolvido":
+                set_parts.append("resolvido_em = NOW()")
+            set_parts.append("atualizado_em = NOW()")
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"UPDATE conversas SET {', '.join(set_parts)} WHERE id = %s",
+                    vals + [conversa_id],
+                )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            self._put(conn)
+
+    def mark_conversa_read(self, conversa_id: int) -> None:
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE conversas SET nao_lidas = 0 WHERE id = %s", (conversa_id,))
+            conn.commit()
+        finally:
+            self._put(conn)
+
+    def get_inbox_stats(self) -> Dict[str, Any]:
+        conn = self._conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT
+                           COUNT(*) FILTER (WHERE status = 'aberto')                      AS abertas,
+                           COUNT(*) FILTER (WHERE status = 'resolvido')                   AS resolvidas,
+                           COUNT(*) FILTER (WHERE status = 'arquivado')                   AS arquivadas,
+                           COUNT(*) FILTER (WHERE prioridade = 'urgente' AND status = 'aberto') AS urgentes,
+                           COALESCE(SUM(nao_lidas) FILTER (WHERE status = 'aberto'), 0)   AS total_nao_lidas,
+                           COUNT(*) FILTER (WHERE categoria = 'suporte')                  AS suporte,
+                           COUNT(*) FILTER (WHERE categoria = 'vendas')                   AS vendas,
+                           COUNT(*) FILTER (WHERE categoria = 'spam')                     AS spam
+                       FROM conversas"""
+                )
+                row = cur.fetchone()
+            return {
+                "abertas": row[0] or 0,
+                "resolvidas": row[1] or 0,
+                "arquivadas": row[2] or 0,
+                "urgentes": row[3] or 0,
+                "total_nao_lidas": row[4] or 0,
+                "suporte": row[5] or 0,
+                "vendas": row[6] or 0,
+                "spam": row[7] or 0,
+            }
+        finally:
+            self._put(conn)
 
     def get_ia_stats(self) -> Dict[str, Any]:
         """Estatísticas da Inteligência IA — separado dos dados dos leads.

@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Inbox{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Inbox WhatsApp</h1>
+  <span class="page-subtitle" id="inbox-subtitle"></span>
+</div>
+
+<!-- Stats bar -->
+<div class="inbox-stats-bar" id="inbox-stats-bar">
+  <div class="inbox-stat">
+    <span class="inbox-stat-value" id="ist-abertas">—</span>
+    <span class="inbox-stat-label">abertas</span>
+  </div>
+  <div class="inbox-stat inbox-stat--urgente">
+    <span class="inbox-stat-value" id="ist-urgentes">—</span>
+    <span class="inbox-stat-label">urgentes</span>
+  </div>
+  <div class="inbox-stat inbox-stat--unread">
+    <span class="inbox-stat-value" id="ist-nao-lidas">—</span>
+    <span class="inbox-stat-label">não lidas</span>
+  </div>
+  <div class="inbox-stat inbox-stat--green">
+    <span class="inbox-stat-value" id="ist-resolvidas">—</span>
+    <span class="inbox-stat-label">resolvidas</span>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="inbox-filters">
+  <div class="inbox-filter-tabs">
+    <button class="inbox-tab active" data-status="aberto" onclick="setStatusFilter('aberto', this)">
+      Abertas <span class="inbox-tab-count" id="tab-count-aberto"></span>
+    </button>
+    <button class="inbox-tab" data-status="resolvido" onclick="setStatusFilter('resolvido', this)">
+      Resolvidas
+    </button>
+    <button class="inbox-tab" data-status="arquivado" onclick="setStatusFilter('arquivado', this)">
+      Arquivadas
+    </button>
+    <button class="inbox-tab" data-status="todas" onclick="setStatusFilter('todas', this)">
+      Todas
+    </button>
+  </div>
+  <div class="inbox-filter-right">
+    <select class="inbox-select" id="filter-categoria" onchange="applyFilters()">
+      <option value="">Todas categorias</option>
+      <option value="suporte">Suporte</option>
+      <option value="vendas">Vendas</option>
+      <option value="informacao">Informação</option>
+      <option value="spam">Spam</option>
+      <option value="outro">Outro</option>
+    </select>
+    <select class="inbox-select" id="filter-prioridade" onchange="applyFilters()">
+      <option value="">Todas prioridades</option>
+      <option value="urgente">Urgente</option>
+      <option value="alta">Alta</option>
+      <option value="normal">Normal</option>
+      <option value="baixa">Baixa</option>
+    </select>
+    <div class="inbox-search-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" class="inbox-search" id="inbox-search" placeholder="Buscar contato…" oninput="debounceSearch()" />
+    </div>
+  </div>
+</div>
+
+<!-- Conversation list -->
+<div class="inbox-list" id="inbox-list"></div>
+
+<!-- Empty state -->
+<div class="inbox-empty hidden" id="inbox-empty">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+  </svg>
+  <p id="inbox-empty-text">Nenhuma conversa encontrada.</p>
+</div>
+
+<!-- Loading -->
+<div class="inbox-loading hidden" id="inbox-loading">
+  <div class="spinner"></div>
+</div>
+
+<!-- Pagination -->
+<div class="pagination hidden" id="inbox-pagination">
+  <button class="btn-page" id="inbox-btn-prev" onclick="inboxChangePage(-1)">← Anterior</button>
+  <span class="page-info" id="inbox-page-info"></span>
+  <button class="btn-page" id="inbox-btn-next" onclick="inboxChangePage(1)">Próxima →</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/inbox.js"></script>
+{% endblock %}

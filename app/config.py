@@ -37,6 +37,12 @@ class Settings:
     daily_summary_minute: int = 30
     disable_daily_summary: bool = False
     # ---------------------------------------------------------------------------
+    # Inbox MVP 2.0: modo inbox — processa conversas individuais do número inteiro
+    # Ativar com INBOX_MODE_ENABLED=true no .env
+    # ---------------------------------------------------------------------------
+    inbox_mode_enabled: bool = False
+
+    # ---------------------------------------------------------------------------
     # Auto-send: envio automático de primeiro contato
     # Desligado por padrão. Ativar com AUTO_SEND_ENABLED=true no .env
     # ---------------------------------------------------------------------------
@@ -71,6 +77,7 @@ class Settings:
             daily_summary_hour=int(os.getenv("DAILY_SUMMARY_HOUR", "18")),
             daily_summary_minute=int(os.getenv("DAILY_SUMMARY_MINUTE", "30")),
             disable_daily_summary=_as_bool(os.getenv("DISABLE_DAILY_SUMMARY"), default=False),
+            inbox_mode_enabled=_as_bool(os.getenv("INBOX_MODE_ENABLED"), default=False),
             auto_send_enabled=_as_bool(os.getenv("AUTO_SEND_ENABLED"), default=False),
             auto_send_diario_max=int(os.getenv("AUTO_SEND_DIARIO_MAX", "7")),
             auto_send_hora_inicio=int(os.getenv("AUTO_SEND_HORA_INICIO", "9")),

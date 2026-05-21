@@ -40,9 +40,10 @@ app = FastAPI(title="IziClinic Invisible CRM")
 _STATIC_DIR = pathlib.Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
-from app.routers import api_leads, api_prospeccao, dashboard_ui  # noqa: E402
+from app.routers import api_leads, api_prospeccao, api_inbox, dashboard_ui  # noqa: E402
 app.include_router(api_leads.router)
 app.include_router(api_prospeccao.router)
+app.include_router(api_inbox.router)
 app.include_router(dashboard_ui.router)
 
 openai_service = OpenAIService(settings.openai_api_key)
@@ -78,6 +79,16 @@ def get_sheets_service() -> SheetsService:
     info = settings.service_account_info()
     sheets_service = SheetsService(info, settings.google_sheets_id)
     return sheets_service
+
+
+@app.on_event("startup")
+async def _create_inbox_tables() -> None:
+    """Garante que as tabelas do MVP 2.0 Inbox existam no banco."""
+    try:
+        db = get_db_service()
+        await asyncio.to_thread(db.create_inbox_tables)
+    except Exception:
+        logger.warning("create_inbox_tables falhou — não crítico", exc_info=True)
 
 
 @app.on_event("startup")
@@ -551,8 +562,29 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
 
     authorized, reason = is_authorized_crm_group(event.chat_id, event.is_group)
     if not authorized:
+        # MVP 2.0: mensagens individuais (não-grupo) vão para o Inbox
+        if reason == "not_group" and settings.inbox_mode_enabled:
+            # Ignora mensagens enviadas pelo próprio bot para evitar loops
+            if event.from_me:
+                logger.info("inbox: ignored from_me | chat_id=%s", event.chat_id)
+                return {"ok": True, "ignored": True, "reason": "inbox_from_me"}
+            logger.info("inbox: mensagem individual recebida | chat_id=%s tipo=%s", event.chat_id, event.msg_type)
+            from app.services.inbox_service import InboxService
+            # Busca audio base64 se necessário (mesmo fluxo do CRM)
+            if event.msg_type == "audio" and not event.media_base64:
+                if settings.evolution_instance_name and event.raw_msg_key and event.raw_message_obj:
+                    fetched_b64 = await evolution_service.fetch_audio_base64(
+                        instance_name=settings.evolution_instance_name,
+                        msg_key=event.raw_msg_key,
+                        message_obj=event.raw_message_obj,
+                    )
+                    if fetched_b64:
+                        event.media_base64 = fetched_b64
+            inbox_svc = InboxService(get_db_service(), openai_service, evolution_service)
+            return await inbox_svc.process_incoming(event)
+
         if reason == "not_group":
-            logger.info("ignored: not_group | chat_id=%s", event.chat_id)
+            logger.info("ignored: not_group (inbox desabilitado) | chat_id=%s", event.chat_id)
             return {"ok": True, "ignored": True, "reason": "not_group"}
 
         expected = _normalize_group_id(settings.crm_target_group_id)
