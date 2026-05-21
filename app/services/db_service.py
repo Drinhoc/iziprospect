@@ -921,6 +921,10 @@ class DBService:
                          AND whatsapp != ''
                          AND mensagem_enviada_em = ''
                          AND origem_primeiro_contato = ''
+                         AND whatsapp NOT IN (
+                           SELECT numero FROM conversas
+                           WHERE status != 'arquivado'
+                         )
                        ORDER BY
                          CASE WHEN segmento != '' THEN 0 ELSE 1 END,
                          data_criacao ASC

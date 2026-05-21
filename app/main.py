@@ -156,6 +156,10 @@ async def _auto_sender_loop() -> None:
     while True:
         await asyncio.sleep(300)
         try:
+            # Inbox mode é inbound puro — nunca enviar mensagens ativas
+            if settings.inbox_mode_enabled:
+                continue
+
             db = get_db_service()
             # DB tem prioridade: toggle do dashboard sobrescreve .env
             db_flag = db.get_setting("auto_send_enabled")
