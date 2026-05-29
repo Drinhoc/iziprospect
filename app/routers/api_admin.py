@@ -23,8 +23,10 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 # ---------------------------------------------------------------------------
 
 def _require_admin(x_admin_token: Optional[str] = Header(default=None)) -> None:
+    from hmac import compare_digest
+
     from app.config import settings
-    if not settings.admin_token or x_admin_token != settings.admin_token:
+    if not settings.admin_token or not compare_digest(x_admin_token or "", settings.admin_token):
         raise HTTPException(status_code=403, detail="Forbidden: token inválido ou ausente")
 
 
@@ -46,12 +48,13 @@ def _global_key() -> str:
 
 
 def _webhook_url() -> str:
-    from app.config import settings
-    base = (settings.evolution_api_url or "").rstrip("/")
-    # A URL do webhook aponta para o nosso próprio servidor
-    # O cliente deve configurar WEBHOOK_BASE_URL no .env
+    # A URL do webhook aponta para o nosso próprio servidor (onde a Evolution entrega
+    # as mensagens). Precisa ser uma URL absoluta — definir WEBHOOK_BASE_URL no .env.
     import os
-    return os.getenv("WEBHOOK_BASE_URL", "").rstrip("/") + "/webhook/evolution"
+    base = os.getenv("WEBHOOK_BASE_URL", "").strip().rstrip("/")
+    if not base:
+        raise HTTPException(status_code=503, detail="WEBHOOK_BASE_URL não configurado")
+    return base + "/webhook/evolution"
 
 
 # ---------------------------------------------------------------------------
@@ -103,11 +106,17 @@ async def create_tenant(body: TenantCreate):
             raise HTTPException(409, f"Tenant '{body.id}' já existe")
         raise HTTPException(500, str(e))
 
-    # Cria schema isolado no PostgreSQL
+    # Cria schema isolado no PostgreSQL. Se falhar, remove o registro para não
+    # deixar um tenant órfão (sem schema) que quebraria o roteamento do webhook.
     try:
         await asyncio.to_thread(db.create_tenant_schema, body.id)
     except Exception as e:
-        logger.warning("create_tenant_schema falhou para %s: %s", body.id, e)
+        logger.warning("create_tenant_schema falhou para %s: %s — revertendo tenant", body.id, e)
+        try:
+            await asyncio.to_thread(db.drop_tenant_schema, body.id)
+        except Exception:
+            logger.exception("rollback do tenant %s falhou", body.id)
+        raise HTTPException(500, f"Falha ao criar schema do tenant: {e}")
 
     # Cria instância no Evolution API (opcional)
     if body.criar_instancia and body.evolution_instance:

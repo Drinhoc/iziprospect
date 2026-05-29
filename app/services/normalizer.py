@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Any, Dict, Optional
 
 from app.schemas.models import NormalizedEvent
+
+logger = logging.getLogger(__name__)
 
 
 def _first_non_empty(*values: Any) -> Optional[str]:
@@ -122,7 +125,10 @@ def normalize_evolution_payload(payload: Dict[str, Any]) -> NormalizedEvent:
             raw_bytes = bytes(raw_media_key[str(i)] for i in range(len(raw_media_key)))
             media_key = _b64.b64encode(raw_bytes).decode()
         except Exception:
-            pass
+            logger.warning(
+                "media_key_dict_parse_falhou | keys=%s",
+                list(raw_media_key.keys())[:10],
+            )
     # Duração do áudio em segundos (presente no audioMessage do WhatsApp)
     audio_seconds: Optional[int] = None
     try:

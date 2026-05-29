@@ -93,6 +93,8 @@ class EvolutionService:
     async def create_instance(
         self, instance_name: str, webhook_url: str, global_api_key: str
     ) -> Dict[str, Any]:
+        if not self.base_url:
+            raise ValueError("EVOLUTION_API_URL não configurado")
         url = f"{self.base_url.rstrip('/')}/instance/create"
         headers = {"apikey": global_api_key, "Content-Type": "application/json"}
         body = {

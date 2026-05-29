@@ -16,9 +16,11 @@ COOKIE_NAME = "izidesk_admin"
 
 
 def _is_authed(request: Request) -> bool:
+    from hmac import compare_digest
+
     from app.config import settings
     token = request.cookies.get(COOKIE_NAME, "")
-    return bool(settings.admin_token) and token == settings.admin_token
+    return bool(settings.admin_token) and compare_digest(token, settings.admin_token)
 
 
 def _require_auth(request: Request):
@@ -38,8 +40,10 @@ async def login_page(request: Request):
 
 @router.post("/login")
 async def login_submit(request: Request, token: str = Form(...)):
+    from hmac import compare_digest
+
     from app.config import settings
-    if not settings.admin_token or token != settings.admin_token:
+    if not settings.admin_token or not compare_digest(token, settings.admin_token):
         return templates.TemplateResponse(
             "admin_login.html",
             {"request": request, "erro": "Token inválido"},

@@ -76,8 +76,8 @@ def list_conversas(
     status: str = Query("aberto", description="aberto | resolvido | arquivado | todas"),
     categoria: Optional[str] = Query(None),
     prioridade: Optional[str] = Query(None),
-    search: Optional[str] = Query(None),
-    page: int = Query(1, ge=1),
+    search: Optional[str] = Query(None, max_length=100),
+    page: int = Query(1, ge=1, le=10000),
     page_size: int = Query(20, ge=1, le=100),
 ):
     """Lista conversas com filtros e paginação, ordenadas por prioridade + recência."""

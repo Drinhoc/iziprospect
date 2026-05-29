@@ -608,7 +608,17 @@ async def evolution_webhook(payload: dict, x_webhook_secret: str | None = Header
                 raw_instance,
             )
             inbox_svc = InboxService(tenant_db, openai_service, tenant_evo)
-            return await inbox_svc.process_incoming(event)
+            try:
+                return await inbox_svc.process_incoming(event)
+            except Exception:
+                # Falha no processamento não deve virar 500 — isso faria a Evolution
+                # reentregar o webhook em loop. A dedupe por msg_id (ON CONFLICT DO NOTHING)
+                # já protege contra duplicatas em eventual reprocessamento.
+                logger.exception(
+                    "inbox_process_falhou | tenant=%s instance=%s msg_id=%s",
+                    tenant["id"], raw_instance, event.msg_id,
+                )
+                return {"ok": False, "reason": "inbox_process_error"}
 
     event = normalize_evolution_payload(payload)
     logger.info(

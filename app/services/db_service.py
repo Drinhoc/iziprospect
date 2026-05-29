@@ -3126,10 +3126,19 @@ class DBService:
         conn = self._conn()
         try:
             stats = []
-            with conn.cursor() as cur:
-                for t in tenants:
-                    schema = _safe_schema(t["id"])
-                    try:
+            for t in tenants:
+                schema = _safe_schema(t["id"])
+                base = {
+                    "tenant_id": t["id"],
+                    "nome": t["nome"],
+                    "plano": t["plano"],
+                    "ativo": t["ativo"],
+                    "evolution_instance": t["evolution_instance"],
+                }
+                # Cursor novo por tenant: se o schema não existir, a transação aborta —
+                # o rollback isola a falha para que os demais tenants ainda sejam contados.
+                try:
+                    with conn.cursor() as cur:
                         cur.execute(
                             f"""SELECT
                                 (SELECT COUNT(*) FROM {schema}.leads)         AS total_leads,
@@ -3141,28 +3150,21 @@ class DBService:
                             """
                         )
                         row = cur.fetchone()
-                        stats.append({
-                            "tenant_id": t["id"],
-                            "nome": t["nome"],
-                            "plano": t["plano"],
-                            "ativo": t["ativo"],
-                            "evolution_instance": t["evolution_instance"],
-                            "total_leads": row[0] if row else 0,
-                            "conversas_abertas": row[1] if row else 0,
-                            "nao_lidas": row[2] if row else 0,
-                        })
-                    except Exception:
-                        stats.append({
-                            "tenant_id": t["id"],
-                            "nome": t["nome"],
-                            "plano": t["plano"],
-                            "ativo": t["ativo"],
-                            "evolution_instance": t["evolution_instance"],
-                            "total_leads": None,
-                            "conversas_abertas": None,
-                            "nao_lidas": None,
-                        })
-                        conn.rollback()
+                    stats.append({
+                        **base,
+                        "total_leads": row[0] if row else 0,
+                        "conversas_abertas": row[1] if row else 0,
+                        "nao_lidas": row[2] if row else 0,
+                    })
+                except Exception as exc:
+                    conn.rollback()
+                    logger.warning("get_admin_overview falhou para tenant %s: %s", t["id"], exc)
+                    stats.append({
+                        **base,
+                        "total_leads": None,
+                        "conversas_abertas": None,
+                        "nao_lidas": None,
+                    })
             return {"tenants": stats, "total": len(tenants)}
         finally:
             self._put(conn)
@@ -3189,17 +3191,25 @@ class TenantDBService(DBService):
     def _conn(self):
         conn = self._pool.getconn()
         try:
+            # Limpa qualquer transação pendente/abortada deixada por um uso anterior
+            # desta conexão física, depois fixa o search_path do tenant de forma estável.
+            conn.rollback()
             with conn.cursor() as cur:
                 cur.execute(f"SET search_path TO {self._tenant_schema}, public")
+            conn.commit()
         except Exception:
-            self._pool.putconn(conn)
+            self._pool.putconn(conn, close=True)
             raise
         return conn
 
     def _put(self, conn) -> None:
         try:
+            # Descarta transação aberta do método chamador (writes já fizeram commit
+            # próprio) e reseta o search_path para que a conexão volte limpa ao pool.
+            conn.rollback()
             with conn.cursor() as cur:
                 cur.execute("SET search_path TO public")
+            conn.commit()
         except Exception:
             self._pool.putconn(conn, close=True)
             return

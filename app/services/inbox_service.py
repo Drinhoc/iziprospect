@@ -67,6 +67,12 @@ Exemplos de classificação:
 - "como funciona a integração com o YouTube?" → informacao / normal
 - "GANHE DINHEIRO FÁCIL clique aqui" → spam / baixa"""
 
+# Valores aceitos — a IA é instruída a usar apenas estes, mas validamos para não
+# poluir o banco com categorias/prioridades fora do conjunto (que quebrariam a
+# ordenação por CASE e os filtros da UI).
+VALID_CATEGORIAS = {"suporte", "vendas", "financeiro", "informacao", "spam", "outro"}
+VALID_PRIORIDADES = {"urgente", "alta", "normal", "baixa"}
+
 
 def _extract_numero_from_jid(jid: str) -> str:
     raw = jid.replace("@s.whatsapp.net", "").replace("@c.us", "")
@@ -126,11 +132,15 @@ class InboxService:
                     "inbox_audio_erro | conversa_id=%d reason=%s",
                     conversa_id, exc.reason,
                 )
+                if not texto:
+                    texto = f"[áudio não transcrito: {exc.reason}]"
             except Exception:
                 logger.warning(
                     "inbox_audio_falha_inesperada | conversa_id=%d",
                     conversa_id, exc_info=True,
                 )
+                if not texto:
+                    texto = "[erro ao transcrever áudio]"
 
         await asyncio.to_thread(
             self.db.add_mensagem_inbox,
@@ -225,7 +235,15 @@ class InboxService:
                 ],
             )
             data = json.loads(resp.choices[0].message.content or "{}")
-            data["confianca"] = max(1, min(10, int(data.get("confianca", 5))))
+            try:
+                data["confianca"] = max(1, min(10, int(data.get("confianca", 5))))
+            except (TypeError, ValueError):
+                data["confianca"] = 5
+            # Sanitiza enums — se a IA devolver valor inesperado, cai no fallback seguro.
+            if data.get("categoria") not in VALID_CATEGORIAS:
+                data["categoria"] = "outro"
+            if data.get("prioridade") not in VALID_PRIORIDADES:
+                data["prioridade"] = "normal"
             return data
         except Exception:
             logger.warning("_call_triage_llm falhou", exc_info=True)
